@@ -35,10 +35,10 @@ const BambooStudio = () => {
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [isDraggingDivider, setIsDraggingDivider] = useState(false);
   const [moldingStyle, setMoldingStyle] = useState<'none' | 'gold' | 'black' | 'metallic'>('none');
-  const [moldingWidth, setMoldingWidth] = useState(6);
+  const [moldingWidth, setMoldingWidth] = useState(2);
   const [hMoldingStyle, setHMoldingStyle] = useState<'none' | 'gold' | 'black' | 'metallic'>('none');
   const [hMoldingCount, setHMoldingCount] = useState(1);
-  const [hMoldingWidth, setHMoldingWidth] = useState(6);
+  const [hMoldingWidth, setHMoldingWidth] = useState(2);
   const [hMoldingPositions, setHMoldingPositions] = useState<number[]>([0.5]);
 
   const mainCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -690,12 +690,6 @@ const BambooStudio = () => {
           <span className="font-bold text-sm tracking-tight italic">BambooStudio Pro</span>
         </div>
         <div className="flex items-center gap-3">
-          {step === 'edit' && (
-            <button onClick={handleSave}
-              className="flex items-center gap-1.5 bg-black text-white text-xs font-bold px-4 py-2 rounded-xl hover:bg-gray-800 transition-all active:scale-95">
-              <Download size={13} /> Сохранить PNG
-            </button>
-          )}
           <button
             onClick={() => { maskStrokesRef.current = []; setStep('upload'); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
             className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
@@ -894,7 +888,7 @@ const BambooStudio = () => {
                       <span className="text-[9px] text-gray-400 font-bold uppercase">Толщина</span>
                       <span className="text-[9px] font-bold">{moldingWidth}px</span>
                     </div>
-                    <input type="range" min="2" max="20" value={moldingWidth}
+                    <input type="range" min="1" max="4" value={moldingWidth}
                       onChange={(e) => setMoldingWidth(parseInt(e.target.value))}
                       className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
                   </div>
@@ -933,13 +927,19 @@ const BambooStudio = () => {
                       <span className="text-[9px] text-gray-400 font-bold uppercase">Толщина</span>
                       <span className="text-[9px] font-bold">{hMoldingWidth}px</span>
                     </div>
-                    <input type="range" min="2" max="20" value={hMoldingWidth}
+                    <input type="range" min="1" max="4" value={hMoldingWidth}
                       onChange={(e) => setHMoldingWidth(parseInt(e.target.value))}
                       className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
                   </div>
                 </div>
               )}
             </div>
+
+            {/* Save */}
+            <button onClick={handleSave}
+              className="w-full flex items-center justify-center gap-2 bg-black text-white text-xs font-bold py-3 rounded-2xl hover:bg-gray-800 transition-all active:scale-95 mt-1 shadow-sm">
+              <Download size={13} /> Сохранить PNG
+            </button>
 
           </>)}
         </div>
