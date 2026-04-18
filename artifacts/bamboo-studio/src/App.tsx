@@ -34,6 +34,8 @@ const BambooStudio = () => {
   const [isDrawing, setIsDrawing] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [isDraggingDivider, setIsDraggingDivider] = useState(false);
+  const [moldingStyle, setMoldingStyle] = useState<'none' | 'gold' | 'black' | 'metallic'>('none');
+  const [moldingWidth, setMoldingWidth] = useState(6);
 
   const mainCanvasRef = useRef<HTMLCanvasElement>(null);
   const maskCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -50,6 +52,8 @@ const BambooStudio = () => {
   const isErasingRef = useRef(false);
   const draggingDividerIndexRef = useRef<number | null>(null);
   const forExportRef = useRef(false);
+  const moldingStyleRef = useRef<'none' | 'gold' | 'black' | 'metallic'>('none');
+  const moldingWidthRef = useRef(6);
 
   useEffect(() => { imageRef.current = image; }, [image]);
   useEffect(() => { stepRef.current = step; }, [step]);
@@ -59,6 +63,8 @@ const BambooStudio = () => {
   useEffect(() => { sectorMaterialsRef.current = sectorMaterials; }, [sectorMaterials]);
   useEffect(() => { activeSectorRef.current = activeSector; }, [activeSector]);
   useEffect(() => { isErasingRef.current = isErasing; }, [isErasing]);
+  useEffect(() => { moldingStyleRef.current = moldingStyle; }, [moldingStyle]);
+  useEffect(() => { moldingWidthRef.current = moldingWidth; }, [moldingWidth]);
 
   // Returns the start/end ratio for each sector based on divider positions
   const getSectorBounds = (dividers: number[], count: number) => {
@@ -202,6 +208,67 @@ const BambooStudio = () => {
       ctx.globalAlpha = 0.85;
       ctx.drawImage(tempCanvas, 0, 0);
       ctx.restore();
+
+      // Draw moldings on top of everything (structural profiles, not affected by eraser)
+      const curMoldingStyle = moldingStyleRef.current;
+      const curMoldingWidth = moldingWidthRef.current;
+      if (curMoldingStyle !== 'none' && curDividers.length > 0) {
+        curDividers.forEach((ratio) => {
+          const topX = pts[0].x + (pts[1].x - pts[0].x) * ratio;
+          const topY = pts[0].y + (pts[1].y - pts[0].y) * ratio;
+          const botX = pts[3].x + (pts[2].x - pts[3].x) * ratio;
+          const botY = pts[3].y + (pts[2].y - pts[3].y) * ratio;
+
+          // Perpendicular direction for gradient
+          const dx = botX - topX;
+          const dy = botY - topY;
+          const len = Math.sqrt(dx * dx + dy * dy);
+          const px = -dy / len;
+          const py = dx / len;
+          const hw = curMoldingWidth / 2;
+          const midX = (topX + botX) / 2;
+          const midY = (topY + botY) / 2;
+
+          const grad = ctx.createLinearGradient(
+            midX + px * hw, midY + py * hw,
+            midX - px * hw, midY - py * hw
+          );
+
+          if (curMoldingStyle === 'gold') {
+            grad.addColorStop(0,    '#5a3d00');
+            grad.addColorStop(0.15, '#b8860b');
+            grad.addColorStop(0.35, '#ffd700');
+            grad.addColorStop(0.5,  '#fff8c0');
+            grad.addColorStop(0.65, '#ffd700');
+            grad.addColorStop(0.85, '#b8860b');
+            grad.addColorStop(1,    '#5a3d00');
+          } else if (curMoldingStyle === 'black') {
+            grad.addColorStop(0,    '#0a0a0a');
+            grad.addColorStop(0.25, '#1c1c1c');
+            grad.addColorStop(0.5,  '#383838');
+            grad.addColorStop(0.75, '#1c1c1c');
+            grad.addColorStop(1,    '#0a0a0a');
+          } else if (curMoldingStyle === 'metallic') {
+            grad.addColorStop(0,    '#4a4a4a');
+            grad.addColorStop(0.2,  '#9a9a9a');
+            grad.addColorStop(0.45, '#e8e8e8');
+            grad.addColorStop(0.5,  '#ffffff');
+            grad.addColorStop(0.55, '#e8e8e8');
+            grad.addColorStop(0.8,  '#9a9a9a');
+            grad.addColorStop(1,    '#4a4a4a');
+          }
+
+          ctx.save();
+          ctx.strokeStyle = grad;
+          ctx.lineWidth = curMoldingWidth;
+          ctx.lineCap = 'butt';
+          ctx.beginPath();
+          ctx.moveTo(topX, topY);
+          ctx.lineTo(botX, botY);
+          ctx.stroke();
+          ctx.restore();
+        });
+      }
     }
   }, []);
 
@@ -255,7 +322,7 @@ const BambooStudio = () => {
   useEffect(() => {
     if (!image) return;
     drawFullScene();
-  }, [points, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, drawFullScene, image]);
+  }, [points, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, moldingStyle, moldingWidth, drawFullScene, image]);
 
   const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = mainCanvasRef.current;
@@ -539,6 +606,42 @@ const BambooStudio = () => {
                   <p className="text-[9px] text-gray-300 mt-3 text-center">Без выбора панели — применяется ко всем</p>
                 )}
               </div>
+
+              {panelCount > 1 && (
+                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+                  <h2 className="text-lg font-bold mb-4">Молдинг</h2>
+                  <div className="grid grid-cols-4 gap-2 mb-4">
+                    {([
+                      { id: 'none', label: 'Нет', preview: 'bg-gray-100' },
+                      { id: 'gold', label: 'Золото', preview: 'bg-gradient-to-r from-yellow-800 via-yellow-300 to-yellow-800' },
+                      { id: 'black', label: 'Черный', preview: 'bg-gradient-to-r from-black via-gray-600 to-black' },
+                      { id: 'metallic', label: 'Металлик', preview: 'bg-gradient-to-r from-gray-600 via-white to-gray-600' },
+                    ] as const).map(opt => (
+                      <button
+                        key={opt.id}
+                        onClick={() => setMoldingStyle(opt.id)}
+                        className={`flex flex-col items-center gap-1.5 transition-all ${moldingStyle === opt.id ? 'opacity-100' : 'opacity-50'}`}
+                      >
+                        <div className={`w-full h-8 rounded-lg border-2 ${opt.preview} ${moldingStyle === opt.id ? 'border-black shadow-md scale-105' : 'border-transparent'}`} />
+                        <span className="text-[8px] font-bold uppercase text-gray-500">{opt.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {moldingStyle !== 'none' && (
+                    <div className="space-y-3 mt-3">
+                      <div className="flex justify-between text-[10px] font-bold text-gray-400 uppercase">
+                        <span>Толщина</span>
+                        <span>{moldingWidth}px</span>
+                      </div>
+                      <input
+                        type="range" min="2" max="20" value={moldingWidth}
+                        onChange={(e) => setMoldingWidth(parseInt(e.target.value))}
+                        className="w-full h-1 bg-gray-100 rounded-lg appearance-none accent-black"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
                 <div className="flex justify-between items-center mb-4">
