@@ -39,6 +39,7 @@ const BambooStudio = () => {
   const [hMoldingStyle, setHMoldingStyle] = useState<'none' | 'gold' | 'black' | 'metallic'>('none');
   const [hMoldingCount, setHMoldingCount] = useState(1);
   const [hMoldingWidth, setHMoldingWidth] = useState(6);
+  const [hMoldingPositions, setHMoldingPositions] = useState<number[]>([0.5]);
 
   const mainCanvasRef = useRef<HTMLCanvasElement>(null);
   const maskCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -60,6 +61,8 @@ const BambooStudio = () => {
   const hMoldingStyleRef = useRef<'none' | 'gold' | 'black' | 'metallic'>('none');
   const hMoldingCountRef = useRef(1);
   const hMoldingWidthRef = useRef(6);
+  const hMoldingPositionsRef = useRef<number[]>([0.5]);
+  const draggingHMoldingIndexRef = useRef<number | null>(null);
   // Mask stored as strokes — never gets reset by canvas operations
   const maskStrokesRef = useRef<Array<{ x: number; y: number; r: number }>>([]);
 
@@ -76,6 +79,7 @@ const BambooStudio = () => {
   useEffect(() => { hMoldingStyleRef.current = hMoldingStyle; }, [hMoldingStyle]);
   useEffect(() => { hMoldingCountRef.current = hMoldingCount; }, [hMoldingCount]);
   useEffect(() => { hMoldingWidthRef.current = hMoldingWidth; }, [hMoldingWidth]);
+  useEffect(() => { hMoldingPositionsRef.current = hMoldingPositions; }, [hMoldingPositions]);
 
   // Returns the start/end ratio for each sector based on divider positions
   const getSectorBounds = (dividers: number[], count: number) => {
@@ -270,11 +274,10 @@ const BambooStudio = () => {
 
       // Draw horizontal moldings on tempCanvas BEFORE mask (also eraseable)
       const curHMoldingStyle = hMoldingStyleRef.current;
-      const curHMoldingCount = hMoldingCountRef.current;
       const curHMoldingWidth = hMoldingWidthRef.current;
-      if (curHMoldingStyle !== 'none' && curHMoldingCount > 0) {
-        for (let i = 1; i <= curHMoldingCount; i++) {
-          const r = i / (curHMoldingCount + 1);
+      const curHPositions = hMoldingPositionsRef.current;
+      if (curHMoldingStyle !== 'none' && curHPositions.length > 0) {
+        curHPositions.forEach((r) => {
           // Left edge: lerp between pts[0] (top-left) and pts[3] (bottom-left)
           const lx = pts[0].x + (pts[3].x - pts[0].x) * r;
           const ly = pts[0].y + (pts[3].y - pts[0].y) * r;
@@ -330,7 +333,36 @@ const BambooStudio = () => {
           tCtx.lineTo(rx, ry);
           tCtx.stroke();
           tCtx.restore();
-        }
+
+          // Draw drag handle (visible when not erasing and not exporting)
+          if (!curIsErasing && !forExportRef.current) {
+            tCtx.save();
+            tCtx.strokeStyle = 'rgba(255,255,255,0.6)';
+            tCtx.lineWidth = 2;
+            tCtx.setLineDash([6, 4]);
+            tCtx.beginPath();
+            tCtx.moveTo(lx, ly);
+            tCtx.lineTo(rx, ry);
+            tCtx.stroke();
+            tCtx.restore();
+
+            tCtx.save();
+            tCtx.fillStyle = 'white';
+            tCtx.strokeStyle = 'rgba(0,0,0,0.3)';
+            tCtx.lineWidth = 1.5;
+            tCtx.setLineDash([]);
+            tCtx.beginPath();
+            tCtx.arc(midX, midY, 8, 0, Math.PI * 2);
+            tCtx.fill();
+            tCtx.stroke();
+            tCtx.fillStyle = '#555';
+            tCtx.font = 'bold 10px sans-serif';
+            tCtx.textAlign = 'center';
+            tCtx.textBaseline = 'middle';
+            tCtx.fillText('↕', midX, midY);
+            tCtx.restore();
+          }
+        });
       }
 
       // Apply eraser mask — replay strokes from memory (never lost on canvas reset)
@@ -399,6 +431,41 @@ const BambooStudio = () => {
     return Math.max(0, Math.min(1, t));
   }, []);
 
+  // Convert canvas position to wall VERTICAL ratio (0=top, 1=bottom)
+  const canvasYToWallRatio = useCallback((cx: number, cy: number): number => {
+    const pts = pointsRef.current;
+    if (pts.length < 4) return 0;
+    // Project onto the center vertical axis of the wall
+    const topX = (pts[0].x + pts[1].x) / 2;
+    const topY = (pts[0].y + pts[1].y) / 2;
+    const botX = (pts[2].x + pts[3].x) / 2;
+    const botY = (pts[2].y + pts[3].y) / 2;
+    const dx = botX - topX;
+    const dy = botY - topY;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq === 0) return 0;
+    const t = ((cx - topX) * dx + (cy - topY) * dy) / lenSq;
+    return Math.max(0.02, Math.min(0.98, t));
+  }, []);
+
+  // Find which horizontal molding handle is near a canvas point, or -1
+  const findNearHMolding = useCallback((cx: number, cy: number): number => {
+    const pts = pointsRef.current;
+    if (pts.length !== 4) return -1;
+    const positions = hMoldingPositionsRef.current;
+    for (let i = 0; i < positions.length; i++) {
+      const r = positions[i];
+      const lx = pts[0].x + (pts[3].x - pts[0].x) * r;
+      const ly = pts[0].y + (pts[3].y - pts[0].y) * r;
+      const rx = pts[1].x + (pts[2].x - pts[1].x) * r;
+      const ry = pts[1].y + (pts[2].y - pts[1].y) * r;
+      const midX = (lx + rx) / 2;
+      const midY = (ly + ry) / 2;
+      if (Math.sqrt((cx - midX) ** 2 + (cy - midY) ** 2) <= 14) return i;
+    }
+    return -1;
+  }, []);
+
   // Initialize canvas only when image changes
   useEffect(() => {
     if (!image || !containerRef.current || !mainCanvasRef.current || !maskCanvasRef.current) return;
@@ -414,7 +481,7 @@ const BambooStudio = () => {
   useEffect(() => {
     if (!image) return;
     drawFullScene();
-  }, [points, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, drawFullScene, image]);
+  }, [points, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, drawFullScene, image]);
 
   const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = mainCanvasRef.current;
@@ -439,6 +506,11 @@ const BambooStudio = () => {
     setIsDrawing(true);
     if (isErasing || step !== 'edit') return;
     const { x, y } = getCanvasCoords(e);
+    const hIdx = findNearHMolding(x, y);
+    if (hIdx !== -1) {
+      draggingHMoldingIndexRef.current = hIdx;
+      return;
+    }
     const divIdx = findNearDivider(x, y);
     if (divIdx !== -1) {
       draggingDividerIndexRef.current = divIdx;
@@ -449,6 +521,7 @@ const BambooStudio = () => {
   const handleMouseUp = () => {
     setIsDrawing(false);
     draggingDividerIndexRef.current = null;
+    draggingHMoldingIndexRef.current = null;
     setIsDraggingDivider(false);
   };
 
@@ -458,7 +531,19 @@ const BambooStudio = () => {
 
     const { x, y } = getCanvasCoords(e);
 
-    // Dragging a divider
+    // Dragging a horizontal molding
+    if (!isErasing && draggingHMoldingIndexRef.current !== null) {
+      const idx = draggingHMoldingIndexRef.current;
+      const newRatio = canvasYToWallRatio(x, y);
+      setHMoldingPositions(prev => {
+        const updated = [...prev];
+        updated[idx] = newRatio;
+        return [...updated].sort((a, b) => a - b);
+      });
+      return;
+    }
+
+    // Dragging a vertical divider
     if (!isErasing && draggingDividerIndexRef.current !== null) {
       const idx = draggingDividerIndexRef.current;
       const newRatio = canvasXToWallRatio(x, y);
@@ -482,10 +567,15 @@ const BambooStudio = () => {
       drawFullScene();
     }
 
-    // Update cursor based on proximity to divider
+    // Update cursor based on proximity to handles
     if (step === 'edit' && !isErasing && mainCanvasRef.current) {
-      const divIdx = findNearDivider(x, y);
-      mainCanvasRef.current.style.cursor = divIdx !== -1 ? 'ew-resize' : 'pointer';
+      if (findNearHMolding(x, y) !== -1) {
+        mainCanvasRef.current.style.cursor = 'ns-resize';
+      } else if (findNearDivider(x, y) !== -1) {
+        mainCanvasRef.current.style.cursor = 'ew-resize';
+      } else {
+        mainCanvasRef.current.style.cursor = 'pointer';
+      }
     }
   };
 
@@ -493,8 +583,8 @@ const BambooStudio = () => {
     if (isErasing || isDraggingDivider) return;
     const { x, y } = getCanvasCoords(e);
 
-    // Don't trigger sector selection if click was near a divider
-    if (step === 'edit' && findNearDivider(x, y) !== -1) return;
+    // Don't trigger sector selection if click was near a divider or h-molding handle
+    if (step === 'edit' && (findNearDivider(x, y) !== -1 || findNearHMolding(x, y) !== -1)) return;
 
     if (step === 'mark' && points.length < 4) {
       setPoints([...points, { x, y }]);
@@ -753,13 +843,23 @@ const BambooStudio = () => {
                       <div>
                         <div className="flex justify-between text-[10px] font-bold text-gray-400 uppercase mb-2">
                           <span>Количество</span>
-                          <span>{hMoldingCount}</span>
+                          <span>{hMoldingPositions.length}</span>
                         </div>
                         <input
                           type="range" min="1" max="5" value={hMoldingCount}
-                          onChange={(e) => setHMoldingCount(parseInt(e.target.value))}
+                          onChange={(e) => {
+                            const n = parseInt(e.target.value);
+                            setHMoldingCount(n);
+                            setHMoldingPositions(Array.from({ length: n }, (_, i) => (i + 1) / (n + 1)));
+                          }}
                           className="w-full h-1 bg-gray-100 rounded-lg appearance-none accent-black"
                         />
+                        <button
+                          onClick={() => setHMoldingPositions(Array.from({ length: hMoldingCount }, (_, i) => (i + 1) / (hMoldingCount + 1)))}
+                          className="w-full mt-2 py-1.5 text-[9px] font-bold text-gray-400 hover:text-black flex items-center justify-center gap-1 transition-colors"
+                        >
+                          <Undo2 size={10} /> Выровнять по высоте
+                        </button>
                       </div>
                       <div>
                         <div className="flex justify-between text-[10px] font-bold text-gray-400 uppercase mb-2">
