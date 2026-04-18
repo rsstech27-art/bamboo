@@ -19,7 +19,7 @@ Russian-language web app for visualising bamboo wall panels on interior photos.
 
 ### Textures (`public/textures/`)
 640 images extracted from the real ALL WALL PDF catalogue (`pdfimages -all`).
-55 named panels in 11 collapsible series (accordion UI in sidebar):
+69 named panels in 12 collapsible series (accordion UI in sidebar):
 
 | Series ID       | Name                   | Panels |
 |-----------------|------------------------|--------|
@@ -34,12 +34,16 @@ Russian-language web app for visualising bamboo wall panels on interior photos.
 | linen-cement    | Льняное / Цемент       | 6      |
 | rainbow         | Радуга / Хамелеон      | 3      |
 | mirror-gloss    | Зеркальная глянцевая   | 3      |
+| soft-touch      | Soft-touch / Кожа      | 14     |
 
 ### Architecture (`src/App.tsx`, ~1200 lines)
-- `PANEL_SERIES` — array of 11 series, each with `{ id, name, panels[] }`
-- `BAMBOO_PANELS` — flat array derived from `PANEL_SERIES.flatMap(s => s.panels)` (55 panels)
+- `PANEL_SERIES` — array of 12 series, each with `{ id, name, panels[] }`
+- `BAMBOO_PANELS` — flat array derived from `PANEL_SERIES.flatMap(s => s.panels)` (69 panels)
 - `openSeries` state — `Set<string>` of expanded series IDs (accordion)
 - `SeriesAccordion` component — collapsible series headers + 2-column grid of `PanelThumb`
+- `historyRef` — `HistorySnapshot[]` stack (max 50 entries) for general undo
+- `pushHistory()` — saves snapshot of `{sectorMaterials, dividerPositions, panelCount}` before changes
+- `undo()` — pops history stack and restores state; bound to Ctrl+Z and "Отменить" navbar button
 - `textureCacheRef` — `Record<string, HTMLImageElement>` for loaded texture images
 - Texture preload `useEffect` runs after `drawFullScene` to avoid TDZ errors
 - `drawFullScene` uses `canvas.clip()` + `ctx.createPattern()` + `DOMMatrix` scale transform

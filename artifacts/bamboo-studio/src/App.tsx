@@ -114,6 +114,25 @@ const PANEL_SERIES = [
       { id: '8023-15', article: '8023-15', name: 'Молочный чай',         color: '#c8b890', texture: `${BASE}textures/tex-219.jpg` },
     ],
   },
+  {
+    id: 'soft-touch', name: 'Soft-touch / Кожа',
+    panels: [
+      { id: 'K3001',    article: 'K3001',    name: 'Зернистая кожа',      color: '#e8e0d8', texture: `${BASE}textures/tex-255.jpg` },
+      { id: 'K3002',    article: 'K3002',    name: 'Кожа личи',           color: '#8a7868', texture: `${BASE}textures/tex-257.jpg` },
+      { id: 'K3003',    article: 'K3003',    name: 'Плетёная кожа',       color: '#9a8878', texture: `${BASE}textures/tex-256.jpg` },
+      { id: 'K3004',    article: 'K3004',    name: 'Вафельная кожа',      color: '#888888', texture: `${BASE}textures/tex-258.jpg` },
+      { id: '1011-8',   article: '1011-8',   name: 'Тёмно-сер. облачный', color: '#5a5452', texture: `${BASE}textures/tex-263.jpg` },
+      { id: '1013-8',   article: '1013-8',   name: 'Бобовый песок',       color: '#b0a898', texture: `${BASE}textures/tex-265.jpg` },
+      { id: '1014-8',   article: '1014-8',   name: 'Бавар. коричневый',   color: '#c09080', texture: `${BASE}textures/tex-267.jpg` },
+      { id: '1015-8',   article: '1015-8',   name: 'Ванильный жёлтый',    color: '#d8c8a8', texture: `${BASE}textures/tex-264.jpg` },
+      { id: '1017-8',   article: '1017-8',   name: 'Сев. ветер серый',    color: '#d0ccc8', texture: `${BASE}textures/tex-266.jpg` },
+      { id: '1083-5',   article: '1083-5',   name: 'Клеточка чёрная',     color: '#202020', texture: `${BASE}textures/tex-270.jpg` },
+      { id: '1002A-5',  article: '1002A-5',  name: 'Белая гладь',         color: '#f0eeec', texture: '' },
+      { id: '1085-5',   article: '1085-5',   name: 'Нежная гладь',        color: '#d8c8b8', texture: '' },
+      { id: '1082-5',   article: '1082-5',   name: 'Тёмная гладь',        color: '#303030', texture: '' },
+      { id: '1080-5',   article: '1080-5',   name: 'Светло-сер. гладь',   color: '#909898', texture: '' },
+    ],
+  },
 ];
 
 type Panel = { id: string; article: string; name: string; color: string; texture: string };
@@ -229,6 +248,30 @@ const BambooStudio = () => {
   const maskUndoStackRef = useRef<number[]>([]); // stores stroke-array length before each erase drag
   const textureCacheRef = useRef<Record<string, HTMLImageElement>>({}); // preloaded panel textures
 
+  type HistorySnapshot = {
+    sectorMaterials: Record<number, Panel>;
+    dividerPositions: number[];
+    panelCount: number;
+  };
+  const historyRef = useRef<HistorySnapshot[]>([]);
+
+  const pushHistory = useCallback(() => {
+    historyRef.current.push({
+      sectorMaterials: { ...sectorMaterialsRef.current },
+      dividerPositions: [...dividerPositionsRef.current],
+      panelCount: panelCountRef.current,
+    });
+    if (historyRef.current.length > 50) historyRef.current.shift();
+  }, []);
+
+  const undo = useCallback(() => {
+    if (historyRef.current.length === 0) return;
+    const prev = historyRef.current.pop()!;
+    setSectorMaterials(prev.sectorMaterials);
+    setDividerPositions(prev.dividerPositions);
+    setPanelCount(prev.panelCount);
+  }, []);
+
   useEffect(() => { imageRef.current = image; }, [image]);
   useEffect(() => { stepRef.current = step; }, [step]);
   useEffect(() => { pointsRef.current = points; }, [points]);
@@ -243,6 +286,18 @@ const BambooStudio = () => {
   useEffect(() => { hMoldingCountRef.current = hMoldingCount; }, [hMoldingCount]);
   useEffect(() => { hMoldingWidthRef.current = hMoldingWidth; }, [hMoldingWidth]);
   useEffect(() => { hMoldingPositionsRef.current = hMoldingPositions; }, [hMoldingPositions]);
+
+  // Ctrl+Z global undo
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [undo]);
 
   // Returns the start/end ratio for each sector based on divider positions
   const getSectorBounds = (dividers: number[], count: number) => {
@@ -597,7 +652,7 @@ const BambooStudio = () => {
   // Preload all panel texture images into cache; re-draw when each loads
   useEffect(() => {
     BAMBOO_PANELS.forEach(panel => {
-      if (textureCacheRef.current[panel.id]) return;
+      if (!panel.texture || textureCacheRef.current[panel.id]) return;
       const img = new Image();
       img.crossOrigin = 'anonymous';
       img.onload = () => {
@@ -730,6 +785,7 @@ const BambooStudio = () => {
     }
     const divIdx = findNearDivider(x, y);
     if (divIdx !== -1) {
+      pushHistory();
       draggingDividerIndexRef.current = divIdx;
       setIsDraggingDivider(true);
     }
@@ -847,6 +903,7 @@ const BambooStudio = () => {
   };
 
   const handleChangePanelCount = (count: number) => {
+    pushHistory();
     setPanelCount(count);
     setDividerPositions(makeEqualDividers(count));
     setActiveSector(null);
@@ -913,8 +970,17 @@ const BambooStudio = () => {
           <span className="font-bold text-sm tracking-tight italic">BambooStudio Pro</span>
         </div>
         <div className="flex items-center gap-3">
+          {step === 'edit' && (
+            <button
+              onClick={undo}
+              className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
+              title="Ctrl+Z"
+            >
+              <Undo2 size={13} /> Отменить
+            </button>
+          )}
           <button
-            onClick={() => { maskStrokesRef.current = []; setStep('upload'); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
+            onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setStep('upload'); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
             className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
           >
             <RotateCcw size={13} /> Сброс
@@ -1093,6 +1159,7 @@ const BambooStudio = () => {
                 onToggle={toggleSeries}
                 selectedId={activeSector !== null ? sectorMaterials[activeSector]?.id : undefined}
                 onSelect={(panel) => {
+                  pushHistory();
                   if (activeSector !== null) {
                     setSectorMaterials({ ...sectorMaterials, [activeSector]: panel });
                   } else {
