@@ -54,6 +54,8 @@ const BambooStudio = () => {
   const forExportRef = useRef(false);
   const moldingStyleRef = useRef<'none' | 'gold' | 'black' | 'metallic'>('none');
   const moldingWidthRef = useRef(6);
+  // Mask stored as strokes — never gets reset by canvas operations
+  const maskStrokesRef = useRef<Array<{ x: number; y: number; r: number }>>([]);
 
   useEffect(() => { imageRef.current = image; }, [image]);
   useEffect(() => { stepRef.current = step; }, [step]);
@@ -197,10 +199,20 @@ const BambooStudio = () => {
         });
       }
 
-      // Apply eraser mask
-      if (maskCanvas && maskCanvas.width > 0 && maskCanvas.height > 0) {
+      // Apply eraser mask — replay strokes from memory (never lost on canvas reset)
+      if (maskStrokesRef.current.length > 0) {
+        const tempMask = document.createElement('canvas');
+        tempMask.width = width;
+        tempMask.height = height;
+        const mCtx = tempMask.getContext('2d')!;
+        mCtx.fillStyle = 'black';
+        maskStrokesRef.current.forEach(({ x, y, r }) => {
+          mCtx.beginPath();
+          mCtx.arc(x, y, r, 0, Math.PI * 2);
+          mCtx.fill();
+        });
         tCtx.globalCompositeOperation = 'destination-out';
-        tCtx.drawImage(maskCanvas, 0, 0);
+        tCtx.drawImage(tempMask, 0, 0);
         tCtx.globalCompositeOperation = 'source-over';
       }
 
@@ -380,18 +392,13 @@ const BambooStudio = () => {
       return;
     }
 
-    // Eraser drawing
-    if (isErasing && isDrawing && maskCanvasRef.current) {
+    // Eraser drawing — store strokes in memory so they survive any canvas reset
+    if (isErasing && isDrawing) {
       const canvas = mainCanvasRef.current;
       if (!canvas) return;
       const rect = canvas.getBoundingClientRect();
       const scaleX = canvas.width / rect.width;
-      const mCtx = maskCanvasRef.current.getContext('2d');
-      if (!mCtx) return;
-      mCtx.fillStyle = 'black';
-      mCtx.beginPath();
-      mCtx.arc(x, y, (brushSize / 2) * scaleX, 0, Math.PI * 2);
-      mCtx.fill();
+      maskStrokesRef.current.push({ x, y, r: (brushSize / 2) * scaleX });
       drawFullScene();
     }
 
@@ -425,10 +432,8 @@ const BambooStudio = () => {
   };
 
   const clearMask = () => {
-    if (maskCanvasRef.current) {
-      const mCtx = maskCanvasRef.current.getContext('2d');
-      if (!mCtx) return;
-      mCtx.clearRect(0, 0, maskCanvasRef.current.width, maskCanvasRef.current.height);
+    {
+      maskStrokesRef.current = [];
       drawFullScene();
     }
   };
@@ -465,6 +470,7 @@ const BambooStudio = () => {
       reader.onload = (f) => {
         const img = new Image();
         img.onload = () => {
+          maskStrokesRef.current = [];
           setImage(img);
           setStep('mark');
           setPoints([]);
@@ -490,7 +496,7 @@ const BambooStudio = () => {
           <span className="font-bold text-lg tracking-tight italic">BambooStudio Pro</span>
         </div>
         <button
-          onClick={() => { setStep('upload'); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
+          onClick={() => { maskStrokesRef.current = []; setStep('upload'); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
           className="text-sm font-medium text-gray-400 hover:text-black flex items-center gap-2 transition-colors"
         >
           <RotateCcw size={16} /> Сбросить проект
