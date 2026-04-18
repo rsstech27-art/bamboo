@@ -199,29 +199,7 @@ const BambooStudio = () => {
         });
       }
 
-      // Apply eraser mask — replay strokes from memory (never lost on canvas reset)
-      if (maskStrokesRef.current.length > 0) {
-        const tempMask = document.createElement('canvas');
-        tempMask.width = width;
-        tempMask.height = height;
-        const mCtx = tempMask.getContext('2d')!;
-        mCtx.fillStyle = 'black';
-        maskStrokesRef.current.forEach(({ x, y, r }) => {
-          mCtx.beginPath();
-          mCtx.arc(x, y, r, 0, Math.PI * 2);
-          mCtx.fill();
-        });
-        tCtx.globalCompositeOperation = 'destination-out';
-        tCtx.drawImage(tempMask, 0, 0);
-        tCtx.globalCompositeOperation = 'source-over';
-      }
-
-      ctx.save();
-      ctx.globalAlpha = 0.85;
-      ctx.drawImage(tempCanvas, 0, 0);
-      ctx.restore();
-
-      // Draw moldings on top of everything (structural profiles, not affected by eraser)
+      // Draw moldings on tempCanvas BEFORE mask so eraser can erase through them
       const curMoldingStyle = moldingStyleRef.current;
       const curMoldingWidth = moldingWidthRef.current;
       if (curMoldingStyle !== 'none' && curDividers.length > 0) {
@@ -231,7 +209,6 @@ const BambooStudio = () => {
           const botX = pts[3].x + (pts[2].x - pts[3].x) * ratio;
           const botY = pts[3].y + (pts[2].y - pts[3].y) * ratio;
 
-          // Perpendicular direction for gradient
           const dx = botX - topX;
           const dy = botY - topY;
           const len = Math.sqrt(dx * dx + dy * dy);
@@ -241,7 +218,7 @@ const BambooStudio = () => {
           const midX = (topX + botX) / 2;
           const midY = (topY + botY) / 2;
 
-          const grad = ctx.createLinearGradient(
+          const grad = tCtx.createLinearGradient(
             midX + px * hw, midY + py * hw,
             midX - px * hw, midY - py * hw
           );
@@ -270,17 +247,46 @@ const BambooStudio = () => {
             grad.addColorStop(1,    '#4a4a4a');
           }
 
-          ctx.save();
-          ctx.strokeStyle = grad;
-          ctx.lineWidth = curMoldingWidth;
-          ctx.lineCap = 'butt';
-          ctx.beginPath();
-          ctx.moveTo(topX, topY);
-          ctx.lineTo(botX, botY);
-          ctx.stroke();
-          ctx.restore();
+          tCtx.save();
+          tCtx.strokeStyle = grad;
+          tCtx.lineWidth = curMoldingWidth;
+          tCtx.lineCap = 'butt';
+          tCtx.beginPath();
+          tCtx.moveTo(topX, topY);
+          tCtx.lineTo(botX, botY);
+          tCtx.stroke();
+          tCtx.restore();
         });
       }
+
+      // Apply eraser mask — replay strokes from memory (never lost on canvas reset)
+      if (maskStrokesRef.current.length > 0) {
+        const tempMask = document.createElement('canvas');
+        tempMask.width = width;
+        tempMask.height = height;
+        const mCtx = tempMask.getContext('2d')!;
+        mCtx.fillStyle = 'black';
+        maskStrokesRef.current.forEach(({ x, y, r }) => {
+          mCtx.beginPath();
+          mCtx.arc(x, y, r, 0, Math.PI * 2);
+          mCtx.fill();
+        });
+        tCtx.globalCompositeOperation = 'destination-out';
+        tCtx.drawImage(tempMask, 0, 0);
+        tCtx.globalCompositeOperation = 'source-over';
+      }
+
+      ctx.save();
+      ctx.globalAlpha = 0.85;
+      ctx.drawImage(tempCanvas, 0, 0);
+      ctx.restore();
+
+      // Overlay original photo with 'multiply' blend to preserve room shadows & lighting
+      ctx.save();
+      ctx.globalAlpha = 0.38;
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.drawImage(img, 0, 0, width, height);
+      ctx.restore();
     }
   }, []);
 
