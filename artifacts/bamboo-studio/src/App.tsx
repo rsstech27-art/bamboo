@@ -222,11 +222,11 @@ const BambooStudio = () => {
   const [isDrawing, setIsDrawing] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [isDraggingDivider, setIsDraggingDivider] = useState(false);
-  const [moldingStyle, setMoldingStyle] = useState<'none' | 'gold' | 'black' | 'metallic'>('none');
-  const [moldingWidth, setMoldingWidth] = useState(2);
-  const [hMoldingStyle, setHMoldingStyle] = useState<'none' | 'gold' | 'black' | 'metallic'>('none');
+  const [moldingStyle, setMoldingStyle] = useState<'none' | 'gold' | 'black' | 'metallic' | 'brass'>('none');
+  const [moldingWidth, setMoldingWidth] = useState(1);
+  const [hMoldingStyle, setHMoldingStyle] = useState<'none' | 'gold' | 'black' | 'metallic' | 'brass'>('none');
   const [hMoldingCount, setHMoldingCount] = useState(1);
-  const [hMoldingWidth, setHMoldingWidth] = useState(2);
+  const [hMoldingWidth, setHMoldingWidth] = useState(1);
   const [hMoldingPositions, setHMoldingPositions] = useState<number[]>([0.5]);
   const [openSeries, setOpenSeries] = useState<Set<string>>(() => new Set(['metall-25']));
   const [lightMode, setLightMode] = useState<'off' | 'morning' | 'evening'>('off');
@@ -253,11 +253,11 @@ const BambooStudio = () => {
   const isErasingRef = useRef(false);
   const draggingDividerIndexRef = useRef<number | null>(null);
   const forExportRef = useRef(false);
-  const moldingStyleRef = useRef<'none' | 'gold' | 'black' | 'metallic'>('none');
-  const moldingWidthRef = useRef(6);
-  const hMoldingStyleRef = useRef<'none' | 'gold' | 'black' | 'metallic'>('none');
+  const moldingStyleRef = useRef<'none' | 'gold' | 'black' | 'metallic' | 'brass'>('none');
+  const moldingWidthRef = useRef(1);
+  const hMoldingStyleRef = useRef<'none' | 'gold' | 'black' | 'metallic' | 'brass'>('none');
   const hMoldingCountRef = useRef(1);
-  const hMoldingWidthRef = useRef(6);
+  const hMoldingWidthRef = useRef(1);
   const hMoldingPositionsRef = useRef<number[]>([0.5]);
   const draggingHMoldingIndexRef = useRef<number | null>(null);
   // Mask stored as strokes — never gets reset by canvas operations
@@ -549,6 +549,14 @@ const BambooStudio = () => {
             grad.addColorStop(0.55, '#e8e8e8');
             grad.addColorStop(0.8,  '#9a9a9a');
             grad.addColorStop(1,    '#4a4a4a');
+          } else if (curMoldingStyle === 'brass') {
+            grad.addColorStop(0,    '#2c1f00');
+            grad.addColorStop(0.15, '#7a5918');
+            grad.addColorStop(0.35, '#c49a27');
+            grad.addColorStop(0.5,  '#e8c95a');
+            grad.addColorStop(0.65, '#c49a27');
+            grad.addColorStop(0.85, '#7a5918');
+            grad.addColorStop(1,    '#2c1f00');
           }
 
           tCtx.save();
@@ -613,6 +621,14 @@ const BambooStudio = () => {
             hGrad.addColorStop(0.55, '#e8e8e8');
             hGrad.addColorStop(0.8,  '#9a9a9a');
             hGrad.addColorStop(1,    '#4a4a4a');
+          } else if (curHMoldingStyle === 'brass') {
+            hGrad.addColorStop(0,    '#2c1f00');
+            hGrad.addColorStop(0.15, '#7a5918');
+            hGrad.addColorStop(0.35, '#c49a27');
+            hGrad.addColorStop(0.5,  '#e8c95a');
+            hGrad.addColorStop(0.65, '#c49a27');
+            hGrad.addColorStop(0.85, '#7a5918');
+            hGrad.addColorStop(1,    '#2c1f00');
           }
 
           tCtx.save();
@@ -984,15 +1000,16 @@ const BambooStudio = () => {
   // Compact molding style selector used in both v/h molding panels
   const MoldingStyleRow = ({
     value, onChange, vertical,
-  }: { value: string; onChange: (v: 'none'|'gold'|'black'|'metallic') => void; vertical: boolean }) => {
+  }: { value: string; onChange: (v: 'none'|'gold'|'black'|'metallic'|'brass') => void; vertical: boolean }) => {
     const opts = [
       { id: 'none',     label: 'Нет',  preview: 'bg-gray-100' },
       { id: 'gold',     label: 'Злт',  preview: vertical ? 'bg-gradient-to-r from-yellow-900 via-yellow-300 to-yellow-900' : 'bg-gradient-to-b from-yellow-900 via-yellow-300 to-yellow-900' },
       { id: 'black',    label: 'Чрн',  preview: vertical ? 'bg-gradient-to-r from-black via-gray-600 to-black'            : 'bg-gradient-to-b from-black via-gray-600 to-black' },
       { id: 'metallic', label: 'Мтл',  preview: vertical ? 'bg-gradient-to-r from-gray-500 via-white to-gray-500'         : 'bg-gradient-to-b from-gray-500 via-white to-gray-500' },
+      { id: 'brass',    label: 'Лтн',  preview: vertical ? 'bg-gradient-to-r from-yellow-950 via-yellow-500 to-yellow-950' : 'bg-gradient-to-b from-yellow-950 via-yellow-500 to-yellow-950' },
     ] as const;
     return (
-      <div className="grid grid-cols-4 gap-1">
+      <div className="grid grid-cols-5 gap-1">
         {opts.map(o => (
           <button key={o.id} onClick={() => onChange(o.id)}
             className={`flex flex-col items-center gap-1 transition-all ${value === o.id ? 'opacity-100' : 'opacity-40'}`}>
@@ -1252,7 +1269,7 @@ const BambooStudio = () => {
                   <div className="w-0.5 h-3.5 bg-yellow-500 rounded-full"/>
                   <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Молдинг верт.</span>
                 </div>
-                <MoldingStyleRow value={moldingStyle} onChange={setMoldingStyle} vertical={true}/>
+                <MoldingStyleRow value={moldingStyle} onChange={(v) => { setMoldingStyle(v); if (v !== 'none') setMoldingWidth(1); }} vertical={true}/>
                 {moldingStyle !== 'none' && (
                   <div className="mt-2.5">
                     <div className="flex justify-between mb-1">
@@ -1273,7 +1290,7 @@ const BambooStudio = () => {
                 <div className="w-3.5 h-0.5 bg-yellow-500 rounded-full"/>
                 <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Молдинг гориз.</span>
               </div>
-              <MoldingStyleRow value={hMoldingStyle} onChange={setHMoldingStyle} vertical={false}/>
+              <MoldingStyleRow value={hMoldingStyle} onChange={(v) => { setHMoldingStyle(v); if (v !== 'none') setHMoldingWidth(1); }} vertical={false}/>
               {hMoldingStyle !== 'none' && (
                 <div className="mt-2.5 space-y-2.5">
                   <div>
