@@ -774,11 +774,18 @@ const BambooStudio = () => {
   // Initialize canvas only when image changes
   useEffect(() => {
     if (!image || !containerRef.current || !mainCanvasRef.current || !maskCanvasRef.current) return;
-    const { width, height } = containerRef.current.getBoundingClientRect();
-    mainCanvasRef.current.width = width;
-    mainCanvasRef.current.height = height;
-    maskCanvasRef.current.width = width;
-    maskCanvasRef.current.height = height;
+    const { width: cW, height: cH } = containerRef.current.getBoundingClientRect();
+    const imgW = image.naturalWidth || image.width;
+    const imgH = image.naturalHeight || image.height;
+    const scale = Math.min(cW / imgW, cH / imgH);
+    const drawW = Math.round(imgW * scale);
+    const drawH = Math.round(imgH * scale);
+    mainCanvasRef.current.width = drawW;
+    mainCanvasRef.current.height = drawH;
+    mainCanvasRef.current.style.width = `${drawW}px`;
+    mainCanvasRef.current.style.height = `${drawH}px`;
+    maskCanvasRef.current.width = drawW;
+    maskCanvasRef.current.height = drawH;
     drawFullScene();
   }, [image, drawFullScene]);
 
@@ -801,9 +808,9 @@ const BambooStudio = () => {
   };
 
   const getScreenCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = mainCanvasRef.current;
-    if (!canvas) return { x: 0, y: 0 };
-    const rect = canvas.getBoundingClientRect();
+    const container = containerRef.current;
+    if (!container) return { x: 0, y: 0 };
+    const rect = container.getBoundingClientRect();
     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
   };
 
@@ -1041,7 +1048,7 @@ const BambooStudio = () => {
               <input type="file" className="hidden" onChange={handleImageUpload} accept="image/*" />
             </label>
           ) : (
-            <div ref={containerRef} className="relative w-full h-full bg-white rounded-3xl overflow-hidden shadow-sm border border-gray-200">
+            <div ref={containerRef} className="relative w-full h-full bg-gray-100 rounded-3xl overflow-hidden shadow-sm border border-gray-200 flex items-center justify-center">
               <canvas
                 ref={mainCanvasRef}
                 onClick={handleCanvasClick}
@@ -1049,8 +1056,8 @@ const BambooStudio = () => {
                 onMouseDown={handleMouseDown}
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
-                className="absolute inset-0 w-full h-full touch-none"
-                style={{ cursor: isErasing ? 'none' : step === 'mark' ? 'crosshair' : 'pointer' }}
+                className="touch-none block"
+                style={{ cursor: isErasing ? 'none' : step === 'mark' ? 'crosshair' : 'pointer', maxWidth: '100%', maxHeight: '100%' }}
               />
               <canvas ref={maskCanvasRef} className="hidden" />
 
