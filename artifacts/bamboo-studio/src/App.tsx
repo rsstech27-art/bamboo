@@ -144,7 +144,10 @@ type Point = { x: number; y: number };
 const PanelThumb = ({ panel, selected, onClick }: { panel: Panel; selected: boolean; onClick: () => void }) => (
   <button onClick={onClick}
     className={`rounded-xl overflow-hidden border-2 transition-all active:scale-95 ${selected ? 'border-black shadow-md scale-[1.03]' : 'border-transparent hover:border-gray-200'}`}>
-    <img src={panel.texture} className="w-full h-12 object-cover" alt={panel.name} loading="lazy"/>
+    {panel.texture
+      ? <img src={panel.texture} className="w-full h-12 object-cover" alt={panel.name} loading="lazy"/>
+      : <div className="w-full h-12" style={{ backgroundColor: panel.color }}/>
+    }
     <div className="bg-white px-1 pb-1 pt-0.5">
       <div className="text-[7px] font-bold text-center text-gray-600 leading-tight">{panel.name}</div>
       <div className="text-[6px] text-center text-gray-300 font-mono">{panel.article}</div>
