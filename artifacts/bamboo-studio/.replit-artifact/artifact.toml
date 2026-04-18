@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "BambooStudio Pro"
+version = "1.0.0"
+id = "artifacts/bamboo-studio"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18141
+
+[services.development]
+run = "pnpm --filter @workspace/bamboo-studio run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/bamboo-studio", "run", "build" ]
+publicDir = "artifacts/bamboo-studio/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18141"
+BASE_PATH = "/"
