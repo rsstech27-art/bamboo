@@ -826,6 +826,31 @@ const BambooStudio = () => {
                 className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
             </div>
 
+            {/* Eraser */}
+            <div className="bg-white rounded-2xl p-3.5 shadow-sm">
+              <div className="flex items-center justify-between mb-2.5">
+                <div className="flex items-center gap-1.5">
+                  <Eraser size={12} className="text-gray-400"/>
+                  <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Ластик</span>
+                </div>
+                <button onClick={() => { setIsErasing(!isErasing); setActiveSector(null); }}
+                  className={`px-3 py-1 rounded-lg text-[9px] font-bold transition-all ${isErasing ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}>
+                  {isErasing ? 'Вкл' : 'Выкл'}
+                </button>
+              </div>
+              <div className="flex justify-between mb-1">
+                <span className="text-[9px] text-gray-400 font-bold uppercase">Размер</span>
+                <span className="text-[9px] font-bold">{brushSize}px</span>
+              </div>
+              <input type="range" min="10" max="150" value={brushSize}
+                onChange={(e) => setBrushSize(parseInt(e.target.value))}
+                className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
+              <button onClick={clearMask}
+                className="w-full mt-2 py-1 text-[8px] font-bold text-gray-300 hover:text-red-500 flex items-center justify-center gap-1 transition-colors">
+                <Undo2 size={9}/> Очистить маску
+              </button>
+            </div>
+
             {/* Material */}
             <div className="bg-white rounded-2xl p-3.5 shadow-sm">
               <div className="flex items-center gap-1.5 mb-2.5">
@@ -914,31 +939,6 @@ const BambooStudio = () => {
                   </div>
                 </div>
               )}
-            </div>
-
-            {/* Eraser */}
-            <div className="bg-white rounded-2xl p-3.5 shadow-sm">
-              <div className="flex items-center justify-between mb-2.5">
-                <div className="flex items-center gap-1.5">
-                  <Eraser size={12} className="text-gray-400"/>
-                  <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Ластик</span>
-                </div>
-                <button onClick={() => { setIsErasing(!isErasing); setActiveSector(null); }}
-                  className={`px-3 py-1 rounded-lg text-[9px] font-bold transition-all ${isErasing ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}>
-                  {isErasing ? 'Вкл' : 'Выкл'}
-                </button>
-              </div>
-              <div className="flex justify-between mb-1">
-                <span className="text-[9px] text-gray-400 font-bold uppercase">Размер</span>
-                <span className="text-[9px] font-bold">{brushSize}px</span>
-              </div>
-              <input type="range" min="10" max="150" value={brushSize}
-                onChange={(e) => setBrushSize(parseInt(e.target.value))}
-                className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
-              <button onClick={clearMask}
-                className="w-full mt-2 py-1 text-[8px] font-bold text-gray-300 hover:text-red-500 flex items-center justify-center gap-1 transition-colors">
-                <Undo2 size={9}/> Очистить маску
-              </button>
             </div>
 
           </>)}
