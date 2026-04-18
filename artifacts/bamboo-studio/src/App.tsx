@@ -833,31 +833,35 @@ const BambooStudio = () => {
             </div>
 
             {/* Eraser */}
-            <div className="bg-white rounded-2xl p-3.5 shadow-sm">
-              <div className="flex items-center justify-between mb-2.5">
-                <div className="flex items-center gap-1.5">
-                  <Eraser size={12} className="text-gray-400"/>
-                  <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Ластик</span>
-                </div>
-                <button onClick={() => { setIsErasing(!isErasing); setActiveSector(null); }}
-                  className={`px-3 py-1 rounded-lg text-[9px] font-bold transition-all ${isErasing ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}>
-                  {isErasing ? 'Вкл' : 'Выкл'}
-                </button>
+            <div className={`rounded-2xl p-3.5 shadow-sm transition-colors ${isErasing ? 'bg-red-50 ring-2 ring-red-400' : 'bg-white'}`}>
+              <div className="flex items-center gap-1.5 mb-2.5">
+                <Eraser size={12} className={isErasing ? 'text-red-400' : 'text-gray-400'}/>
+                <span className={`text-[9px] font-black uppercase tracking-widest ${isErasing ? 'text-red-400' : 'text-gray-400'}`}>Ластик</span>
               </div>
-              <div className="flex justify-between mb-1">
-                <span className="text-[9px] text-gray-400 font-bold uppercase">Размер</span>
+              <button
+                onClick={() => { setIsErasing(!isErasing); setActiveSector(null); }}
+                className={`w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all active:scale-95 ${
+                  isErasing
+                    ? 'bg-red-500 text-white shadow-md shadow-red-200'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                }`}>
+                <Eraser size={14}/>
+                {isErasing ? 'Ластик включён — рисуйте' : 'Включить ластик'}
+              </button>
+              <div className="flex justify-between mt-3 mb-1">
+                <span className="text-[9px] text-gray-400 font-bold uppercase">Размер кисти</span>
                 <span className="text-[9px] font-bold">{brushSize}px</span>
               </div>
               <input type="range" min="10" max="150" value={brushSize}
                 onChange={(e) => setBrushSize(parseInt(e.target.value))}
                 className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
-              <div className="flex gap-1.5 mt-2">
+              <div className="flex gap-1.5 mt-2.5">
                 <button onClick={undoEraserStroke}
-                  className="flex-1 py-1 text-[8px] font-bold text-gray-300 hover:text-black flex items-center justify-center gap-1 transition-colors border border-gray-100 rounded-lg">
+                  className="flex-1 py-1.5 text-[8px] font-bold text-gray-400 hover:text-black flex items-center justify-center gap-1 transition-colors border border-gray-100 rounded-lg hover:border-gray-300">
                   <Undo2 size={9}/> Отмена
                 </button>
                 <button onClick={clearMask}
-                  className="flex-1 py-1 text-[8px] font-bold text-gray-300 hover:text-red-500 flex items-center justify-center gap-1 transition-colors border border-gray-100 rounded-lg">
+                  className="flex-1 py-1.5 text-[8px] font-bold text-gray-400 hover:text-red-500 flex items-center justify-center gap-1 transition-colors border border-gray-100 rounded-lg hover:border-red-200">
                   <RotateCcw size={9}/> Сброс
                 </button>
               </div>
