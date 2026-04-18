@@ -2,34 +2,124 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Upload, Layout, Eraser, RotateCcw, Download, Check, Columns, Undo2 } from 'lucide-react';
 
 const BASE = import.meta.env.BASE_URL;
-const BAMBOO_PANELS = [
-  { id: '2210-25', article: '2210-25', name: 'Металл матов. серебро',    color: '#8fa0a8', texture: `${BASE}textures/tex-117.jpg` },
-  { id: '2211-25', article: '2211-25', name: 'Металл матов. серый',       color: '#7a8890', texture: `${BASE}textures/tex-118.jpg` },
-  { id: '2212-25', article: '2212-25', name: 'Металл матов. коричн.',     color: '#7a6548', texture: `${BASE}textures/tex-119.jpg` },
-  { id: '2215-25', article: '2215-25', name: 'Металл узорч. серый',       color: '#909898', texture: `${BASE}textures/tex-122.jpg` },
-  { id: '2218-25', article: '2218-25', name: 'Жидкий металл зола',        color: '#909090', texture: `${BASE}textures/tex-126.jpg` },
-  { id: '2219-25', article: '2219-25', name: 'Жидкий металл золото',      color: '#c0a060', texture: `${BASE}textures/tex-127.jpg` },
-  { id: '2220-25', article: '2220-25', name: 'Жидкий металл серебро',     color: '#b0bac5', texture: `${BASE}textures/tex-128.jpg` },
-  { id: '2221-25', article: '2221-25', name: 'Жидкий металл шампанск.',   color: '#c8b898', texture: `${BASE}textures/tex-129.jpg` },
-  { id: '2225-25', article: '2225-25', name: 'ПЭТ матовое шампанское',    color: '#c0a880', texture: `${BASE}textures/tex-133.jpg` },
-  { id: '2227-25', article: '2227-25', name: 'ПЭТ длинное матов. золото', color: '#b09050', texture: `${BASE}textures/tex-135.jpg` },
-  { id: '2228-25', article: '2228-25', name: 'ПЭТ длинный матов. красный',color: '#a83040', texture: `${BASE}textures/tex-136.jpg` },
-  { id: '2005-15', article: '2005-15', name: 'Гальвн. античн. бронза',    color: '#a87858', texture: `${BASE}textures/tex-140.jpg` },
-  { id: '2006-15', article: '2006-15', name: 'Гальваническая зола',       color: '#808880', texture: `${BASE}textures/tex-141.jpg` },
-  { id: '2008-15', article: '2008-15', name: 'Гальвн. вспышка золота',    color: '#c09060', texture: `${BASE}textures/tex-143.jpg` },
-  { id: '2121-10', article: '2121-10', name: 'Космическая зола',          color: '#606870', texture: `${BASE}textures/tex-147.jpg` },
-  { id: '2122-10', article: '2122-10', name: 'Жидкий металл Gucci',       color: '#707878', texture: `${BASE}textures/tex-148.jpg` },
-  { id: '2123-10', article: '2123-10', name: 'Античная бронза',           color: '#987060', texture: `${BASE}textures/tex-149.jpg` },
-  { id: '2132-10', article: '2132-10', name: 'Частицы сине-серые',        color: '#808898', texture: `${BASE}textures/tex-162.jpg` },
-  { id: '2134-10', article: '2134-10', name: 'Частицы золота',            color: '#b09060', texture: `${BASE}textures/tex-164.jpg` },
-  { id: '2135-10', article: '2135-10', name: 'Частицы красн.-коричн.',    color: '#906050', texture: `${BASE}textures/tex-165.jpg` },
-  { id: '8205-10', article: '8205-10', name: 'Металл. кофе из шебни',     color: '#906848', texture: `${BASE}textures/tex-175.jpg` },
-  { id: '8206-10', article: '8206-10', name: 'Металл. камень золото',     color: '#b08868', texture: `${BASE}textures/tex-177.jpg` },
-  { id: '2131-10', article: '2131-10', name: 'Жидкий металл золото',      color: '#c8a060', texture: `${BASE}textures/tex-158.jpg` },
-  { id: '8202-8',  article: '8202-8',  name: 'Розовая медь',              color: '#b89080', texture: `${BASE}textures/tex-185.jpg` },
+
+const PANEL_SERIES = [
+  {
+    id: 'metall-25', name: 'Металлическая серия',
+    panels: [
+      { id: '2210-25', article: '2210-25', name: 'Матов. серебро',       color: '#8fa0a8', texture: `${BASE}textures/tex-117.jpg` },
+      { id: '2211-25', article: '2211-25', name: 'Матов. серый',         color: '#7a8890', texture: `${BASE}textures/tex-118.jpg` },
+      { id: '2212-25', article: '2212-25', name: 'Матов. коричневый',    color: '#7a6548', texture: `${BASE}textures/tex-119.jpg` },
+      { id: '2215-25', article: '2215-25', name: 'Узорч. серый',         color: '#909898', texture: `${BASE}textures/tex-122.jpg` },
+    ],
+  },
+  {
+    id: 'liqmetall-25', name: 'Жидкий металл -25',
+    panels: [
+      { id: '2218-25', article: '2218-25', name: 'Зола',                 color: '#909090', texture: `${BASE}textures/tex-126.jpg` },
+      { id: '2219-25', article: '2219-25', name: 'Золото',               color: '#c0a060', texture: `${BASE}textures/tex-127.jpg` },
+      { id: '2220-25', article: '2220-25', name: 'Серебро',              color: '#b0bac5', texture: `${BASE}textures/tex-128.jpg` },
+      { id: '2221-25', article: '2221-25', name: 'Шампанское',           color: '#c8b898', texture: `${BASE}textures/tex-129.jpg` },
+    ],
+  },
+  {
+    id: 'pet-25', name: 'ПЭТ матовая',
+    panels: [
+      { id: '2225-25', article: '2225-25', name: 'Шампанское',           color: '#c0a880', texture: `${BASE}textures/tex-133.jpg` },
+      { id: '2226-25', article: '2226-25', name: 'Античн. бронза',       color: '#a07850', texture: `${BASE}textures/tex-134.jpg` },
+      { id: '2227-25', article: '2227-25', name: 'Золото (длинное)',      color: '#b09050', texture: `${BASE}textures/tex-135.jpg` },
+      { id: '2228-25', article: '2228-25', name: 'Красный (длинный)',     color: '#a83040', texture: `${BASE}textures/tex-136.jpg` },
+    ],
+  },
+  {
+    id: 'galv-15', name: 'Гальваническая',
+    panels: [
+      { id: '2005-15', article: '2005-15', name: 'Античн. бронза',       color: '#a87858', texture: `${BASE}textures/tex-140.jpg` },
+      { id: '2006-15', article: '2006-15', name: 'Зола',                 color: '#808880', texture: `${BASE}textures/tex-141.jpg` },
+      { id: '2007-15', article: '2007-15', name: 'Сотовое золото',       color: '#c8a830', texture: `${BASE}textures/tex-142.jpg` },
+      { id: '2008-15', article: '2008-15', name: 'Вспышка золота',       color: '#c09060', texture: `${BASE}textures/tex-143.jpg` },
+    ],
+  },
+  {
+    id: 'liqmetall-10', name: 'Жидкий металл -10',
+    panels: [
+      { id: '2121-10', article: '2121-10', name: 'Косм. зола',           color: '#606870', texture: `${BASE}textures/tex-147.jpg` },
+      { id: '2122-10', article: '2122-10', name: 'Gucci',                color: '#707878', texture: `${BASE}textures/tex-148.jpg` },
+      { id: '2123-10', article: '2123-10', name: 'Античн. бронза',       color: '#987060', texture: `${BASE}textures/tex-149.jpg` },
+      { id: '2124-10', article: '2124-10', name: 'Хамелеон',             color: '#d8c8b0', texture: `${BASE}textures/tex-150.jpg` },
+      { id: '2125-10', article: '2125-10', name: 'Millard',              color: '#c0b0a8', texture: `${BASE}textures/tex-154.jpg` },
+      { id: '2126-10', article: '2126-10', name: 'Таро-фиолетовый',      color: '#687060', texture: `${BASE}textures/tex-155.jpg` },
+      { id: '2129-10', article: '2129-10', name: 'Красная медь',         color: '#b89088', texture: `${BASE}textures/tex-156.jpg` },
+      { id: '2130-10', article: '2130-10', name: 'Латунь',               color: '#b89040', texture: `${BASE}textures/tex-157.jpg` },
+      { id: '2131-10', article: '2131-10', name: 'Золото',               color: '#c8a060', texture: `${BASE}textures/tex-158.jpg` },
+    ],
+  },
+  {
+    id: 'particles-10', name: 'Частицы',
+    panels: [
+      { id: '2132-10', article: '2132-10', name: 'Сине-серые',           color: '#808898', texture: `${BASE}textures/tex-162.jpg` },
+      { id: '2133-10', article: '2133-10', name: 'Конопляная зола',      color: '#909878', texture: `${BASE}textures/tex-163.jpg` },
+      { id: '2134-10', article: '2134-10', name: 'Золото',               color: '#b09060', texture: `${BASE}textures/tex-164.jpg` },
+      { id: '2135-10', article: '2135-10', name: 'Красн.-коричн.',       color: '#906050', texture: `${BASE}textures/tex-165.jpg` },
+    ],
+  },
+  {
+    id: 'stone-gravel', name: 'Щебень / Камень',
+    panels: [
+      { id: '8205-10', article: '8205-10', name: 'Кофе из щебня',        color: '#906848', texture: `${BASE}textures/tex-175.jpg` },
+      { id: '8206-10', article: '8206-10', name: 'Перл. камень',         color: '#d0c8b8', texture: `${BASE}textures/tex-176.jpg` },
+      { id: '8815-15', article: '8815-15', name: 'Камень золото',        color: '#c0a040', texture: `${BASE}textures/tex-177.jpg` },
+      { id: '8816-15', article: '8816-15', name: 'Красн. медн. пластина',color: '#6a3030', texture: `${BASE}textures/tex-178.jpg` },
+      { id: '6311-8',  article: '6311-8',  name: 'Серый щебень',         color: '#909090', texture: `${BASE}textures/tex-182.jpg` },
+      { id: '6315-8',  article: '6315-8',  name: 'Грунт. щебень',        color: '#706860', texture: `${BASE}textures/tex-183.jpg` },
+      { id: '8201-8',  article: '8201-8',  name: 'Позол. латунь',        color: '#908050', texture: `${BASE}textures/tex-184.jpg` },
+      { id: '8202-8',  article: '8202-8',  name: 'Розовая медь',         color: '#b89080', texture: `${BASE}textures/tex-185.jpg` },
+    ],
+  },
+  {
+    id: 'patina-copper', name: 'Патина / Медь',
+    panels: [
+      { id: '8203-8',  article: '8203-8',  name: 'Позол. ржавчина',      color: '#c09878', texture: `${BASE}textures/tex-189.jpg` },
+      { id: '8204-8',  article: '8204-8',  name: 'Зелёная медь',         color: '#709080', texture: `${BASE}textures/tex-190.jpg` },
+      { id: '8805-8',  article: '8805-8',  name: 'Медь оранжевая',       color: '#b06828', texture: `${BASE}textures/tex-191.jpg` },
+      { id: '8806-8',  article: '8806-8',  name: 'Медь зелёная ржавч.',  color: '#607060', texture: `${BASE}textures/tex-192.jpg` },
+      { id: '8807-10', article: '8807-10', name: 'Красн. ржав. камень',  color: '#685040', texture: `${BASE}textures/tex-196.jpg` },
+      { id: '8808-10', article: '8808-10', name: 'Серый ржав. камень',   color: '#504840', texture: `${BASE}textures/tex-197.jpg` },
+    ],
+  },
+  {
+    id: 'linen-cement', name: 'Льняное / Цемент',
+    panels: [
+      { id: '8207-5',  article: '8207-5',  name: 'Льняное серебро',      color: '#c0c0c0', texture: `${BASE}textures/tex-198.jpg` },
+      { id: '8208-5',  article: '8208-5',  name: 'Серо-коричн. золото',  color: '#b0a890', texture: `${BASE}textures/tex-199.jpg` },
+      { id: '8209-5',  article: '8209-5',  name: 'Красн. бел. серебр.',  color: '#c0b8b8', texture: `${BASE}textures/tex-203.jpg` },
+      { id: '8210-5',  article: '8210-5',  name: 'Синий серый серебр.',  color: '#a0b0c0', texture: `${BASE}textures/tex-204.jpg` },
+      { id: '8211-5',  article: '8211-5',  name: 'Пик серого серебра',   color: '#b0b8c0', texture: `${BASE}textures/tex-205.jpg` },
+      { id: '8212-5',  article: '8212-5',  name: 'Цементный ясень',      color: '#a0a098', texture: `${BASE}textures/tex-206.jpg` },
+    ],
+  },
+  {
+    id: 'rainbow', name: 'Радуга / Хамелеон',
+    panels: [
+      { id: '2216-10', article: '2216-10', name: 'Жемчужно-голубой',     color: '#8090c0', texture: `${BASE}textures/tex-210.jpg` },
+      { id: '2222-30', article: '2222-30', name: 'Столб радужн. света',  color: '#c0c8d0', texture: `${BASE}textures/tex-211.jpg` },
+      { id: '2223-30', article: '2223-30', name: 'Туманный ирис',        color: '#d0c0d0', texture: `${BASE}textures/tex-213.jpg` },
+    ],
+  },
+  {
+    id: 'mirror-gloss', name: 'Зеркальная глянцевая',
+    panels: [
+      { id: '8011-15', article: '8011-15', name: 'Зеркал. белая',        color: '#e8e8e8', texture: `${BASE}textures/tex-217.jpg` },
+      { id: '8012-15', article: '8012-15', name: 'Зеркал. чёрная',       color: '#282828', texture: `${BASE}textures/tex-218.jpg` },
+      { id: '8023-15', article: '8023-15', name: 'Молочный чай',         color: '#c8b890', texture: `${BASE}textures/tex-219.jpg` },
+    ],
+  },
 ];
 
-type Panel = typeof BAMBOO_PANELS[number];
+type Panel = { id: string; article: string; name: string; color: string; texture: string };
+type PanelSeries = { id: string; name: string; panels: Panel[] };
+
+const BAMBOO_PANELS: Panel[] = (PANEL_SERIES as PanelSeries[]).flatMap(s => s.panels);
 type Point = { x: number; y: number };
 
 const PanelThumb = ({ panel, selected, onClick }: { panel: Panel; selected: boolean; onClick: () => void }) => (
@@ -41,6 +131,38 @@ const PanelThumb = ({ panel, selected, onClick }: { panel: Panel; selected: bool
       <div className="text-[6px] text-center text-gray-300 font-mono">{panel.article}</div>
     </div>
   </button>
+);
+
+const SeriesAccordion = ({
+  series, openIds, onToggle, selectedId, onSelect,
+}: {
+  series: PanelSeries[];
+  openIds: Set<string>;
+  onToggle: (id: string) => void;
+  selectedId: string | undefined;
+  onSelect: (panel: Panel) => void;
+}) => (
+  <div className="space-y-1">
+    {series.map(s => (
+      <div key={s.id} className="rounded-xl overflow-hidden border border-gray-100">
+        <button
+          onClick={() => onToggle(s.id)}
+          className="w-full flex items-center justify-between px-2.5 py-1.5 bg-gray-50 hover:bg-gray-100 transition-colors">
+          <span className="text-[8px] font-black uppercase tracking-widest text-gray-500">{s.name}</span>
+          <span className="text-[8px] text-gray-400 ml-1">{openIds.has(s.id) ? '▲' : '▼'}</span>
+        </button>
+        {openIds.has(s.id) && (
+          <div className="grid grid-cols-2 gap-1.5 p-1.5 bg-white">
+            {s.panels.map(panel => (
+              <PanelThumb key={panel.id} panel={panel}
+                selected={selectedId === panel.id}
+                onClick={() => onSelect(panel)}/>
+            ))}
+          </div>
+        )}
+      </div>
+    ))}
+  </div>
 );
 
 const MIN_PANEL_RATIO = 0.03; // minimum panel width: 3% of wall
@@ -72,6 +194,13 @@ const BambooStudio = () => {
   const [hMoldingCount, setHMoldingCount] = useState(1);
   const [hMoldingWidth, setHMoldingWidth] = useState(2);
   const [hMoldingPositions, setHMoldingPositions] = useState<number[]>([0.5]);
+  const [openSeries, setOpenSeries] = useState<Set<string>>(() => new Set(['metall-25']));
+
+  const toggleSeries = (id: string) => setOpenSeries(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
 
   const mainCanvasRef = useRef<HTMLCanvasElement>(null);
   const maskCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -958,57 +1087,21 @@ const BambooStudio = () => {
               <p className="text-[8px] text-gray-400 font-bold italic mb-2">
                 {activeSector !== null ? `Панель №${activeSector + 1} — выберите материал` : 'Кликните по панели → выберите материал'}
               </p>
-              {/* Металлическая серия */}
-              <div className="text-[7px] font-black uppercase tracking-widest text-gray-300 mb-1 mt-1">Металлическая серия</div>
-              <div className="grid grid-cols-2 gap-1.5 mb-2">
-                {BAMBOO_PANELS.slice(0, 8).map(panel => (
-                  <PanelThumb key={panel.id} panel={panel}
-                    selected={activeSector !== null ? sectorMaterials[activeSector]?.id === panel.id : false}
-                    onClick={() => {
-                      if (activeSector !== null) {
-                        setSectorMaterials({ ...sectorMaterials, [activeSector]: panel });
-                      } else {
-                        const all: Record<number, Panel> = {};
-                        for (let i = 0; i < panelCount; i++) all[i] = panel;
-                        setSectorMaterials(all);
-                      }
-                    }}/>
-                ))}
-              </div>
-              {/* ПЭТ / Частицы */}
-              <div className="text-[7px] font-black uppercase tracking-widest text-gray-300 mb-1">ПЭТ / Частицы</div>
-              <div className="grid grid-cols-2 gap-1.5 mb-2">
-                {BAMBOO_PANELS.slice(8, 14).map(panel => (
-                  <PanelThumb key={panel.id} panel={panel}
-                    selected={activeSector !== null ? sectorMaterials[activeSector]?.id === panel.id : false}
-                    onClick={() => {
-                      if (activeSector !== null) {
-                        setSectorMaterials({ ...sectorMaterials, [activeSector]: panel });
-                      } else {
-                        const all: Record<number, Panel> = {};
-                        for (let i = 0; i < panelCount; i++) all[i] = panel;
-                        setSectorMaterials(all);
-                      }
-                    }}/>
-                ))}
-              </div>
-              {/* Зеркальная серия */}
-              <div className="text-[7px] font-black uppercase tracking-widest text-gray-300 mb-1">Жидкий металл / Зеркальная</div>
-              <div className="grid grid-cols-2 gap-1.5">
-                {BAMBOO_PANELS.slice(14).map(panel => (
-                  <PanelThumb key={panel.id} panel={panel}
-                    selected={activeSector !== null ? sectorMaterials[activeSector]?.id === panel.id : false}
-                    onClick={() => {
-                      if (activeSector !== null) {
-                        setSectorMaterials({ ...sectorMaterials, [activeSector]: panel });
-                      } else {
-                        const all: Record<number, Panel> = {};
-                        for (let i = 0; i < panelCount; i++) all[i] = panel;
-                        setSectorMaterials(all);
-                      }
-                    }}/>
-                ))}
-              </div>
+              <SeriesAccordion
+                series={PANEL_SERIES as PanelSeries[]}
+                openIds={openSeries}
+                onToggle={toggleSeries}
+                selectedId={activeSector !== null ? sectorMaterials[activeSector]?.id : undefined}
+                onSelect={(panel) => {
+                  if (activeSector !== null) {
+                    setSectorMaterials({ ...sectorMaterials, [activeSector]: panel });
+                  } else {
+                    const all: Record<number, Panel> = {};
+                    for (let i = 0; i < panelCount; i++) all[i] = panel;
+                    setSectorMaterials(all);
+                  }
+                }}
+              />
             </div>
 
             {/* Vertical molding */}

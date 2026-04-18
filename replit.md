@@ -19,13 +19,27 @@ Russian-language web app for visualising bamboo wall panels on interior photos.
 
 ### Textures (`public/textures/`)
 640 images extracted from the real ALL WALL PDF catalogue (`pdfimages -all`).
-24 named panels in 3 series are registered in `BAMBOO_PANELS`:
-- **Металлическая серия** (8 panels): tex-117..129 — brushed & liquid metal
-- **ПЭТ / Гальваническая** (6 panels): tex-133..143 — PET matte, galvanic
-- **Жидкий металл / Зеркальная** (10 panels): tex-147..185 — particles, mirror, gold, rose copper
+55 named panels in 11 collapsible series (accordion UI in sidebar):
 
-### Architecture (`src/App.tsx`, ~1090 lines)
-- `BAMBOO_PANELS` — array of 24 panels with `{ id, article, name, color, texture }`
+| Series ID       | Name                   | Panels |
+|-----------------|------------------------|--------|
+| metall-25       | Металлическая серия    | 4      |
+| liqmetall-25    | Жидкий металл -25      | 4      |
+| pet-25          | ПЭТ матовая            | 4      |
+| galv-15         | Гальваническая         | 4      |
+| liqmetall-10    | Жидкий металл -10      | 9      |
+| particles-10    | Частицы                | 4      |
+| stone-gravel    | Щебень / Камень        | 8      |
+| patina-copper   | Патина / Медь          | 6      |
+| linen-cement    | Льняное / Цемент       | 6      |
+| rainbow         | Радуга / Хамелеон      | 3      |
+| mirror-gloss    | Зеркальная глянцевая   | 3      |
+
+### Architecture (`src/App.tsx`, ~1200 lines)
+- `PANEL_SERIES` — array of 11 series, each with `{ id, name, panels[] }`
+- `BAMBOO_PANELS` — flat array derived from `PANEL_SERIES.flatMap(s => s.panels)` (55 panels)
+- `openSeries` state — `Set<string>` of expanded series IDs (accordion)
+- `SeriesAccordion` component — collapsible series headers + 2-column grid of `PanelThumb`
 - `textureCacheRef` — `Record<string, HTMLImageElement>` for loaded texture images
 - Texture preload `useEffect` runs after `drawFullScene` to avoid TDZ errors
 - `drawFullScene` uses `canvas.clip()` + `ctx.createPattern()` + `DOMMatrix` scale transform
