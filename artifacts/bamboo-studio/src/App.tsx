@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Upload, Layout, Eraser, RotateCcw, Download, Check, Columns, Undo2 } from 'lucide-react';
 
 const BAMBOO_PANELS = [
@@ -27,6 +27,140 @@ const BambooStudio = () => {
   const maskCanvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Refs to always have the latest state inside drawFullScene without stale closures
+  const imageRef = useRef<HTMLImageElement | null>(null);
+  const stepRef = useRef<'upload' | 'mark' | 'edit'>('upload');
+  const pointsRef = useRef<Point[]>([]);
+  const panelCountRef = useRef(5);
+  const sectorMaterialsRef = useRef<Record<number, Panel>>({});
+  const activeSectorRef = useRef<number | null>(null);
+  const isErasingRef = useRef(false);
+
+  // Keep refs in sync with state
+  useEffect(() => { imageRef.current = image; }, [image]);
+  useEffect(() => { stepRef.current = step; }, [step]);
+  useEffect(() => { pointsRef.current = points; }, [points]);
+  useEffect(() => { panelCountRef.current = panelCount; }, [panelCount]);
+  useEffect(() => { sectorMaterialsRef.current = sectorMaterials; }, [sectorMaterials]);
+  useEffect(() => { activeSectorRef.current = activeSector; }, [activeSector]);
+  useEffect(() => { isErasingRef.current = isErasing; }, [isErasing]);
+
+  // Stable drawFullScene that always reads fresh data from refs
+  const drawFullScene = useCallback(() => {
+    const img = imageRef.current;
+    const canvas = mainCanvasRef.current;
+    const maskCanvas = maskCanvasRef.current;
+    if (!img || !canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const width = canvas.width;
+    const height = canvas.height;
+    const pts = pointsRef.current;
+    const curStep = stepRef.current;
+    const curPanelCount = panelCountRef.current;
+    const curMaterials = sectorMaterialsRef.current;
+    const curActiveSector = activeSectorRef.current;
+    const curIsErasing = isErasingRef.current;
+
+    ctx.clearRect(0, 0, width, height);
+    ctx.drawImage(img, 0, 0, width, height);
+
+    if (curStep === 'mark') {
+      ctx.fillStyle = '#007aff';
+      pts.forEach(p => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      if (pts.length === 4) {
+        ctx.strokeStyle = '#007aff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        pts.forEach(p => ctx.lineTo(p.x, p.y));
+        ctx.closePath();
+        ctx.stroke();
+      }
+      return;
+    }
+
+    if (curStep === 'edit' && pts.length === 4) {
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = width;
+      tempCanvas.height = height;
+      const tCtx = tempCanvas.getContext('2d');
+      if (!tCtx) return;
+
+      for (let i = 0; i < curPanelCount; i++) {
+        const rStart = i / curPanelCount;
+        const rEnd = (i + 1) / curPanelCount;
+
+        const p1 = { x: pts[0].x + (pts[1].x - pts[0].x) * rStart, y: pts[0].y + (pts[1].y - pts[0].y) * rStart };
+        const p2 = { x: pts[0].x + (pts[1].x - pts[0].x) * rEnd, y: pts[0].y + (pts[1].y - pts[0].y) * rEnd };
+        const p3 = { x: pts[3].x + (pts[2].x - pts[3].x) * rEnd, y: pts[3].y + (pts[2].y - pts[3].y) * rEnd };
+        const p4 = { x: pts[3].x + (pts[2].x - pts[3].x) * rStart, y: pts[3].y + (pts[2].y - pts[3].y) * rStart };
+
+        const material = curMaterials[i] || BAMBOO_PANELS[0];
+
+        tCtx.fillStyle = material.color;
+        tCtx.beginPath();
+        tCtx.moveTo(p1.x, p1.y);
+        tCtx.lineTo(p2.x, p2.y);
+        tCtx.lineTo(p3.x, p3.y);
+        tCtx.lineTo(p4.x, p4.y);
+        tCtx.closePath();
+        tCtx.fill();
+
+        if (curActiveSector === i && !curIsErasing) {
+          tCtx.strokeStyle = 'white';
+          tCtx.lineWidth = 3;
+          tCtx.stroke();
+        }
+
+        tCtx.strokeStyle = 'rgba(0,0,0,0.1)';
+        tCtx.lineWidth = 1;
+        tCtx.stroke();
+      }
+
+      // Apply eraser mask WITHOUT clearing it
+      if (maskCanvas && maskCanvas.width > 0 && maskCanvas.height > 0) {
+        tCtx.globalCompositeOperation = 'destination-out';
+        tCtx.drawImage(maskCanvas, 0, 0);
+        tCtx.globalCompositeOperation = 'source-over';
+      }
+
+      ctx.save();
+      ctx.globalAlpha = 0.85;
+      ctx.drawImage(tempCanvas, 0, 0);
+      ctx.restore();
+    }
+  }, []); // No deps — always reads from refs
+
+  // Initialize canvas dimensions only when image changes (not on every state update)
+  useEffect(() => {
+    if (!image || !containerRef.current || !mainCanvasRef.current || !maskCanvasRef.current) return;
+
+    const container = containerRef.current;
+    const { width, height } = container.getBoundingClientRect();
+
+    // Set main canvas size
+    mainCanvasRef.current.width = width;
+    mainCanvasRef.current.height = height;
+
+    // Reset mask canvas only when a new image is loaded (clears old erasing)
+    maskCanvasRef.current.width = width;
+    maskCanvasRef.current.height = height;
+
+    drawFullScene();
+  }, [image, drawFullScene]);
+
+  // Redraw whenever visible state changes — but WITHOUT touching canvas dimensions
+  useEffect(() => {
+    if (!image) return;
+    drawFullScene();
+  }, [points, step, sectorMaterials, panelCount, activeSector, isErasing, drawFullScene, image]);
+
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -39,6 +173,7 @@ const BambooStudio = () => {
           setPoints([]);
           setSectorMaterials({});
           setActiveSector(null);
+          setIsErasing(false);
         };
         img.src = f.target?.result as string;
       };
@@ -51,8 +186,11 @@ const BambooStudio = () => {
     if (!mainCanvasRef.current) return;
 
     const rect = mainCanvasRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    // Scale mouse coords to actual canvas pixel coords
+    const scaleX = mainCanvasRef.current.width / rect.width;
+    const scaleY = mainCanvasRef.current.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
 
     if (step === 'mark' && points.length < 4) {
       setPoints([...points, { x, y }]);
@@ -73,115 +211,25 @@ const BambooStudio = () => {
     }
   };
 
-  const drawFullScene = () => {
-    if (!image || !mainCanvasRef.current) return;
-    const ctx = mainCanvasRef.current.getContext('2d');
-    if (!ctx) return;
-    const width = mainCanvasRef.current.width;
-    const height = mainCanvasRef.current.height;
-
-    ctx.clearRect(0, 0, width, height);
-    ctx.drawImage(image, 0, 0, width, height);
-
-    if (step === 'mark') {
-      ctx.fillStyle = '#007aff';
-      points.forEach(p => {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
-        ctx.fill();
-      });
-      if (points.length === 4) {
-        ctx.strokeStyle = '#007aff';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(points[0].x, points[0].y);
-        points.forEach(p => ctx.lineTo(p.x, p.y));
-        ctx.closePath();
-        ctx.stroke();
-      }
-      return;
-    }
-
-    if (step === 'edit' && points.length === 4) {
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = width;
-      tempCanvas.height = height;
-      const tCtx = tempCanvas.getContext('2d');
-      if (!tCtx) return;
-
-      for (let i = 0; i < panelCount; i++) {
-        const rStart = i / panelCount;
-        const rEnd = (i + 1) / panelCount;
-
-        const p1 = { x: points[0].x + (points[1].x - points[0].x) * rStart, y: points[0].y + (points[1].y - points[0].y) * rStart };
-        const p2 = { x: points[0].x + (points[1].x - points[0].x) * rEnd, y: points[0].y + (points[1].y - points[0].y) * rEnd };
-        const p3 = { x: points[3].x + (points[2].x - points[3].x) * rEnd, y: points[3].y + (points[2].y - points[3].y) * rEnd };
-        const p4 = { x: points[3].x + (points[2].x - points[3].x) * rStart, y: points[3].y + (points[2].y - points[3].y) * rStart };
-
-        const material = sectorMaterials[i] || BAMBOO_PANELS[0];
-
-        tCtx.fillStyle = material.color;
-        tCtx.beginPath();
-        tCtx.moveTo(p1.x, p1.y);
-        tCtx.lineTo(p2.x, p2.y);
-        tCtx.lineTo(p3.x, p3.y);
-        tCtx.lineTo(p4.x, p4.y);
-        tCtx.closePath();
-        tCtx.fill();
-
-        if (activeSector === i && !isErasing) {
-          tCtx.strokeStyle = 'white';
-          tCtx.lineWidth = 3;
-          tCtx.stroke();
-        }
-
-        tCtx.strokeStyle = 'rgba(0,0,0,0.1)';
-        tCtx.lineWidth = 1;
-        tCtx.stroke();
-      }
-
-      if (maskCanvasRef.current) {
-        tCtx.globalCompositeOperation = 'destination-out';
-        tCtx.drawImage(maskCanvasRef.current, 0, 0);
-      }
-
-      ctx.save();
-      ctx.globalAlpha = 0.85;
-      ctx.drawImage(tempCanvas, 0, 0);
-      ctx.restore();
-    }
-  };
-
-  useEffect(() => {
-    if (image && containerRef.current && mainCanvasRef.current) {
-      const { width, height } = containerRef.current.getBoundingClientRect();
-      mainCanvasRef.current.width = width;
-      mainCanvasRef.current.height = height;
-
-      if (maskCanvasRef.current && (maskCanvasRef.current.width !== width || maskCanvasRef.current.height !== height)) {
-        maskCanvasRef.current.width = width;
-        maskCanvasRef.current.height = height;
-      }
-
-      drawFullScene();
-    }
-  }, [image, points, step, sectorMaterials, panelCount, activeSector, isErasing]);
-
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!mainCanvasRef.current) return;
     const rect = mainCanvasRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    setMousePos({ x, y });
+    const scaleX = mainCanvasRef.current.width / rect.width;
+    const scaleY = mainCanvasRef.current.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+
+    // Update cursor position (in screen coords for the cursor overlay)
+    setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
 
     if (isErasing && isDrawing && maskCanvasRef.current) {
       const mCtx = maskCanvasRef.current.getContext('2d');
       if (!mCtx) return;
       mCtx.fillStyle = 'black';
       mCtx.beginPath();
-      mCtx.arc(x, y, brushSize / 2, 0, Math.PI * 2);
+      mCtx.arc(x, y, (brushSize / 2) * scaleX, 0, Math.PI * 2);
       mCtx.fill();
-      drawFullScene();
+      drawFullScene(); // Calls stable ref-based version
     }
   };
 
@@ -377,9 +425,12 @@ const BambooStudio = () => {
                 <div
                   className="absolute pointer-events-none border-2 border-white rounded-full mix-blend-difference bg-white/10"
                   style={{
-                    left: mousePos.x, top: mousePos.y,
-                    width: brushSize, height: brushSize,
-                    transform: 'translate(-50%, -50%)', zIndex: 100
+                    left: mousePos.x,
+                    top: mousePos.y,
+                    width: brushSize,
+                    height: brushSize,
+                    transform: 'translate(-50%, -50%)',
+                    zIndex: 100
                   }}
                 />
               )}
