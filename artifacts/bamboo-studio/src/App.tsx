@@ -49,6 +49,7 @@ const BambooStudio = () => {
   const activeSectorRef = useRef<number | null>(null);
   const isErasingRef = useRef(false);
   const draggingDividerIndexRef = useRef<number | null>(null);
+  const forExportRef = useRef(false);
 
   useEffect(() => { imageRef.current = image; }, [image]);
   useEffect(() => { stepRef.current = step; }, [step]);
@@ -149,8 +150,8 @@ const BambooStudio = () => {
         tCtx.stroke();
       }
 
-      // Draw draggable dividers as visible handles
-      if (!curIsErasing) {
+      // Draw draggable dividers as visible handles (hidden during export)
+      if (!curIsErasing && !forExportRef.current) {
         curDividers.forEach((ratio) => {
           // Point on top edge
           const topX = pts[0].x + (pts[1].x - pts[0].x) * ratio;
@@ -367,9 +368,16 @@ const BambooStudio = () => {
 
   const handleSave = () => {
     if (!mainCanvasRef.current) return;
+    // Redraw without UI elements, then save, then restore
+    forExportRef.current = true;
+    drawFullScene();
+    const dataUrl = mainCanvasRef.current.toDataURL('image/png');
+    forExportRef.current = false;
+    drawFullScene();
+
     const link = document.createElement('a');
     link.download = 'bamboo-studio-project.png';
-    link.href = mainCanvasRef.current.toDataURL();
+    link.href = dataUrl;
     link.click();
   };
 
