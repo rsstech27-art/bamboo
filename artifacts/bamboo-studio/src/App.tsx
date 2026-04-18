@@ -36,6 +36,9 @@ const BambooStudio = () => {
   const [isDraggingDivider, setIsDraggingDivider] = useState(false);
   const [moldingStyle, setMoldingStyle] = useState<'none' | 'gold' | 'black' | 'metallic'>('none');
   const [moldingWidth, setMoldingWidth] = useState(6);
+  const [hMoldingStyle, setHMoldingStyle] = useState<'none' | 'gold' | 'black' | 'metallic'>('none');
+  const [hMoldingCount, setHMoldingCount] = useState(1);
+  const [hMoldingWidth, setHMoldingWidth] = useState(6);
 
   const mainCanvasRef = useRef<HTMLCanvasElement>(null);
   const maskCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -54,6 +57,9 @@ const BambooStudio = () => {
   const forExportRef = useRef(false);
   const moldingStyleRef = useRef<'none' | 'gold' | 'black' | 'metallic'>('none');
   const moldingWidthRef = useRef(6);
+  const hMoldingStyleRef = useRef<'none' | 'gold' | 'black' | 'metallic'>('none');
+  const hMoldingCountRef = useRef(1);
+  const hMoldingWidthRef = useRef(6);
   // Mask stored as strokes — never gets reset by canvas operations
   const maskStrokesRef = useRef<Array<{ x: number; y: number; r: number }>>([]);
 
@@ -67,6 +73,9 @@ const BambooStudio = () => {
   useEffect(() => { isErasingRef.current = isErasing; }, [isErasing]);
   useEffect(() => { moldingStyleRef.current = moldingStyle; }, [moldingStyle]);
   useEffect(() => { moldingWidthRef.current = moldingWidth; }, [moldingWidth]);
+  useEffect(() => { hMoldingStyleRef.current = hMoldingStyle; }, [hMoldingStyle]);
+  useEffect(() => { hMoldingCountRef.current = hMoldingCount; }, [hMoldingCount]);
+  useEffect(() => { hMoldingWidthRef.current = hMoldingWidth; }, [hMoldingWidth]);
 
   // Returns the start/end ratio for each sector based on divider positions
   const getSectorBounds = (dividers: number[], count: number) => {
@@ -259,6 +268,71 @@ const BambooStudio = () => {
         });
       }
 
+      // Draw horizontal moldings on tempCanvas BEFORE mask (also eraseable)
+      const curHMoldingStyle = hMoldingStyleRef.current;
+      const curHMoldingCount = hMoldingCountRef.current;
+      const curHMoldingWidth = hMoldingWidthRef.current;
+      if (curHMoldingStyle !== 'none' && curHMoldingCount > 0) {
+        for (let i = 1; i <= curHMoldingCount; i++) {
+          const r = i / (curHMoldingCount + 1);
+          // Left edge: lerp between pts[0] (top-left) and pts[3] (bottom-left)
+          const lx = pts[0].x + (pts[3].x - pts[0].x) * r;
+          const ly = pts[0].y + (pts[3].y - pts[0].y) * r;
+          // Right edge: lerp between pts[1] (top-right) and pts[2] (bottom-right)
+          const rx = pts[1].x + (pts[2].x - pts[1].x) * r;
+          const ry = pts[1].y + (pts[2].y - pts[1].y) * r;
+
+          const dx = rx - lx;
+          const dy = ry - ly;
+          const len = Math.sqrt(dx * dx + dy * dy);
+          // Perpendicular unit vector (for gradient across molding thickness)
+          const px = -dy / len;
+          const py = dx / len;
+          const hw = curHMoldingWidth / 2;
+          const midX = (lx + rx) / 2;
+          const midY = (ly + ry) / 2;
+
+          const hGrad = tCtx.createLinearGradient(
+            midX + px * hw, midY + py * hw,
+            midX - px * hw, midY - py * hw
+          );
+
+          if (curHMoldingStyle === 'gold') {
+            hGrad.addColorStop(0,    '#5a3d00');
+            hGrad.addColorStop(0.15, '#b8860b');
+            hGrad.addColorStop(0.35, '#ffd700');
+            hGrad.addColorStop(0.5,  '#fff8c0');
+            hGrad.addColorStop(0.65, '#ffd700');
+            hGrad.addColorStop(0.85, '#b8860b');
+            hGrad.addColorStop(1,    '#5a3d00');
+          } else if (curHMoldingStyle === 'black') {
+            hGrad.addColorStop(0,    '#0a0a0a');
+            hGrad.addColorStop(0.25, '#1c1c1c');
+            hGrad.addColorStop(0.5,  '#383838');
+            hGrad.addColorStop(0.75, '#1c1c1c');
+            hGrad.addColorStop(1,    '#0a0a0a');
+          } else if (curHMoldingStyle === 'metallic') {
+            hGrad.addColorStop(0,    '#4a4a4a');
+            hGrad.addColorStop(0.2,  '#9a9a9a');
+            hGrad.addColorStop(0.45, '#e8e8e8');
+            hGrad.addColorStop(0.5,  '#ffffff');
+            hGrad.addColorStop(0.55, '#e8e8e8');
+            hGrad.addColorStop(0.8,  '#9a9a9a');
+            hGrad.addColorStop(1,    '#4a4a4a');
+          }
+
+          tCtx.save();
+          tCtx.strokeStyle = hGrad;
+          tCtx.lineWidth = curHMoldingWidth;
+          tCtx.lineCap = 'butt';
+          tCtx.beginPath();
+          tCtx.moveTo(lx, ly);
+          tCtx.lineTo(rx, ry);
+          tCtx.stroke();
+          tCtx.restore();
+        }
+      }
+
       // Apply eraser mask — replay strokes from memory (never lost on canvas reset)
       if (maskStrokesRef.current.length > 0) {
         const tempMask = document.createElement('canvas');
@@ -340,7 +414,7 @@ const BambooStudio = () => {
   useEffect(() => {
     if (!image) return;
     drawFullScene();
-  }, [points, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, moldingStyle, moldingWidth, drawFullScene, image]);
+  }, [points, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, drawFullScene, image]);
 
   const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = mainCanvasRef.current;
@@ -654,6 +728,53 @@ const BambooStudio = () => {
                   )}
                 </div>
               )}
+
+              <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+                  <h2 className="text-lg font-bold mb-4">Горизонт. молдинг</h2>
+                  <div className="grid grid-cols-4 gap-2 mb-4">
+                    {([
+                      { id: 'none',     label: 'Нет',     preview: 'bg-gray-100' },
+                      { id: 'gold',     label: 'Золото',  preview: 'bg-gradient-to-b from-yellow-800 via-yellow-300 to-yellow-800' },
+                      { id: 'black',    label: 'Черный',  preview: 'bg-gradient-to-b from-black via-gray-600 to-black' },
+                      { id: 'metallic', label: 'Металлик',preview: 'bg-gradient-to-b from-gray-600 via-white to-gray-600' },
+                    ] as const).map(opt => (
+                      <button
+                        key={opt.id}
+                        onClick={() => setHMoldingStyle(opt.id)}
+                        className={`flex flex-col items-center gap-1.5 transition-all ${hMoldingStyle === opt.id ? 'opacity-100' : 'opacity-50'}`}
+                      >
+                        <div className={`w-full h-8 rounded-lg border-2 ${opt.preview} ${hMoldingStyle === opt.id ? 'border-black shadow-md scale-105' : 'border-transparent'}`} />
+                        <span className="text-[8px] font-bold uppercase text-gray-500">{opt.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {hMoldingStyle !== 'none' && (
+                    <div className="space-y-4 mt-1">
+                      <div>
+                        <div className="flex justify-between text-[10px] font-bold text-gray-400 uppercase mb-2">
+                          <span>Количество</span>
+                          <span>{hMoldingCount}</span>
+                        </div>
+                        <input
+                          type="range" min="1" max="5" value={hMoldingCount}
+                          onChange={(e) => setHMoldingCount(parseInt(e.target.value))}
+                          className="w-full h-1 bg-gray-100 rounded-lg appearance-none accent-black"
+                        />
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-[10px] font-bold text-gray-400 uppercase mb-2">
+                          <span>Толщина</span>
+                          <span>{hMoldingWidth}px</span>
+                        </div>
+                        <input
+                          type="range" min="2" max="20" value={hMoldingWidth}
+                          onChange={(e) => setHMoldingWidth(parseInt(e.target.value))}
+                          className="w-full h-1 bg-gray-100 rounded-lg appearance-none accent-black"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
 
               <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
                 <div className="flex justify-between items-center mb-4">
