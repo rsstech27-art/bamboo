@@ -2,10 +2,10 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Upload, Layout, Eraser, RotateCcw, Download, Check, Columns, Undo2 } from 'lucide-react';
 
 const BAMBOO_PANELS = [
-  { id: 'natural', name: 'Натуральный', color: '#e3c18d', texture: 'https://images.unsplash.com/photo-1585314062340-f1a5a7c9328d?auto=format&fit=crop&q=80&w=400' },
-  { id: 'carbonized', name: 'Карбон', color: '#8b5a2b', texture: 'https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?auto=format&fit=crop&q=80&w=400' },
-  { id: 'black', name: 'Черный', color: '#2c2c2c', texture: 'https://images.unsplash.com/photo-1505330622279-bf7d7fc918f4?auto=format&fit=crop&q=80&w=400' },
-  { id: 'white', name: 'Беленый', color: '#f5f5f0', texture: 'https://images.unsplash.com/photo-1516550893923-42d28e5677af?auto=format&fit=crop&q=80&w=400' },
+  { id: 'natural',  name: 'Натуральный', color: '#e3c18d', texture: 'https://images.unsplash.com/photo-1585314062340-f1a5a7c9328d?auto=format&fit=crop&q=80&w=400' },
+  { id: 'wood',     name: 'Дерево',      color: '#a0724a', texture: 'https://images.unsplash.com/photo-1541123437800-1bb1317badc2?auto=format&fit=crop&q=80&w=400' },
+  { id: 'black',    name: 'Черный',      color: '#2c2c2c', texture: 'https://images.unsplash.com/photo-1505330622279-bf7d7fc918f4?auto=format&fit=crop&q=80&w=400' },
+  { id: 'greige',   name: 'Серо-беж',   color: '#c4bbb0', texture: 'https://images.unsplash.com/photo-1615529162924-f8605388461d?auto=format&fit=crop&q=80&w=400' },
 ];
 
 type Panel = typeof BAMBOO_PANELS[number];
@@ -65,6 +65,7 @@ const BambooStudio = () => {
   const draggingHMoldingIndexRef = useRef<number | null>(null);
   // Mask stored as strokes — never gets reset by canvas operations
   const maskStrokesRef = useRef<Array<{ x: number; y: number; r: number }>>([]);
+  const maskUndoStackRef = useRef<number[]>([]); // stores stroke-array length before each erase drag
 
   useEffect(() => { imageRef.current = image; }, [image]);
   useEffect(() => { stepRef.current = step; }, [step]);
@@ -504,7 +505,12 @@ const BambooStudio = () => {
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     setIsDrawing(true);
-    if (isErasing || step !== 'edit') return;
+    if (isErasing) {
+      // snapshot current stroke count so we can undo this drag
+      maskUndoStackRef.current.push(maskStrokesRef.current.length);
+      return;
+    }
+    if (step !== 'edit') return;
     const { x, y } = getCanvasCoords(e);
     const hIdx = findNearHMolding(x, y);
     if (hIdx !== -1) {
@@ -602,10 +608,16 @@ const BambooStudio = () => {
   };
 
   const clearMask = () => {
-    {
-      maskStrokesRef.current = [];
-      drawFullScene();
-    }
+    maskStrokesRef.current = [];
+    maskUndoStackRef.current = [];
+    drawFullScene();
+  };
+
+  const undoEraserStroke = () => {
+    if (maskUndoStackRef.current.length === 0) return;
+    const prevLen = maskUndoStackRef.current.pop()!;
+    maskStrokesRef.current = maskStrokesRef.current.slice(0, prevLen);
+    drawFullScene();
   };
 
   const handleSave = () => {
@@ -839,10 +851,16 @@ const BambooStudio = () => {
               <input type="range" min="10" max="150" value={brushSize}
                 onChange={(e) => setBrushSize(parseInt(e.target.value))}
                 className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
-              <button onClick={clearMask}
-                className="w-full mt-2 py-1 text-[8px] font-bold text-gray-300 hover:text-red-500 flex items-center justify-center gap-1 transition-colors">
-                <Undo2 size={9}/> Очистить маску
-              </button>
+              <div className="flex gap-1.5 mt-2">
+                <button onClick={undoEraserStroke}
+                  className="flex-1 py-1 text-[8px] font-bold text-gray-300 hover:text-black flex items-center justify-center gap-1 transition-colors border border-gray-100 rounded-lg">
+                  <Undo2 size={9}/> Отмена
+                </button>
+                <button onClick={clearMask}
+                  className="flex-1 py-1 text-[8px] font-bold text-gray-300 hover:text-red-500 flex items-center justify-center gap-1 transition-colors border border-gray-100 rounded-lg">
+                  <RotateCcw size={9}/> Сброс
+                </button>
+              </div>
             </div>
 
             {/* Material */}
