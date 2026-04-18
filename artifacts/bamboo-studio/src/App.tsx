@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Upload, Layout, Eraser, RotateCcw, Download, Check, Columns, Undo2 } from 'lucide-react';
+import { Upload, Layout, Eraser, RotateCcw, Download, Check, Columns, Undo2, Sun, Moon } from 'lucide-react';
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -229,6 +229,8 @@ const BambooStudio = () => {
   const [hMoldingWidth, setHMoldingWidth] = useState(2);
   const [hMoldingPositions, setHMoldingPositions] = useState<number[]>([0.5]);
   const [openSeries, setOpenSeries] = useState<Set<string>>(() => new Set(['metall-25']));
+  const [lightMode, setLightMode] = useState<'off' | 'morning' | 'evening'>('off');
+  const lightModeRef = useRef<'off' | 'morning' | 'evening'>('off');
 
   const toggleSeries = (id: string) => setOpenSeries(prev => {
     const next = new Set(prev);
@@ -301,6 +303,7 @@ const BambooStudio = () => {
   useEffect(() => { hMoldingCountRef.current = hMoldingCount; }, [hMoldingCount]);
   useEffect(() => { hMoldingWidthRef.current = hMoldingWidth; }, [hMoldingWidth]);
   useEffect(() => { hMoldingPositionsRef.current = hMoldingPositions; }, [hMoldingPositions]);
+  useEffect(() => { lightModeRef.current = lightMode; }, [lightMode]);
 
   // Ctrl+Z global undo
   useEffect(() => {
@@ -385,6 +388,10 @@ const BambooStudio = () => {
         const material = curMaterials[i] || BAMBOO_PANELS[0];
 
         // Draw panel with texture if available, else solid color
+        const minX = Math.min(p1.x, p2.x, p3.x, p4.x);
+        const maxX = Math.max(p1.x, p2.x, p3.x, p4.x);
+        const minY = Math.min(p1.y, p2.y, p3.y, p4.y);
+        const maxY = Math.max(p1.y, p2.y, p3.y, p4.y);
         tCtx.save();
         tCtx.beginPath();
         tCtx.moveTo(p1.x, p1.y);
@@ -396,10 +403,6 @@ const BambooStudio = () => {
 
         const cachedTex = textureCacheRef.current[material.id];
         if (cachedTex) {
-          const minX = Math.min(p1.x, p2.x, p3.x, p4.x);
-          const maxX = Math.max(p1.x, p2.x, p3.x, p4.x);
-          const minY = Math.min(p1.y, p2.y, p3.y, p4.y);
-          const maxY = Math.max(p1.y, p2.y, p3.y, p4.y);
           // Tile pattern scaled so texture height ≈ panel height (max 3 repeats)
           const panelH = maxY - minY;
           const scale = Math.max(1, panelH / (cachedTex.height * 3));
@@ -417,6 +420,26 @@ const BambooStudio = () => {
         } else {
           tCtx.fillStyle = material.color;
           tCtx.fillRect(0, 0, width, height);
+        }
+
+        // Light gradient overlay
+        const curLight = lightModeRef.current;
+        if (curLight !== 'off') {
+          let gx0: number, gy0: number, gx1: number, gy1: number, brightColor: string, fadeColor: string;
+          if (curLight === 'morning') {
+            gx0 = maxX; gy0 = minY; gx1 = minX; gy1 = maxY;
+            brightColor = 'rgba(200,225,255,0.30)';
+            fadeColor   = 'rgba(0,10,50,0.07)';
+          } else {
+            gx0 = minX; gy0 = minY; gx1 = maxX; gy1 = maxY;
+            brightColor = 'rgba(255,195,100,0.32)';
+            fadeColor   = 'rgba(60,15,0,0.08)';
+          }
+          const lightGrad = tCtx.createLinearGradient(gx0, gy0, gx1, gy1);
+          lightGrad.addColorStop(0, brightColor);
+          lightGrad.addColorStop(1, fadeColor);
+          tCtx.fillStyle = lightGrad;
+          tCtx.fillRect(minX - 1, minY - 1, maxX - minX + 2, maxY - minY + 2);
         }
         tCtx.restore();
 
@@ -763,7 +786,7 @@ const BambooStudio = () => {
   useEffect(() => {
     if (!image) return;
     drawFullScene();
-  }, [points, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, drawFullScene, image]);
+  }, [points, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, lightMode, drawFullScene, image]);
 
   const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = mainCanvasRef.current;
@@ -1122,6 +1145,35 @@ const BambooStudio = () => {
               <input type="range" min="1" max="15" value={panelCount}
                 onChange={(e) => handleChangePanelCount(parseInt(e.target.value))}
                 className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
+            </div>
+
+            {/* Light mode */}
+            <div className="bg-white rounded-2xl p-3.5 shadow-sm">
+              <div className="flex items-center gap-1.5 mb-2.5">
+                <Sun size={12} className="text-gray-400"/>
+                <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Освещение</span>
+              </div>
+              <div className="grid grid-cols-3 gap-1.5">
+                {([
+                  { key: 'off',     label: 'Выкл',  icon: null },
+                  { key: 'morning', label: 'Утро',  icon: 'sun'  },
+                  { key: 'evening', label: 'Вечер', icon: 'moon' },
+                ] as const).map(({ key, label, icon }) => (
+                  <button key={key} onClick={() => setLightMode(key)}
+                    className={`py-2 rounded-xl text-[9px] font-bold flex flex-col items-center gap-1 transition-all active:scale-95 ${
+                      lightMode === key
+                        ? key === 'morning' ? 'bg-blue-50 text-blue-600 ring-2 ring-blue-300'
+                          : key === 'evening' ? 'bg-amber-50 text-amber-600 ring-2 ring-amber-300'
+                          : 'bg-gray-100 text-gray-700 ring-2 ring-gray-300'
+                        : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
+                    }`}>
+                    {icon === 'sun'  && <Sun  size={14}/>}
+                    {icon === 'moon' && <Moon size={14}/>}
+                    {!icon && <span className="text-[10px]">○</span>}
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Eraser */}
