@@ -656,270 +656,71 @@ const BambooStudio = () => {
     }
   };
 
+  // Compact molding style selector used in both v/h molding panels
+  const MoldingStyleRow = ({
+    value, onChange, vertical,
+  }: { value: string; onChange: (v: 'none'|'gold'|'black'|'metallic') => void; vertical: boolean }) => {
+    const opts = [
+      { id: 'none',     label: 'Нет',  preview: 'bg-gray-100' },
+      { id: 'gold',     label: 'Злт',  preview: vertical ? 'bg-gradient-to-r from-yellow-900 via-yellow-300 to-yellow-900' : 'bg-gradient-to-b from-yellow-900 via-yellow-300 to-yellow-900' },
+      { id: 'black',    label: 'Чрн',  preview: vertical ? 'bg-gradient-to-r from-black via-gray-600 to-black'            : 'bg-gradient-to-b from-black via-gray-600 to-black' },
+      { id: 'metallic', label: 'Мтл',  preview: vertical ? 'bg-gradient-to-r from-gray-500 via-white to-gray-500'         : 'bg-gradient-to-b from-gray-500 via-white to-gray-500' },
+    ] as const;
+    return (
+      <div className="grid grid-cols-4 gap-1">
+        {opts.map(o => (
+          <button key={o.id} onClick={() => onChange(o.id)}
+            className={`flex flex-col items-center gap-1 transition-all ${value === o.id ? 'opacity-100' : 'opacity-40'}`}>
+            <div className={`w-full h-5 rounded border-[1.5px] ${o.preview} ${value === o.id ? 'border-black shadow-sm' : 'border-transparent'}`} />
+            <span className="text-[7px] font-bold uppercase text-gray-500 leading-none">{o.label}</span>
+          </button>
+        ))}
+      </div>
+    );
+  };
+
   return (
-    <div className="min-h-screen bg-[#f5f5f7] text-[#1d1d1f] font-sans antialiased">
-      <nav className="h-16 border-b border-gray-200 bg-white/80 backdrop-blur-xl sticky top-0 z-50 flex justify-between items-center px-8">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-black rounded-xl flex items-center justify-center">
-            <Layout className="text-white w-5 h-5" />
+    <div className="h-screen overflow-hidden bg-[#ebebed] text-[#1d1d1f] font-sans antialiased flex flex-col">
+      {/* ── Nav ── */}
+      <nav className="h-12 shrink-0 border-b border-gray-200 bg-white/90 backdrop-blur-xl flex justify-between items-center px-5 z-50">
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 bg-black rounded-lg flex items-center justify-center">
+            <Layout className="text-white w-4 h-4" />
           </div>
-          <span className="font-bold text-lg tracking-tight italic">BambooStudio Pro</span>
+          <span className="font-bold text-sm tracking-tight italic">BambooStudio Pro</span>
         </div>
-        <button
-          onClick={() => { maskStrokesRef.current = []; setStep('upload'); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
-          className="text-sm font-medium text-gray-400 hover:text-black flex items-center gap-2 transition-colors"
-        >
-          <RotateCcw size={16} /> Сбросить проект
-        </button>
+        <div className="flex items-center gap-3">
+          {step === 'edit' && (
+            <button onClick={handleSave}
+              className="flex items-center gap-1.5 bg-black text-white text-xs font-bold px-4 py-2 rounded-xl hover:bg-gray-800 transition-all active:scale-95">
+              <Download size={13} /> Сохранить PNG
+            </button>
+          )}
+          <button
+            onClick={() => { maskStrokesRef.current = []; setStep('upload'); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
+            className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
+          >
+            <RotateCcw size={13} /> Сброс
+          </button>
+        </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <div className="lg:col-span-3 space-y-6">
-          {step === 'upload' && (
-            <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
-              <h2 className="text-lg font-bold mb-4 tracking-tight">1. Загрузка фото</h2>
-              <label className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed border-gray-200 rounded-2xl cursor-pointer hover:bg-gray-50 transition-all">
-                <Upload className="text-gray-400 mb-2" />
-                <span className="text-[10px] uppercase font-bold text-gray-400">Выберите файл интерьера</span>
-                <input type="file" className="hidden" onChange={handleImageUpload} accept="image/*" />
-              </label>
-              <div className="mt-6 p-4 bg-gray-50 rounded-2xl">
-                <p className="text-xs text-gray-500 font-medium leading-relaxed">
-                  Загрузите фото вашего интерьера. После загрузки вы сможете отметить стену и подобрать бамбуковые панели.
-                </p>
-              </div>
-            </div>
-          )}
+      {/* ── Main: canvas + right tool panel ── */}
+      <div className="flex-1 flex gap-3 p-3 overflow-hidden min-h-0">
 
-          {step === 'mark' && (
-            <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
-              <h2 className="text-lg font-bold mb-2">2. Точки стены</h2>
-              <p className="text-xs text-gray-400 mb-6 font-medium">Кликните на 4 угла стены по часовой стрелке.</p>
-              <div className="flex justify-between mb-8">
-                {[1, 2, 3, 4].map(i => (
-                  <div key={i} className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-all ${points.length >= i ? 'bg-black text-white border-black shadow-md shadow-black/20' : 'text-gray-200 border-gray-100'}`}>
-                    {points.length >= i ? <Check size={16} /> : i}
-                  </div>
-                ))}
-              </div>
-              {points.length > 0 && (
-                <button
-                  onClick={() => setPoints(points.slice(0, -1))}
-                  className="w-full mb-3 py-2 text-[10px] font-bold text-gray-400 hover:text-red-500 flex items-center justify-center gap-1 transition-colors"
-                >
-                  <Undo2 size={12} /> Отменить последнюю точку
-                </button>
-              )}
-              <button
-                disabled={points.length < 4}
-                onClick={() => setStep('edit')}
-                className="w-full py-4 bg-black text-white rounded-2xl font-bold shadow-lg disabled:opacity-20 transition-all active:scale-95"
-              >
-                Начать примерку
-              </button>
-            </div>
-          )}
-
-          {step === 'edit' && (
-            <div className="space-y-6">
-              <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <Columns size={18} />
-                    <h2 className="text-lg font-bold">Панели</h2>
-                  </div>
-                  <button
-                    onClick={handleResetWidths}
-                    className="text-[10px] font-bold text-gray-400 hover:text-black transition-colors"
-                  >
-                    Сброс ширин
-                  </button>
-                </div>
-                <div className="space-y-4">
-                  <div className="flex justify-between text-[10px] font-bold text-gray-400 uppercase">
-                    <span>Кол-во панелей</span>
-                    <span>{panelCount}</span>
-                  </div>
-                  <input
-                    type="range" min="1" max="15" value={panelCount}
-                    onChange={(e) => handleChangePanelCount(parseInt(e.target.value))}
-                    className="w-full h-1 bg-gray-100 rounded-lg appearance-none accent-black"
-                  />
-                </div>
-                {panelCount > 1 && (
-                  <p className="text-[10px] text-gray-400 mt-3 leading-relaxed">
-                    Перетащите разделители на фото, чтобы изменить ширину панелей.
-                  </p>
-                )}
-              </div>
-
-              <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
-                <h2 className="text-lg font-bold mb-2">Материал</h2>
-                <p className="text-[10px] text-gray-400 mb-4 font-bold italic">
-                  {activeSector !== null ? `Красим панель №${activeSector + 1}` : 'Кликните по панели на фото'}
-                </p>
-                <div className="grid grid-cols-2 gap-3">
-                  {BAMBOO_PANELS.map(panel => (
-                    <button
-                      key={panel.id}
-                      onClick={() => {
-                        if (activeSector !== null) {
-                          setSectorMaterials({ ...sectorMaterials, [activeSector]: panel });
-                        } else {
-                          const all: Record<number, Panel> = {};
-                          for (let i = 0; i < panelCount; i++) all[i] = panel;
-                          setSectorMaterials(all);
-                        }
-                      }}
-                      className={`rounded-xl overflow-hidden border-2 transition-all ${activeSector !== null && sectorMaterials[activeSector]?.id === panel.id ? 'border-black scale-105 shadow-md' : 'border-transparent'}`}
-                    >
-                      <img src={panel.texture} className="w-full h-14 object-cover" alt={panel.name} />
-                      <div className="p-2 text-[9px] font-bold text-center bg-white uppercase">{panel.name}</div>
-                    </button>
-                  ))}
-                </div>
-                {activeSector === null && (
-                  <p className="text-[9px] text-gray-300 mt-3 text-center">Без выбора панели — применяется ко всем</p>
-                )}
-              </div>
-
-              {panelCount > 1 && (
-                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
-                  <h2 className="text-lg font-bold mb-4">Молдинг</h2>
-                  <div className="grid grid-cols-4 gap-2 mb-4">
-                    {([
-                      { id: 'none', label: 'Нет', preview: 'bg-gray-100' },
-                      { id: 'gold', label: 'Золото', preview: 'bg-gradient-to-r from-yellow-800 via-yellow-300 to-yellow-800' },
-                      { id: 'black', label: 'Черный', preview: 'bg-gradient-to-r from-black via-gray-600 to-black' },
-                      { id: 'metallic', label: 'Металлик', preview: 'bg-gradient-to-r from-gray-600 via-white to-gray-600' },
-                    ] as const).map(opt => (
-                      <button
-                        key={opt.id}
-                        onClick={() => setMoldingStyle(opt.id)}
-                        className={`flex flex-col items-center gap-1.5 transition-all ${moldingStyle === opt.id ? 'opacity-100' : 'opacity-50'}`}
-                      >
-                        <div className={`w-full h-8 rounded-lg border-2 ${opt.preview} ${moldingStyle === opt.id ? 'border-black shadow-md scale-105' : 'border-transparent'}`} />
-                        <span className="text-[8px] font-bold uppercase text-gray-500">{opt.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                  {moldingStyle !== 'none' && (
-                    <div className="space-y-3 mt-3">
-                      <div className="flex justify-between text-[10px] font-bold text-gray-400 uppercase">
-                        <span>Толщина</span>
-                        <span>{moldingWidth}px</span>
-                      </div>
-                      <input
-                        type="range" min="2" max="20" value={moldingWidth}
-                        onChange={(e) => setMoldingWidth(parseInt(e.target.value))}
-                        className="w-full h-1 bg-gray-100 rounded-lg appearance-none accent-black"
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
-                  <h2 className="text-lg font-bold mb-4">Горизонт. молдинг</h2>
-                  <div className="grid grid-cols-4 gap-2 mb-4">
-                    {([
-                      { id: 'none',     label: 'Нет',     preview: 'bg-gray-100' },
-                      { id: 'gold',     label: 'Золото',  preview: 'bg-gradient-to-b from-yellow-800 via-yellow-300 to-yellow-800' },
-                      { id: 'black',    label: 'Черный',  preview: 'bg-gradient-to-b from-black via-gray-600 to-black' },
-                      { id: 'metallic', label: 'Металлик',preview: 'bg-gradient-to-b from-gray-600 via-white to-gray-600' },
-                    ] as const).map(opt => (
-                      <button
-                        key={opt.id}
-                        onClick={() => setHMoldingStyle(opt.id)}
-                        className={`flex flex-col items-center gap-1.5 transition-all ${hMoldingStyle === opt.id ? 'opacity-100' : 'opacity-50'}`}
-                      >
-                        <div className={`w-full h-8 rounded-lg border-2 ${opt.preview} ${hMoldingStyle === opt.id ? 'border-black shadow-md scale-105' : 'border-transparent'}`} />
-                        <span className="text-[8px] font-bold uppercase text-gray-500">{opt.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                  {hMoldingStyle !== 'none' && (
-                    <div className="space-y-4 mt-1">
-                      <div>
-                        <div className="flex justify-between text-[10px] font-bold text-gray-400 uppercase mb-2">
-                          <span>Количество</span>
-                          <span>{hMoldingPositions.length}</span>
-                        </div>
-                        <input
-                          type="range" min="1" max="5" value={hMoldingCount}
-                          onChange={(e) => {
-                            const n = parseInt(e.target.value);
-                            setHMoldingCount(n);
-                            setHMoldingPositions(Array.from({ length: n }, (_, i) => (i + 1) / (n + 1)));
-                          }}
-                          className="w-full h-1 bg-gray-100 rounded-lg appearance-none accent-black"
-                        />
-                        <button
-                          onClick={() => setHMoldingPositions(Array.from({ length: hMoldingCount }, (_, i) => (i + 1) / (hMoldingCount + 1)))}
-                          className="w-full mt-2 py-1.5 text-[9px] font-bold text-gray-400 hover:text-black flex items-center justify-center gap-1 transition-colors"
-                        >
-                          <Undo2 size={10} /> Выровнять по высоте
-                        </button>
-                      </div>
-                      <div>
-                        <div className="flex justify-between text-[10px] font-bold text-gray-400 uppercase mb-2">
-                          <span>Толщина</span>
-                          <span>{hMoldingWidth}px</span>
-                        </div>
-                        <input
-                          type="range" min="2" max="20" value={hMoldingWidth}
-                          onChange={(e) => setHMoldingWidth(parseInt(e.target.value))}
-                          className="w-full h-1 bg-gray-100 rounded-lg appearance-none accent-black"
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-              <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
-                <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-lg font-bold">Ластик</h2>
-                  <button
-                    onClick={() => { setIsErasing(!isErasing); setActiveSector(null); }}
-                    className={`p-3 rounded-xl transition-all ${isErasing ? 'bg-red-500 text-white shadow-lg' : 'bg-gray-100 text-gray-400'}`}
-                  >
-                    <Eraser size={18} />
-                  </button>
-                </div>
-                <div className="space-y-4">
-                  <div className="flex justify-between text-[10px] font-bold text-gray-400 uppercase">
-                    <span>Размер кисти</span>
-                    <span>{brushSize}px</span>
-                  </div>
-                  <input
-                    type="range" min="10" max="150" value={brushSize}
-                    onChange={(e) => setBrushSize(parseInt(e.target.value))}
-                    className="w-full h-1 bg-gray-100 rounded-lg appearance-none accent-black"
-                  />
-                  <button
-                    onClick={clearMask}
-                    className="w-full py-2 text-[10px] font-bold text-gray-400 hover:text-red-500 flex items-center justify-center gap-1 transition-colors"
-                  >
-                    <Undo2 size={12} /> Очистить маску мебели
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="lg:col-span-9 relative">
+        {/* ── Canvas area ── */}
+        <div className="flex-1 relative min-w-0">
           {step === 'upload' ? (
-            <div className="relative w-full aspect-[16/10] bg-white rounded-[2.5rem] overflow-hidden shadow-2xl border border-gray-200 flex items-center justify-center">
-              <div className="text-center">
-                <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <Layout className="text-gray-300 w-8 h-8" />
-                </div>
-                <p className="text-gray-300 font-bold text-sm">Загрузите фото интерьера слева</p>
+            <label className="flex flex-col items-center justify-center w-full h-full bg-white rounded-3xl border-2 border-dashed border-gray-200 cursor-pointer hover:bg-gray-50 transition-all shadow-sm">
+              <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mb-4">
+                <Upload className="text-gray-400 w-7 h-7" />
               </div>
-            </div>
+              <p className="text-sm font-bold text-gray-400">Загрузите фото интерьера</p>
+              <p className="text-xs text-gray-300 mt-1">JPG, PNG, WEBP</p>
+              <input type="file" className="hidden" onChange={handleImageUpload} accept="image/*" />
+            </label>
           ) : (
-            <div ref={containerRef} className="relative w-full aspect-[16/10] bg-white rounded-[2.5rem] overflow-hidden shadow-2xl border border-gray-200">
+            <div ref={containerRef} className="relative w-full h-full bg-white rounded-3xl overflow-hidden shadow-sm border border-gray-200">
               <canvas
                 ref={mainCanvasRef}
                 onClick={handleCanvasClick}
@@ -930,59 +731,219 @@ const BambooStudio = () => {
                 className="absolute inset-0 w-full h-full touch-none"
                 style={{ cursor: isErasing ? 'none' : step === 'mark' ? 'crosshair' : 'pointer' }}
               />
-
               <canvas ref={maskCanvasRef} className="hidden" />
 
               {isErasing && (
-                <div
-                  className="absolute pointer-events-none border-2 border-white rounded-full mix-blend-difference bg-white/10"
-                  style={{
-                    left: mousePos.x,
-                    top: mousePos.y,
-                    width: brushSize,
-                    height: brushSize,
-                    transform: 'translate(-50%, -50%)',
-                    zIndex: 100
-                  }}
-                />
+                <div className="absolute pointer-events-none border-2 border-white rounded-full mix-blend-difference bg-white/10"
+                  style={{ left: mousePos.x, top: mousePos.y, width: brushSize, height: brushSize, transform: 'translate(-50%,-50%)', zIndex: 100 }} />
               )}
-
-              {step === 'mark' && !isErasing && (
-                <div className="absolute top-8 left-1/2 -translate-x-1/2 bg-white/90 text-black px-6 py-2 rounded-full text-[10px] font-bold shadow-xl backdrop-blur-md border border-gray-100 uppercase tracking-widest pointer-events-none">
-                  {points.length < 4 ? `Кликните на угол стены (${points.length}/4)` : 'Нажмите "Начать примерку"'}
+              {step === 'mark' && (
+                <div className="absolute top-5 left-1/2 -translate-x-1/2 bg-white/90 text-black px-5 py-1.5 rounded-full text-[10px] font-bold shadow-lg backdrop-blur-md border border-gray-100 uppercase tracking-widest pointer-events-none">
+                  {points.length < 4 ? `Кликните на угол стены (${points.length}/4)` : 'Нажмите «Начать примерку»'}
                 </div>
               )}
-
               {step === 'edit' && !isErasing && (
-                <div className="absolute top-8 left-1/2 -translate-x-1/2 bg-white/90 text-black px-6 py-2 rounded-full text-[10px] font-bold shadow-xl backdrop-blur-md border border-gray-100 uppercase tracking-widest pointer-events-none">
+                <div className="absolute top-5 left-1/2 -translate-x-1/2 bg-white/90 text-black px-5 py-1.5 rounded-full text-[10px] font-bold shadow-lg backdrop-blur-md border border-gray-100 uppercase tracking-widest pointer-events-none">
                   {isDraggingDivider ? 'Перемещайте разделитель' : 'Выберите панель или перетащите разделитель'}
                 </div>
               )}
-
               {step === 'edit' && isErasing && (
-                <div className="absolute top-8 left-1/2 -translate-x-1/2 bg-red-500 text-white px-6 py-2 rounded-full text-[10px] font-bold shadow-xl uppercase tracking-widest pointer-events-none">
-                  Режим ластика — рисуйте для удаления панелей
+                <div className="absolute top-5 left-1/2 -translate-x-1/2 bg-red-500 text-white px-5 py-1.5 rounded-full text-[10px] font-bold shadow-lg uppercase tracking-widest pointer-events-none">
+                  Режим ластика — рисуйте для удаления
                 </div>
               )}
             </div>
           )}
+        </div>
 
-          {step === 'edit' && (
-            <div className="mt-8 flex justify-between items-center bg-[#1d1d1f] text-white p-8 rounded-[2.5rem] shadow-2xl">
-              <div>
-                <span className="text-[10px] text-gray-500 font-bold uppercase block mb-1">Режим редактирования</span>
-                <span className="text-xl font-bold tracking-tight">Настройте ваш уникальный дизайн</span>
+        {/* ── Right tool panel ── */}
+        <div className="w-[232px] shrink-0 flex flex-col gap-2 overflow-y-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+
+          {/* UPLOAD step */}
+          {step === 'upload' && (
+            <div className="bg-white rounded-2xl p-4 shadow-sm">
+              <div className="flex items-center gap-1.5 mb-3">
+                <Upload size={12} className="text-gray-400" />
+                <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Загрузка</span>
               </div>
-              <button
-                onClick={handleSave}
-                className="bg-white text-black px-10 py-4 rounded-2xl font-bold flex items-center gap-3 hover:bg-gray-100 transition-all active:scale-95"
-              >
-                <Download size={20} /> Сохранить проект
+              <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:bg-gray-50 transition-all">
+                <Upload className="text-gray-300 mb-2 w-5 h-5" />
+                <span className="text-[9px] font-bold text-gray-400 uppercase">Выбрать файл</span>
+                <input type="file" className="hidden" onChange={handleImageUpload} accept="image/*" />
+              </label>
+              <p className="text-[9px] text-gray-400 mt-3 leading-relaxed">
+                Загрузите фото интерьера — затем отметьте 4 угла стены и подберите панели.
+              </p>
+            </div>
+          )}
+
+          {/* MARK step */}
+          {step === 'mark' && (
+            <div className="bg-white rounded-2xl p-4 shadow-sm">
+              <div className="flex items-center gap-1.5 mb-3">
+                <Check size={12} className="text-gray-400" />
+                <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Разметка стены</span>
+              </div>
+              <p className="text-[9px] text-gray-400 mb-4 leading-relaxed">Кликайте по 4 углам стены по часовой стрелке.</p>
+              <div className="flex justify-between mb-5">
+                {[1,2,3,4].map(i => (
+                  <div key={i} className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${points.length >= i ? 'bg-black text-white border-black' : 'text-gray-200 border-gray-100'}`}>
+                    {points.length >= i ? <Check size={13}/> : i}
+                  </div>
+                ))}
+              </div>
+              {points.length > 0 && (
+                <button onClick={() => setPoints(points.slice(0,-1))}
+                  className="w-full mb-2 py-1.5 text-[9px] font-bold text-gray-400 hover:text-red-500 flex items-center justify-center gap-1 transition-colors">
+                  <Undo2 size={11}/> Отменить точку
+                </button>
+              )}
+              <button disabled={points.length < 4} onClick={() => setStep('edit')}
+                className="w-full py-3 bg-black text-white rounded-xl text-xs font-bold shadow disabled:opacity-20 transition-all active:scale-95">
+                Начать примерку
               </button>
             </div>
           )}
+
+          {/* EDIT step tools */}
+          {step === 'edit' && (<>
+
+            {/* Panels */}
+            <div className="bg-white rounded-2xl p-3.5 shadow-sm">
+              <div className="flex items-center justify-between mb-2.5">
+                <div className="flex items-center gap-1.5">
+                  <Columns size={12} className="text-gray-400"/>
+                  <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Панели</span>
+                </div>
+                <button onClick={handleResetWidths} className="text-[8px] font-bold text-gray-300 hover:text-black transition-colors uppercase tracking-wide">сброс</button>
+              </div>
+              <div className="flex justify-between mb-1">
+                <span className="text-[9px] text-gray-400 font-bold uppercase">Количество</span>
+                <span className="text-[9px] font-bold">{panelCount}</span>
+              </div>
+              <input type="range" min="1" max="15" value={panelCount}
+                onChange={(e) => handleChangePanelCount(parseInt(e.target.value))}
+                className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
+            </div>
+
+            {/* Material */}
+            <div className="bg-white rounded-2xl p-3.5 shadow-sm">
+              <div className="flex items-center gap-1.5 mb-2.5">
+                <span className="w-3 h-3 rounded-full bg-gradient-to-br from-amber-700 to-yellow-400 shrink-0"/>
+                <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Материал</span>
+              </div>
+              <p className="text-[8px] text-gray-400 font-bold italic mb-2.5">
+                {activeSector !== null ? `Панель №${activeSector + 1}` : 'Кликните по панели на фото'}
+              </p>
+              <div className="grid grid-cols-2 gap-1.5">
+                {BAMBOO_PANELS.map(panel => (
+                  <button key={panel.id}
+                    onClick={() => {
+                      if (activeSector !== null) {
+                        setSectorMaterials({ ...sectorMaterials, [activeSector]: panel });
+                      } else {
+                        const all: Record<number, Panel> = {};
+                        for (let i = 0; i < panelCount; i++) all[i] = panel;
+                        setSectorMaterials(all);
+                      }
+                    }}
+                    className={`rounded-xl overflow-hidden border-2 transition-all ${activeSector !== null && sectorMaterials[activeSector]?.id === panel.id ? 'border-black scale-105 shadow-md' : 'border-transparent'}`}>
+                    <img src={panel.texture} className="w-full h-10 object-cover" alt={panel.name}/>
+                    <div className="py-1 text-[8px] font-bold text-center bg-white uppercase">{panel.name}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Vertical molding */}
+            {panelCount > 1 && (
+              <div className="bg-white rounded-2xl p-3.5 shadow-sm">
+                <div className="flex items-center gap-1.5 mb-2.5">
+                  <div className="w-0.5 h-3.5 bg-yellow-500 rounded-full"/>
+                  <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Молдинг верт.</span>
+                </div>
+                <MoldingStyleRow value={moldingStyle} onChange={setMoldingStyle} vertical={true}/>
+                {moldingStyle !== 'none' && (
+                  <div className="mt-2.5">
+                    <div className="flex justify-between mb-1">
+                      <span className="text-[9px] text-gray-400 font-bold uppercase">Толщина</span>
+                      <span className="text-[9px] font-bold">{moldingWidth}px</span>
+                    </div>
+                    <input type="range" min="2" max="20" value={moldingWidth}
+                      onChange={(e) => setMoldingWidth(parseInt(e.target.value))}
+                      className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Horizontal molding */}
+            <div className="bg-white rounded-2xl p-3.5 shadow-sm">
+              <div className="flex items-center gap-1.5 mb-2.5">
+                <div className="w-3.5 h-0.5 bg-yellow-500 rounded-full"/>
+                <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Молдинг гориз.</span>
+              </div>
+              <MoldingStyleRow value={hMoldingStyle} onChange={setHMoldingStyle} vertical={false}/>
+              {hMoldingStyle !== 'none' && (
+                <div className="mt-2.5 space-y-2.5">
+                  <div>
+                    <div className="flex justify-between mb-1">
+                      <span className="text-[9px] text-gray-400 font-bold uppercase">Количество</span>
+                      <span className="text-[9px] font-bold">{hMoldingPositions.length}</span>
+                    </div>
+                    <input type="range" min="1" max="5" value={hMoldingCount}
+                      onChange={(e) => {
+                        const n = parseInt(e.target.value);
+                        setHMoldingCount(n);
+                        setHMoldingPositions(Array.from({length:n},(_,i)=>(i+1)/(n+1)));
+                      }}
+                      className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
+                    <button onClick={() => setHMoldingPositions(Array.from({length:hMoldingCount},(_,i)=>(i+1)/(hMoldingCount+1)))}
+                      className="w-full mt-1.5 py-1 text-[8px] font-bold text-gray-300 hover:text-black flex items-center justify-center gap-1 transition-colors">
+                      <Undo2 size={9}/> Выровнять
+                    </button>
+                  </div>
+                  <div>
+                    <div className="flex justify-between mb-1">
+                      <span className="text-[9px] text-gray-400 font-bold uppercase">Толщина</span>
+                      <span className="text-[9px] font-bold">{hMoldingWidth}px</span>
+                    </div>
+                    <input type="range" min="2" max="20" value={hMoldingWidth}
+                      onChange={(e) => setHMoldingWidth(parseInt(e.target.value))}
+                      className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Eraser */}
+            <div className="bg-white rounded-2xl p-3.5 shadow-sm">
+              <div className="flex items-center justify-between mb-2.5">
+                <div className="flex items-center gap-1.5">
+                  <Eraser size={12} className="text-gray-400"/>
+                  <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Ластик</span>
+                </div>
+                <button onClick={() => { setIsErasing(!isErasing); setActiveSector(null); }}
+                  className={`px-3 py-1 rounded-lg text-[9px] font-bold transition-all ${isErasing ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}>
+                  {isErasing ? 'Вкл' : 'Выкл'}
+                </button>
+              </div>
+              <div className="flex justify-between mb-1">
+                <span className="text-[9px] text-gray-400 font-bold uppercase">Размер</span>
+                <span className="text-[9px] font-bold">{brushSize}px</span>
+              </div>
+              <input type="range" min="10" max="150" value={brushSize}
+                onChange={(e) => setBrushSize(parseInt(e.target.value))}
+                className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
+              <button onClick={clearMask}
+                className="w-full mt-2 py-1 text-[8px] font-bold text-gray-300 hover:text-red-500 flex items-center justify-center gap-1 transition-colors">
+                <Undo2 size={9}/> Очистить маску
+              </button>
+            </div>
+
+          </>)}
         </div>
-      </main>
+      </div>
     </div>
   );
 };
