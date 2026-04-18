@@ -34,11 +34,11 @@ Russian-language web app for visualising bamboo wall panels on interior photos.
 | linen-cement    | Льняное / Цемент       | 6      |
 | rainbow         | Радуга / Хамелеон      | 3      |
 | mirror-gloss    | Зеркальная глянцевая   | 3      |
-| soft-touch      | Soft-touch / Кожа      | 14     |
+| soft-touch      | Soft-touch / Кожа      | 26     |
 
-### Architecture (`src/App.tsx`, ~1200 lines)
+### Architecture (`src/App.tsx`, ~1250 lines)
 - `PANEL_SERIES` — array of 12 series, each with `{ id, name, panels[] }`
-- `BAMBOO_PANELS` — flat array derived from `PANEL_SERIES.flatMap(s => s.panels)` (69 panels)
+- `BAMBOO_PANELS` — flat array derived from `PANEL_SERIES.flatMap(s => s.panels)` (81 панель)
 - `openSeries` state — `Set<string>` of expanded series IDs (accordion)
 - `SeriesAccordion` component — collapsible series headers + 2-column grid of `PanelThumb`
 - `historyRef` — `HistorySnapshot[]` stack (max 50 entries) for general undo
