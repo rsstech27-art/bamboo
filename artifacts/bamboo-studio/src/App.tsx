@@ -1,15 +1,47 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Upload, Layout, Eraser, RotateCcw, Download, Check, Columns, Undo2 } from 'lucide-react';
 
+const BASE = import.meta.env.BASE_URL;
 const BAMBOO_PANELS = [
-  { id: 'natural',  name: 'Натуральный', color: '#e3c18d', texture: 'https://images.unsplash.com/photo-1585314062340-f1a5a7c9328d?auto=format&fit=crop&q=80&w=400' },
-  { id: 'wood',     name: 'Дерево',      color: '#a0724a', texture: 'https://images.unsplash.com/photo-1541123437800-1bb1317badc2?auto=format&fit=crop&q=80&w=400' },
-  { id: 'black',    name: 'Черный',      color: '#2c2c2c', texture: 'https://images.unsplash.com/photo-1505330622279-bf7d7fc918f4?auto=format&fit=crop&q=80&w=400' },
-  { id: 'greige',   name: 'Серо-беж',   color: '#c4bbb0', texture: 'https://images.unsplash.com/photo-1615529162924-f8605388461d?auto=format&fit=crop&q=80&w=400' },
+  { id: '2210-25', article: '2210-25', name: 'Металл матов. серебро',    color: '#8fa0a8', texture: `${BASE}textures/tex-117.jpg` },
+  { id: '2211-25', article: '2211-25', name: 'Металл матов. серый',       color: '#7a8890', texture: `${BASE}textures/tex-118.jpg` },
+  { id: '2212-25', article: '2212-25', name: 'Металл матов. коричн.',     color: '#7a6548', texture: `${BASE}textures/tex-119.jpg` },
+  { id: '2215-25', article: '2215-25', name: 'Металл узорч. серый',       color: '#909898', texture: `${BASE}textures/tex-122.jpg` },
+  { id: '2218-25', article: '2218-25', name: 'Жидкий металл зола',        color: '#909090', texture: `${BASE}textures/tex-126.jpg` },
+  { id: '2219-25', article: '2219-25', name: 'Жидкий металл золото',      color: '#c0a060', texture: `${BASE}textures/tex-127.jpg` },
+  { id: '2220-25', article: '2220-25', name: 'Жидкий металл серебро',     color: '#b0bac5', texture: `${BASE}textures/tex-128.jpg` },
+  { id: '2221-25', article: '2221-25', name: 'Жидкий металл шампанск.',   color: '#c8b898', texture: `${BASE}textures/tex-129.jpg` },
+  { id: '2225-25', article: '2225-25', name: 'ПЭТ матовое шампанское',    color: '#c0a880', texture: `${BASE}textures/tex-133.jpg` },
+  { id: '2227-25', article: '2227-25', name: 'ПЭТ длинное матов. золото', color: '#b09050', texture: `${BASE}textures/tex-135.jpg` },
+  { id: '2228-25', article: '2228-25', name: 'ПЭТ длинный матов. красный',color: '#a83040', texture: `${BASE}textures/tex-136.jpg` },
+  { id: '2005-15', article: '2005-15', name: 'Гальвн. античн. бронза',    color: '#a87858', texture: `${BASE}textures/tex-140.jpg` },
+  { id: '2006-15', article: '2006-15', name: 'Гальваническая зола',       color: '#808880', texture: `${BASE}textures/tex-141.jpg` },
+  { id: '2008-15', article: '2008-15', name: 'Гальвн. вспышка золота',    color: '#c09060', texture: `${BASE}textures/tex-143.jpg` },
+  { id: '2121-10', article: '2121-10', name: 'Космическая зола',          color: '#606870', texture: `${BASE}textures/tex-147.jpg` },
+  { id: '2122-10', article: '2122-10', name: 'Жидкий металл Gucci',       color: '#707878', texture: `${BASE}textures/tex-148.jpg` },
+  { id: '2123-10', article: '2123-10', name: 'Античная бронза',           color: '#987060', texture: `${BASE}textures/tex-149.jpg` },
+  { id: '2132-10', article: '2132-10', name: 'Частицы сине-серые',        color: '#808898', texture: `${BASE}textures/tex-162.jpg` },
+  { id: '2134-10', article: '2134-10', name: 'Частицы золота',            color: '#b09060', texture: `${BASE}textures/tex-164.jpg` },
+  { id: '2135-10', article: '2135-10', name: 'Частицы красн.-коричн.',    color: '#906050', texture: `${BASE}textures/tex-165.jpg` },
+  { id: '8205-10', article: '8205-10', name: 'Металл. кофе из шебни',     color: '#906848', texture: `${BASE}textures/tex-175.jpg` },
+  { id: '8206-10', article: '8206-10', name: 'Металл. камень золото',     color: '#b08868', texture: `${BASE}textures/tex-177.jpg` },
+  { id: '2131-10', article: '2131-10', name: 'Жидкий металл золото',      color: '#c8a060', texture: `${BASE}textures/tex-158.jpg` },
+  { id: '8202-8',  article: '8202-8',  name: 'Розовая медь',              color: '#b89080', texture: `${BASE}textures/tex-185.jpg` },
 ];
 
 type Panel = typeof BAMBOO_PANELS[number];
 type Point = { x: number; y: number };
+
+const PanelThumb = ({ panel, selected, onClick }: { panel: Panel; selected: boolean; onClick: () => void }) => (
+  <button onClick={onClick}
+    className={`rounded-xl overflow-hidden border-2 transition-all active:scale-95 ${selected ? 'border-black shadow-md scale-[1.03]' : 'border-transparent hover:border-gray-200'}`}>
+    <img src={panel.texture} className="w-full h-12 object-cover" alt={panel.name} loading="lazy"/>
+    <div className="bg-white px-1 pb-1 pt-0.5">
+      <div className="text-[7px] font-bold text-center text-gray-600 leading-tight">{panel.name}</div>
+      <div className="text-[6px] text-center text-gray-300 font-mono">{panel.article}</div>
+    </div>
+  </button>
+);
 
 const MIN_PANEL_RATIO = 0.03; // minimum panel width: 3% of wall
 const DIVIDER_HIT_RADIUS = 10; // px in canvas space
@@ -66,6 +98,7 @@ const BambooStudio = () => {
   // Mask stored as strokes — never gets reset by canvas operations
   const maskStrokesRef = useRef<Array<{ x: number; y: number; r: number }>>([]);
   const maskUndoStackRef = useRef<number[]>([]); // stores stroke-array length before each erase drag
+  const textureCacheRef = useRef<Record<string, HTMLImageElement>>({}); // preloaded panel textures
 
   useEffect(() => { imageRef.current = image; }, [image]);
   useEffect(() => { stepRef.current = step; }, [step]);
@@ -152,14 +185,49 @@ const BambooStudio = () => {
 
         const material = curMaterials[i] || BAMBOO_PANELS[0];
 
-        tCtx.fillStyle = material.color;
+        // Draw panel with texture if available, else solid color
+        tCtx.save();
         tCtx.beginPath();
         tCtx.moveTo(p1.x, p1.y);
         tCtx.lineTo(p2.x, p2.y);
         tCtx.lineTo(p3.x, p3.y);
         tCtx.lineTo(p4.x, p4.y);
         tCtx.closePath();
-        tCtx.fill();
+        tCtx.clip();
+
+        const cachedTex = textureCacheRef.current[material.id];
+        if (cachedTex) {
+          const minX = Math.min(p1.x, p2.x, p3.x, p4.x);
+          const maxX = Math.max(p1.x, p2.x, p3.x, p4.x);
+          const minY = Math.min(p1.y, p2.y, p3.y, p4.y);
+          const maxY = Math.max(p1.y, p2.y, p3.y, p4.y);
+          // Tile pattern scaled so texture height ≈ panel height (max 3 repeats)
+          const panelH = maxY - minY;
+          const scale = Math.max(1, panelH / (cachedTex.height * 3));
+          const pattern = tCtx.createPattern(cachedTex, 'repeat');
+          if (pattern) {
+            const m = new DOMMatrix();
+            m.scaleSelf(scale, scale);
+            m.translateSelf(minX / scale, minY / scale);
+            pattern.setTransform(m);
+            tCtx.fillStyle = pattern;
+          } else {
+            tCtx.fillStyle = material.color;
+          }
+          tCtx.fillRect(minX - 1, minY - 1, maxX - minX + 2, maxY - minY + 2);
+        } else {
+          tCtx.fillStyle = material.color;
+          tCtx.fillRect(0, 0, width, height);
+        }
+        tCtx.restore();
+
+        // Re-draw shape outline for selection & dividers
+        tCtx.beginPath();
+        tCtx.moveTo(p1.x, p1.y);
+        tCtx.lineTo(p2.x, p2.y);
+        tCtx.lineTo(p3.x, p3.y);
+        tCtx.lineTo(p4.x, p4.y);
+        tCtx.closePath();
 
         if (curActiveSector === i && !curIsErasing) {
           tCtx.strokeStyle = 'white';
@@ -396,6 +464,20 @@ const BambooStudio = () => {
       ctx.restore();
     }
   }, []);
+
+  // Preload all panel texture images into cache; re-draw when each loads
+  useEffect(() => {
+    BAMBOO_PANELS.forEach(panel => {
+      if (textureCacheRef.current[panel.id]) return;
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        textureCacheRef.current[panel.id] = img;
+        drawFullScene();
+      };
+      img.src = panel.texture;
+    });
+  }, [drawFullScene]);
 
   // Find which divider (index) is near a given canvas point, or -1 if none
   const findNearDivider = useCallback((cx: number, cy: number): number => {
@@ -869,16 +951,19 @@ const BambooStudio = () => {
 
             {/* Material */}
             <div className="bg-white rounded-2xl p-3.5 shadow-sm">
-              <div className="flex items-center gap-1.5 mb-2.5">
+              <div className="flex items-center gap-1.5 mb-2">
                 <span className="w-3 h-3 rounded-full bg-gradient-to-br from-amber-700 to-yellow-400 shrink-0"/>
                 <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Материал</span>
               </div>
-              <p className="text-[8px] text-gray-400 font-bold italic mb-2.5">
-                {activeSector !== null ? `Панель №${activeSector + 1}` : 'Кликните по панели на фото'}
+              <p className="text-[8px] text-gray-400 font-bold italic mb-2">
+                {activeSector !== null ? `Панель №${activeSector + 1} — выберите материал` : 'Кликните по панели → выберите материал'}
               </p>
-              <div className="grid grid-cols-2 gap-1.5">
-                {BAMBOO_PANELS.map(panel => (
-                  <button key={panel.id}
+              {/* Металлическая серия */}
+              <div className="text-[7px] font-black uppercase tracking-widest text-gray-300 mb-1 mt-1">Металлическая серия</div>
+              <div className="grid grid-cols-2 gap-1.5 mb-2">
+                {BAMBOO_PANELS.slice(0, 8).map(panel => (
+                  <PanelThumb key={panel.id} panel={panel}
+                    selected={activeSector !== null ? sectorMaterials[activeSector]?.id === panel.id : false}
                     onClick={() => {
                       if (activeSector !== null) {
                         setSectorMaterials({ ...sectorMaterials, [activeSector]: panel });
@@ -887,11 +972,41 @@ const BambooStudio = () => {
                         for (let i = 0; i < panelCount; i++) all[i] = panel;
                         setSectorMaterials(all);
                       }
-                    }}
-                    className={`rounded-xl overflow-hidden border-2 transition-all ${activeSector !== null && sectorMaterials[activeSector]?.id === panel.id ? 'border-black scale-105 shadow-md' : 'border-transparent'}`}>
-                    <img src={panel.texture} className="w-full h-10 object-cover" alt={panel.name}/>
-                    <div className="py-1 text-[8px] font-bold text-center bg-white uppercase">{panel.name}</div>
-                  </button>
+                    }}/>
+                ))}
+              </div>
+              {/* ПЭТ / Частицы */}
+              <div className="text-[7px] font-black uppercase tracking-widest text-gray-300 mb-1">ПЭТ / Частицы</div>
+              <div className="grid grid-cols-2 gap-1.5 mb-2">
+                {BAMBOO_PANELS.slice(8, 14).map(panel => (
+                  <PanelThumb key={panel.id} panel={panel}
+                    selected={activeSector !== null ? sectorMaterials[activeSector]?.id === panel.id : false}
+                    onClick={() => {
+                      if (activeSector !== null) {
+                        setSectorMaterials({ ...sectorMaterials, [activeSector]: panel });
+                      } else {
+                        const all: Record<number, Panel> = {};
+                        for (let i = 0; i < panelCount; i++) all[i] = panel;
+                        setSectorMaterials(all);
+                      }
+                    }}/>
+                ))}
+              </div>
+              {/* Зеркальная серия */}
+              <div className="text-[7px] font-black uppercase tracking-widest text-gray-300 mb-1">Жидкий металл / Зеркальная</div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {BAMBOO_PANELS.slice(14).map(panel => (
+                  <PanelThumb key={panel.id} panel={panel}
+                    selected={activeSector !== null ? sectorMaterials[activeSector]?.id === panel.id : false}
+                    onClick={() => {
+                      if (activeSector !== null) {
+                        setSectorMaterials({ ...sectorMaterials, [activeSector]: panel });
+                      } else {
+                        const all: Record<number, Panel> = {};
+                        for (let i = 0; i < panelCount; i++) all[i] = panel;
+                        setSectorMaterials(all);
+                      }
+                    }}/>
                 ))}
               </div>
             </div>
