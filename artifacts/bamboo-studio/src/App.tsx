@@ -11,41 +11,65 @@ const BAMBOO_PANELS = [
 type Panel = typeof BAMBOO_PANELS[number];
 type Point = { x: number; y: number };
 
+const MIN_PANEL_RATIO = 0.03; // minimum panel width: 3% of wall
+const DIVIDER_HIT_RADIUS = 10; // px in canvas space
+
+function makeEqualDividers(count: number): number[] {
+  const dividers: number[] = [];
+  for (let i = 1; i < count; i++) dividers.push(i / count);
+  return dividers;
+}
+
 const BambooStudio = () => {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [step, setStep] = useState<'upload' | 'mark' | 'edit'>('upload');
   const [points, setPoints] = useState<Point[]>([]);
   const [panelCount, setPanelCount] = useState(5);
+  // dividerPositions: array of N-1 values in (0,1), sorted ascending
+  const [dividerPositions, setDividerPositions] = useState<number[]>(makeEqualDividers(5));
   const [sectorMaterials, setSectorMaterials] = useState<Record<number, Panel>>({});
   const [activeSector, setActiveSector] = useState<number | null>(null);
   const [brushSize, setBrushSize] = useState(40);
   const [isErasing, setIsErasing] = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const [isDraggingDivider, setIsDraggingDivider] = useState(false);
 
   const mainCanvasRef = useRef<HTMLCanvasElement>(null);
   const maskCanvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Refs to always have the latest state inside drawFullScene without stale closures
+  // Refs for stable drawFullScene
   const imageRef = useRef<HTMLImageElement | null>(null);
   const stepRef = useRef<'upload' | 'mark' | 'edit'>('upload');
   const pointsRef = useRef<Point[]>([]);
   const panelCountRef = useRef(5);
+  const dividerPositionsRef = useRef<number[]>(makeEqualDividers(5));
   const sectorMaterialsRef = useRef<Record<number, Panel>>({});
   const activeSectorRef = useRef<number | null>(null);
   const isErasingRef = useRef(false);
+  const draggingDividerIndexRef = useRef<number | null>(null);
 
-  // Keep refs in sync with state
   useEffect(() => { imageRef.current = image; }, [image]);
   useEffect(() => { stepRef.current = step; }, [step]);
   useEffect(() => { pointsRef.current = points; }, [points]);
   useEffect(() => { panelCountRef.current = panelCount; }, [panelCount]);
+  useEffect(() => { dividerPositionsRef.current = dividerPositions; }, [dividerPositions]);
   useEffect(() => { sectorMaterialsRef.current = sectorMaterials; }, [sectorMaterials]);
   useEffect(() => { activeSectorRef.current = activeSector; }, [activeSector]);
   useEffect(() => { isErasingRef.current = isErasing; }, [isErasing]);
 
-  // Stable drawFullScene that always reads fresh data from refs
+  // Returns the start/end ratio for each sector based on divider positions
+  const getSectorBounds = (dividers: number[], count: number) => {
+    const bounds: { start: number; end: number }[] = [];
+    for (let i = 0; i < count; i++) {
+      const start = i === 0 ? 0 : dividers[i - 1];
+      const end = i === count - 1 ? 1 : dividers[i];
+      bounds.push({ start, end });
+    }
+    return bounds;
+  };
+
   const drawFullScene = useCallback(() => {
     const img = imageRef.current;
     const canvas = mainCanvasRef.current;
@@ -59,6 +83,7 @@ const BambooStudio = () => {
     const pts = pointsRef.current;
     const curStep = stepRef.current;
     const curPanelCount = panelCountRef.current;
+    const curDividers = dividerPositionsRef.current;
     const curMaterials = sectorMaterialsRef.current;
     const curActiveSector = activeSectorRef.current;
     const curIsErasing = isErasingRef.current;
@@ -92,9 +117,10 @@ const BambooStudio = () => {
       const tCtx = tempCanvas.getContext('2d');
       if (!tCtx) return;
 
+      const bounds = getSectorBounds(curDividers, curPanelCount);
+
       for (let i = 0; i < curPanelCount; i++) {
-        const rStart = i / curPanelCount;
-        const rEnd = (i + 1) / curPanelCount;
+        const { start: rStart, end: rEnd } = bounds[i];
 
         const p1 = { x: pts[0].x + (pts[1].x - pts[0].x) * rStart, y: pts[0].y + (pts[1].y - pts[0].y) * rStart };
         const p2 = { x: pts[0].x + (pts[1].x - pts[0].x) * rEnd, y: pts[0].y + (pts[1].y - pts[0].y) * rEnd };
@@ -118,12 +144,53 @@ const BambooStudio = () => {
           tCtx.stroke();
         }
 
-        tCtx.strokeStyle = 'rgba(0,0,0,0.1)';
+        tCtx.strokeStyle = 'rgba(0,0,0,0.12)';
         tCtx.lineWidth = 1;
         tCtx.stroke();
       }
 
-      // Apply eraser mask WITHOUT clearing it
+      // Draw draggable dividers as visible handles
+      if (!curIsErasing) {
+        curDividers.forEach((ratio) => {
+          // Point on top edge
+          const topX = pts[0].x + (pts[1].x - pts[0].x) * ratio;
+          const topY = pts[0].y + (pts[1].y - pts[0].y) * ratio;
+          // Point on bottom edge
+          const botX = pts[3].x + (pts[2].x - pts[3].x) * ratio;
+          const botY = pts[3].y + (pts[2].y - pts[3].y) * ratio;
+
+          tCtx.save();
+          tCtx.strokeStyle = 'rgba(255,255,255,0.6)';
+          tCtx.lineWidth = 2;
+          tCtx.setLineDash([6, 4]);
+          tCtx.beginPath();
+          tCtx.moveTo(topX, topY);
+          tCtx.lineTo(botX, botY);
+          tCtx.stroke();
+          tCtx.restore();
+
+          // Handle circle at midpoint
+          const midX = (topX + botX) / 2;
+          const midY = (topY + botY) / 2;
+          tCtx.save();
+          tCtx.fillStyle = 'white';
+          tCtx.strokeStyle = 'rgba(0,0,0,0.3)';
+          tCtx.lineWidth = 1.5;
+          tCtx.beginPath();
+          tCtx.arc(midX, midY, 8, 0, Math.PI * 2);
+          tCtx.fill();
+          tCtx.stroke();
+          // Arrow hints
+          tCtx.fillStyle = '#555';
+          tCtx.font = 'bold 10px sans-serif';
+          tCtx.textAlign = 'center';
+          tCtx.textBaseline = 'middle';
+          tCtx.fillText('⇔', midX, midY);
+          tCtx.restore();
+        });
+      }
+
+      // Apply eraser mask
       if (maskCanvas && maskCanvas.width > 0 && maskCanvas.height > 0) {
         tCtx.globalCompositeOperation = 'destination-out';
         tCtx.drawImage(maskCanvas, 0, 0);
@@ -135,101 +202,157 @@ const BambooStudio = () => {
       ctx.drawImage(tempCanvas, 0, 0);
       ctx.restore();
     }
-  }, []); // No deps — always reads from refs
+  }, []);
 
-  // Initialize canvas dimensions only when image changes (not on every state update)
+  // Find which divider (index) is near a given canvas point, or -1 if none
+  const findNearDivider = useCallback((cx: number, cy: number): number => {
+    const pts = pointsRef.current;
+    const dividers = dividerPositionsRef.current;
+    if (pts.length < 4) return -1;
+
+    for (let d = 0; d < dividers.length; d++) {
+      const ratio = dividers[d];
+      const topX = pts[0].x + (pts[1].x - pts[0].x) * ratio;
+      const topY = pts[0].y + (pts[1].y - pts[0].y) * ratio;
+      const botX = pts[3].x + (pts[2].x - pts[3].x) * ratio;
+      const botY = pts[3].y + (pts[2].y - pts[3].y) * ratio;
+      const midX = (topX + botX) / 2;
+      const midY = (topY + botY) / 2;
+
+      const dist = Math.sqrt((cx - midX) ** 2 + (cy - midY) ** 2);
+      if (dist <= DIVIDER_HIT_RADIUS * 2) return d;
+    }
+    return -1;
+  }, []);
+
+  // Convert a canvas X position to a wall ratio (0-1)
+  const canvasXToWallRatio = useCallback((cx: number, cy: number): number => {
+    const pts = pointsRef.current;
+    if (pts.length < 4) return 0;
+
+    // Project point onto the top edge interpolation
+    const totalLen = Math.sqrt((pts[1].x - pts[0].x) ** 2 + (pts[1].y - pts[0].y) ** 2);
+    if (totalLen === 0) return 0;
+    const dx = pts[1].x - pts[0].x;
+    const dy = pts[1].y - pts[0].y;
+    const t = ((cx - pts[0].x) * dx + (cy - pts[0].y) * dy) / (totalLen * totalLen);
+    return Math.max(0, Math.min(1, t));
+  }, []);
+
+  // Initialize canvas only when image changes
   useEffect(() => {
     if (!image || !containerRef.current || !mainCanvasRef.current || !maskCanvasRef.current) return;
-
-    const container = containerRef.current;
-    const { width, height } = container.getBoundingClientRect();
-
-    // Set main canvas size
+    const { width, height } = containerRef.current.getBoundingClientRect();
     mainCanvasRef.current.width = width;
     mainCanvasRef.current.height = height;
-
-    // Reset mask canvas only when a new image is loaded (clears old erasing)
     maskCanvasRef.current.width = width;
     maskCanvasRef.current.height = height;
-
     drawFullScene();
   }, [image, drawFullScene]);
 
-  // Redraw whenever visible state changes — but WITHOUT touching canvas dimensions
+  // Redraw on state changes without touching canvas dimensions
   useEffect(() => {
     if (!image) return;
     drawFullScene();
-  }, [points, step, sectorMaterials, panelCount, activeSector, isErasing, drawFullScene, image]);
+  }, [points, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, drawFullScene, image]);
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (f) => {
-        const img = new Image();
-        img.onload = () => {
-          setImage(img);
-          setStep('mark');
-          setPoints([]);
-          setSectorMaterials({});
-          setActiveSector(null);
-          setIsErasing(false);
-        };
-        img.src = f.target?.result as string;
-      };
-      reader.readAsDataURL(file);
+  const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = mainCanvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY,
+    };
+  };
+
+  const getScreenCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = mainCanvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  };
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    setIsDrawing(true);
+    if (isErasing || step !== 'edit') return;
+    const { x, y } = getCanvasCoords(e);
+    const divIdx = findNearDivider(x, y);
+    if (divIdx !== -1) {
+      draggingDividerIndexRef.current = divIdx;
+      setIsDraggingDivider(true);
     }
   };
 
-  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (isErasing) return;
-    if (!mainCanvasRef.current) return;
-
-    const rect = mainCanvasRef.current.getBoundingClientRect();
-    // Scale mouse coords to actual canvas pixel coords
-    const scaleX = mainCanvasRef.current.width / rect.width;
-    const scaleY = mainCanvasRef.current.height / rect.height;
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top) * scaleY;
-
-    if (step === 'mark' && points.length < 4) {
-      setPoints([...points, { x, y }]);
-    } else if (step === 'edit') {
-      checkSectorClick(x, y);
-    }
-  };
-
-  const checkSectorClick = (x: number, y: number) => {
-    if (points.length < 4) return;
-    const minX = Math.min(...points.map(p => p.x));
-    const maxX = Math.max(...points.map(p => p.x));
-
-    if (x >= minX && x <= maxX) {
-      const relativeX = (x - minX) / (maxX - minX);
-      const sectorIndex = Math.floor(relativeX * panelCount);
-      setActiveSector(sectorIndex === activeSector ? null : sectorIndex);
-    }
+  const handleMouseUp = () => {
+    setIsDrawing(false);
+    draggingDividerIndexRef.current = null;
+    setIsDraggingDivider(false);
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!mainCanvasRef.current) return;
-    const rect = mainCanvasRef.current.getBoundingClientRect();
-    const scaleX = mainCanvasRef.current.width / rect.width;
-    const scaleY = mainCanvasRef.current.height / rect.height;
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top) * scaleY;
+    const { x: sx, y: sy } = getScreenCoords(e);
+    setMousePos({ x: sx, y: sy });
 
-    // Update cursor position (in screen coords for the cursor overlay)
-    setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    const { x, y } = getCanvasCoords(e);
 
+    // Dragging a divider
+    if (!isErasing && draggingDividerIndexRef.current !== null) {
+      const idx = draggingDividerIndexRef.current;
+      const newRatio = canvasXToWallRatio(x, y);
+      setDividerPositions(prev => {
+        const updated = [...prev];
+        const minLeft = idx === 0 ? MIN_PANEL_RATIO : updated[idx - 1] + MIN_PANEL_RATIO;
+        const maxRight = idx === updated.length - 1 ? 1 - MIN_PANEL_RATIO : updated[idx + 1] - MIN_PANEL_RATIO;
+        updated[idx] = Math.max(minLeft, Math.min(maxRight, newRatio));
+        return updated;
+      });
+      return;
+    }
+
+    // Eraser drawing
     if (isErasing && isDrawing && maskCanvasRef.current) {
+      const canvas = mainCanvasRef.current;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
       const mCtx = maskCanvasRef.current.getContext('2d');
       if (!mCtx) return;
       mCtx.fillStyle = 'black';
       mCtx.beginPath();
       mCtx.arc(x, y, (brushSize / 2) * scaleX, 0, Math.PI * 2);
       mCtx.fill();
-      drawFullScene(); // Calls stable ref-based version
+      drawFullScene();
+    }
+
+    // Update cursor based on proximity to divider
+    if (step === 'edit' && !isErasing && mainCanvasRef.current) {
+      const divIdx = findNearDivider(x, y);
+      mainCanvasRef.current.style.cursor = divIdx !== -1 ? 'ew-resize' : 'pointer';
+    }
+  };
+
+  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (isErasing || isDraggingDivider) return;
+    const { x, y } = getCanvasCoords(e);
+
+    // Don't trigger sector selection if click was near a divider
+    if (step === 'edit' && findNearDivider(x, y) !== -1) return;
+
+    if (step === 'mark' && points.length < 4) {
+      setPoints([...points, { x, y }]);
+    } else if (step === 'edit') {
+      // Determine which sector was clicked using divider positions
+      const pts = pointsRef.current;
+      if (pts.length < 4) return;
+      const ratio = canvasXToWallRatio(x, y);
+      const bounds = getSectorBounds(dividerPositionsRef.current, panelCountRef.current);
+      const idx = bounds.findIndex(b => ratio >= b.start && ratio <= b.end);
+      if (idx !== -1) {
+        setActiveSector(idx === activeSector ? null : idx);
+      }
     }
   };
 
@@ -248,6 +371,38 @@ const BambooStudio = () => {
     link.download = 'bamboo-studio-project.png';
     link.href = mainCanvasRef.current.toDataURL();
     link.click();
+  };
+
+  const handleChangePanelCount = (count: number) => {
+    setPanelCount(count);
+    setDividerPositions(makeEqualDividers(count));
+    setActiveSector(null);
+  };
+
+  const handleResetWidths = () => {
+    setDividerPositions(makeEqualDividers(panelCount));
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (f) => {
+        const img = new Image();
+        img.onload = () => {
+          setImage(img);
+          setStep('mark');
+          setPoints([]);
+          setSectorMaterials({});
+          setActiveSector(null);
+          setIsErasing(false);
+          setPanelCount(5);
+          setDividerPositions(makeEqualDividers(5));
+        };
+        img.src = f.target?.result as string;
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   return (
@@ -317,27 +472,40 @@ const BambooStudio = () => {
           {step === 'edit' && (
             <div className="space-y-6">
               <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
-                <div className="flex items-center gap-2 mb-4">
-                  <Columns size={18} />
-                  <h2 className="text-lg font-bold">Размер панелей</h2>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Columns size={18} />
+                    <h2 className="text-lg font-bold">Панели</h2>
+                  </div>
+                  <button
+                    onClick={handleResetWidths}
+                    className="text-[10px] font-bold text-gray-400 hover:text-black transition-colors"
+                  >
+                    Сброс ширин
+                  </button>
                 </div>
                 <div className="space-y-4">
                   <div className="flex justify-between text-[10px] font-bold text-gray-400 uppercase">
-                    <span>Кол-во секторов</span>
+                    <span>Кол-во панелей</span>
                     <span>{panelCount}</span>
                   </div>
                   <input
                     type="range" min="1" max="15" value={panelCount}
-                    onChange={(e) => { setPanelCount(parseInt(e.target.value)); setActiveSector(null); }}
+                    onChange={(e) => handleChangePanelCount(parseInt(e.target.value))}
                     className="w-full h-1 bg-gray-100 rounded-lg appearance-none accent-black"
                   />
                 </div>
+                {panelCount > 1 && (
+                  <p className="text-[10px] text-gray-400 mt-3 leading-relaxed">
+                    Перетащите разделители на фото, чтобы изменить ширину панелей.
+                  </p>
+                )}
               </div>
 
               <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
                 <h2 className="text-lg font-bold mb-2">Материал</h2>
                 <p className="text-[10px] text-gray-400 mb-4 font-bold italic">
-                  {activeSector !== null ? `Красим сектор №${activeSector + 1}` : 'Кликните по панели на фото'}
+                  {activeSector !== null ? `Красим панель №${activeSector + 1}` : 'Кликните по панели на фото'}
                 </p>
                 <div className="grid grid-cols-2 gap-3">
                   {BAMBOO_PANELS.map(panel => (
@@ -360,7 +528,7 @@ const BambooStudio = () => {
                   ))}
                 </div>
                 {activeSector === null && (
-                  <p className="text-[9px] text-gray-300 mt-3 text-center">Выбор без сектора применяет материал ко всей стене</p>
+                  <p className="text-[9px] text-gray-300 mt-3 text-center">Без выбора панели — применяется ко всем</p>
                 )}
               </div>
 
@@ -412,9 +580,9 @@ const BambooStudio = () => {
                 ref={mainCanvasRef}
                 onClick={handleCanvasClick}
                 onMouseMove={handleMouseMove}
-                onMouseDown={() => setIsDrawing(true)}
-                onMouseUp={() => setIsDrawing(false)}
-                onMouseLeave={() => setIsDrawing(false)}
+                onMouseDown={handleMouseDown}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
                 className="absolute inset-0 w-full h-full touch-none"
                 style={{ cursor: isErasing ? 'none' : step === 'mark' ? 'crosshair' : 'pointer' }}
               />
@@ -443,7 +611,7 @@ const BambooStudio = () => {
 
               {step === 'edit' && !isErasing && (
                 <div className="absolute top-8 left-1/2 -translate-x-1/2 bg-white/90 text-black px-6 py-2 rounded-full text-[10px] font-bold shadow-xl backdrop-blur-md border border-gray-100 uppercase tracking-widest pointer-events-none">
-                  Выберите панель на стене, чтобы изменить её цвет
+                  {isDraggingDivider ? 'Перемещайте разделитель' : 'Выберите панель или перетащите разделитель'}
                 </div>
               )}
 
