@@ -1125,12 +1125,20 @@ const BambooStudio = () => {
         {/* ── Canvas area ── */}
         <div className="flex-1 relative min-w-0">
           {step === 'upload' ? (
-            <label className="flex flex-col items-center justify-center w-full h-full bg-white rounded-3xl border-2 border-dashed border-gray-200 cursor-pointer hover:bg-gray-50 transition-all shadow-sm">
-              <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mb-4">
-                <Upload className="text-gray-400 w-7 h-7" />
+            <label className="relative flex flex-col items-center justify-center w-full h-full rounded-3xl border-2 border-dashed border-gray-300 cursor-pointer overflow-hidden shadow-sm group">
+              {/* Background image at 50% opacity */}
+              <div className="absolute inset-0 bg-cover bg-center transition-opacity group-hover:opacity-60"
+                style={{ backgroundImage: 'url(/upload-bg.jpg)', opacity: 0.5 }} />
+              {/* White tint overlay */}
+              <div className="absolute inset-0 bg-white/40" />
+              {/* Content */}
+              <div className="relative z-10 flex flex-col items-center">
+                <div className="w-16 h-16 bg-white/80 backdrop-blur-sm rounded-2xl flex items-center justify-center mb-4 shadow-md">
+                  <Upload className="text-gray-500 w-7 h-7" />
+                </div>
+                <p className="text-sm font-bold text-gray-700 drop-shadow">Загрузите фото интерьера</p>
+                <p className="text-xs text-gray-500 mt-1 drop-shadow">JPG, PNG, WEBP</p>
               </div>
-              <p className="text-sm font-bold text-gray-400">Загрузите фото интерьера</p>
-              <p className="text-xs text-gray-300 mt-1">JPG, PNG, WEBP</p>
               <input type="file" className="hidden" onChange={handleImageUpload} accept="image/*" />
             </label>
           ) : (
