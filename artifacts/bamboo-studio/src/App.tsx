@@ -457,33 +457,46 @@ const BambooStudio = () => {
           const panelW = maxX - minX;
           const panelH = maxY - minY;
           if (material.textureStretch) {
-            // Stretch mode: tile at 80% panel size so grain appears 20% smaller
-            const WOOD_SCALE = 0.8;
-            const tileW = Math.max(1, Math.ceil(panelW * WOOD_SCALE));
-            const tileH = Math.max(1, Math.ceil(panelH * WOOD_SCALE));
-            const tileCanvas = document.createElement('canvas');
-            tileCanvas.width = tileW; tileCanvas.height = tileH;
-            const tileCtx = tileCanvas.getContext('2d')!;
-            tileCtx.drawImage(cachedTex, 0, 0, tileW, tileH);
-            const woodPattern = tCtx.createPattern(tileCanvas, 'repeat');
-            if (woodPattern) {
-              woodPattern.setTransform(new DOMMatrix().translate(minX, minY));
-              tCtx.fillStyle = woodPattern;
-              tCtx.fillRect(minX - 1, minY - 1, panelW + 2, panelH + 2);
+            if (material.slatOverlay) {
+              // Slat panels: stretch texture to fill the entire panel (no tiling)
+              tCtx.drawImage(cachedTex, minX, minY, panelW, panelH);
+              // Also draw to woodCanvas for extra opacity boost
+              wCtx.save();
+              wCtx.beginPath();
+              wCtx.moveTo(p1.x, p1.y); wCtx.lineTo(p2.x, p2.y);
+              wCtx.lineTo(p3.x, p3.y); wCtx.lineTo(p4.x, p4.y);
+              wCtx.closePath(); wCtx.clip();
+              wCtx.drawImage(cachedTex, minX, minY, panelW, panelH);
+              wCtx.restore();
+            } else {
+              // Wood panels: tile at 80% panel size so grain appears 20% smaller
+              const WOOD_SCALE = 0.8;
+              const tileW = Math.max(1, Math.ceil(panelW * WOOD_SCALE));
+              const tileH = Math.max(1, Math.ceil(panelH * WOOD_SCALE));
+              const tileCanvas = document.createElement('canvas');
+              tileCanvas.width = tileW; tileCanvas.height = tileH;
+              const tileCtx = tileCanvas.getContext('2d')!;
+              tileCtx.drawImage(cachedTex, 0, 0, tileW, tileH);
+              const woodPattern = tCtx.createPattern(tileCanvas, 'repeat');
+              if (woodPattern) {
+                woodPattern.setTransform(new DOMMatrix().translate(minX, minY));
+                tCtx.fillStyle = woodPattern;
+                tCtx.fillRect(minX - 1, minY - 1, panelW + 2, panelH + 2);
+              }
+              // Also draw to woodCanvas for extra opacity boost
+              wCtx.save();
+              wCtx.beginPath();
+              wCtx.moveTo(p1.x, p1.y); wCtx.lineTo(p2.x, p2.y);
+              wCtx.lineTo(p3.x, p3.y); wCtx.lineTo(p4.x, p4.y);
+              wCtx.closePath(); wCtx.clip();
+              const woodPattern2 = wCtx.createPattern(tileCanvas, 'repeat');
+              if (woodPattern2) {
+                woodPattern2.setTransform(new DOMMatrix().translate(minX, minY));
+                wCtx.fillStyle = woodPattern2;
+                wCtx.fillRect(minX - 1, minY - 1, panelW + 2, panelH + 2);
+              }
+              wCtx.restore();
             }
-            // Also draw to woodCanvas for extra opacity boost
-            wCtx.save();
-            wCtx.beginPath();
-            wCtx.moveTo(p1.x, p1.y); wCtx.lineTo(p2.x, p2.y);
-            wCtx.lineTo(p3.x, p3.y); wCtx.lineTo(p4.x, p4.y);
-            wCtx.closePath(); wCtx.clip();
-            const woodPattern2 = wCtx.createPattern(tileCanvas, 'repeat');
-            if (woodPattern2) {
-              woodPattern2.setTransform(new DOMMatrix().translate(minX, minY));
-              wCtx.fillStyle = woodPattern2;
-              wCtx.fillRect(minX - 1, minY - 1, panelW + 2, panelH + 2);
-            }
-            wCtx.restore();
           } else {
             const ts = material.textureScale ?? 1;
             // If textureScale set: shrink tile to 1/ts (realistic repeat), else auto-fit
@@ -507,22 +520,22 @@ const BambooStudio = () => {
           tCtx.fillRect(0, 0, width, height);
         }
 
-        // Slat (рейки) gap overlay — vertical dark stripes simulating gaps between slats
+        // Slat (рейки) gap overlay — fine vertical dark stripes simulating gaps between slats
         if (material.slatOverlay) {
-          const SLAT_W = 38;
-          const GAP_W = 6;
+          const SLAT_W = 4;
+          const GAP_W = 1;
           const PERIOD = SLAT_W + GAP_W;
           const startX = Math.floor(minX / PERIOD) * PERIOD;
           for (let sx = startX; sx < maxX + PERIOD; sx += PERIOD) {
             const gx = sx + SLAT_W;
-            const gapGrad = tCtx.createLinearGradient(gx - 1, 0, gx + GAP_W + 1, 0);
-            gapGrad.addColorStop(0,    'rgba(0,0,0,0.00)');
-            gapGrad.addColorStop(0.2,  'rgba(0,0,0,0.55)');
-            gapGrad.addColorStop(0.5,  'rgba(0,0,0,0.80)');
-            gapGrad.addColorStop(0.8,  'rgba(0,0,0,0.55)');
-            gapGrad.addColorStop(1,    'rgba(0,0,0,0.00)');
+            const gapGrad = tCtx.createLinearGradient(gx - 0.5, 0, gx + GAP_W + 0.5, 0);
+            gapGrad.addColorStop(0,   'rgba(0,0,0,0.00)');
+            gapGrad.addColorStop(0.3, 'rgba(0,0,0,0.65)');
+            gapGrad.addColorStop(0.5, 'rgba(0,0,0,0.85)');
+            gapGrad.addColorStop(0.7, 'rgba(0,0,0,0.65)');
+            gapGrad.addColorStop(1,   'rgba(0,0,0,0.00)');
             tCtx.fillStyle = gapGrad;
-            tCtx.fillRect(gx - 1, minY - 1, GAP_W + 2, maxY - minY + 2);
+            tCtx.fillRect(gx - 0.5, minY - 1, GAP_W + 1, maxY - minY + 2);
           }
         }
 
