@@ -1060,7 +1060,7 @@ const BambooStudio = () => {
       ══════════════════════════════════════════ */}
       <section className="bg-[#1c1c1c] text-white pt-12 pb-14 px-6">
         <div className="max-w-5xl mx-auto text-center">
-          <h1 className="text-4xl md:text-5xl font-black leading-tight mb-5">
+          <h1 className="text-3xl md:text-5xl font-black leading-tight mb-5">
             Онлайн-примерочная<br/>стеновых панелей
           </h1>
           <p className="text-gray-400 text-lg max-w-2xl mx-auto mb-9 leading-relaxed">
@@ -1094,7 +1094,7 @@ const BambooStudio = () => {
       {/* ══════════════════════════════════════════
           APP TOOL
       ══════════════════════════════════════════ */}
-      <section ref={toolRef} id="tool" className="flex flex-col bg-[#ebebed]" style={{ height: 'calc(100vh - 64px)' }}>
+      <section ref={toolRef} id="tool" className="flex flex-col bg-[#ebebed] md:h-[calc(100vh-64px)]">
         {/* ── App Nav ── */}
         <nav className="h-12 shrink-0 border-b border-gray-200 bg-white/90 backdrop-blur-xl flex justify-between items-center px-5 z-40">
           <div className="flex items-center gap-2.5">
@@ -1119,10 +1119,10 @@ const BambooStudio = () => {
         </nav>
 
         {/* ── Main: canvas + right tool panel ── */}
-        <div className="flex-1 flex gap-3 p-3 overflow-hidden min-h-0">
+        <div className="flex-1 flex flex-col md:flex-row gap-3 p-3 overflow-y-auto md:overflow-hidden md:min-h-0">
 
         {/* ── Canvas area ── */}
-        <div className="flex-1 relative min-w-0">
+        <div className="flex-1 relative min-w-0 min-h-[55vw] md:min-h-0">
           {step === 'upload' ? (
             <label className="relative flex flex-col items-center justify-center w-full h-full rounded-3xl border-2 border-dashed border-gray-300 cursor-pointer overflow-hidden shadow-sm group">
               {/* Background image at 50% opacity */}
@@ -1178,7 +1178,7 @@ const BambooStudio = () => {
         </div>
 
         {/* ── Right tool panel ── */}
-        <div className="w-[232px] shrink-0 flex flex-col gap-2 overflow-y-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+        <div className="w-full md:w-[232px] shrink-0 flex flex-col gap-2 overflow-y-auto pb-4 md:pb-1" style={{ scrollbarWidth: 'none' }}>
 
           {/* MARK step */}
           {step === 'mark' && (
