@@ -117,24 +117,24 @@ const PANEL_SERIES = [
   {
     id: 'wood', name: 'Натуральное дерево',
     panels: [
-      { id: 'W-331', article: 'W-331', name: 'Дуб натуральный',     color: '#c8a870', texture: `${BASE}textures/tex-331.jpg` },
-      { id: 'W-332', article: 'W-332', name: 'Дуб бежевый',         color: '#d4b888', texture: `${BASE}textures/tex-332.jpg` },
-      { id: 'W-334', article: 'W-334', name: 'Дуб слоновая кость',  color: '#dcc89a', texture: `${BASE}textures/tex-334.jpg` },
-      { id: 'W-340', article: 'W-340', name: 'Дуб медовый',         color: '#c8a060', texture: `${BASE}textures/tex-340.jpg` },
-      { id: 'W-341', article: 'W-341', name: 'Дуб янтарный',        color: '#b89050', texture: `${BASE}textures/tex-341.jpg` },
-      { id: 'W-342', article: 'W-342', name: 'Дуб светлый',         color: '#d8c090', texture: `${BASE}textures/tex-342.jpg` },
-      { id: 'W-349', article: 'W-349', name: 'Ясень натуральный',   color: '#c8a870', texture: `${BASE}textures/tex-349.jpg` },
-      { id: 'W-350', article: 'W-350', name: 'Ясень белёный',       color: '#d4b880', texture: `${BASE}textures/tex-350.jpg` },
-      { id: 'W-351', article: 'W-351', name: 'Ясень светлый',       color: '#c8a870', texture: `${BASE}textures/tex-351.jpg` },
-      { id: 'W-352', article: 'W-352', name: 'Ясень тёплый',        color: '#b08050', texture: `${BASE}textures/tex-352.jpg` },
-      { id: 'W-333', article: 'W-333', name: 'Орех светлый',        color: '#a88060', texture: `${BASE}textures/tex-333.jpg` },
-      { id: 'W-336', article: 'W-336', name: 'Ясень серебристый',   color: '#b0a898', texture: `${BASE}textures/tex-336.jpg` },
-      { id: 'W-343', article: 'W-343', name: 'Дуб дымчатый',        color: '#7a7068', texture: `${BASE}textures/tex-343.jpg` },
-      { id: 'W-344', article: 'W-344', name: 'Дуб серый',           color: '#807870', texture: `${BASE}textures/tex-344.jpg` },
-      { id: 'W-353', article: 'W-353', name: 'Ясень серый',         color: '#787068', texture: `${BASE}textures/tex-353.jpg` },
-      { id: 'W-345', article: 'W-345', name: 'Орех тёмный',         color: '#6a4830', texture: `${BASE}textures/tex-345.jpg` },
-      { id: 'W-354', article: 'W-354', name: 'Ясень тёмный',        color: '#605848', texture: `${BASE}textures/tex-354.jpg` },
-      { id: 'W-335', article: 'W-335', name: 'Венге',               color: '#483830', texture: `${BASE}textures/tex-335.jpg` },
+      { id: 'W-331', article: 'W-331', name: 'Дуб натуральный',     color: '#c8a870', texture: `${BASE}textures/tex-331.jpg`, textureStretch: true },
+      { id: 'W-332', article: 'W-332', name: 'Дуб бежевый',         color: '#d4b888', texture: `${BASE}textures/tex-332.jpg`, textureStretch: true },
+      { id: 'W-334', article: 'W-334', name: 'Дуб слоновая кость',  color: '#dcc89a', texture: `${BASE}textures/tex-334.jpg`, textureStretch: true },
+      { id: 'W-340', article: 'W-340', name: 'Дуб медовый',         color: '#c8a060', texture: `${BASE}textures/tex-340.jpg`, textureStretch: true },
+      { id: 'W-341', article: 'W-341', name: 'Дуб янтарный',        color: '#b89050', texture: `${BASE}textures/tex-341.jpg`, textureStretch: true },
+      { id: 'W-342', article: 'W-342', name: 'Дуб светлый',         color: '#d8c090', texture: `${BASE}textures/tex-342.jpg`, textureStretch: true },
+      { id: 'W-349', article: 'W-349', name: 'Ясень натуральный',   color: '#c8a870', texture: `${BASE}textures/tex-349.jpg`, textureStretch: true },
+      { id: 'W-350', article: 'W-350', name: 'Ясень белёный',       color: '#d4b880', texture: `${BASE}textures/tex-350.jpg`, textureStretch: true },
+      { id: 'W-351', article: 'W-351', name: 'Ясень светлый',       color: '#c8a870', texture: `${BASE}textures/tex-351.jpg`, textureStretch: true },
+      { id: 'W-352', article: 'W-352', name: 'Ясень тёплый',        color: '#b08050', texture: `${BASE}textures/tex-352.jpg`, textureStretch: true },
+      { id: 'W-333', article: 'W-333', name: 'Орех светлый',        color: '#a88060', texture: `${BASE}textures/tex-333.jpg`, textureStretch: true },
+      { id: 'W-336', article: 'W-336', name: 'Ясень серебристый',   color: '#b0a898', texture: `${BASE}textures/tex-336.jpg`, textureStretch: true },
+      { id: 'W-343', article: 'W-343', name: 'Дуб дымчатый',        color: '#7a7068', texture: `${BASE}textures/tex-343.jpg`, textureStretch: true },
+      { id: 'W-344', article: 'W-344', name: 'Дуб серый',           color: '#807870', texture: `${BASE}textures/tex-344.jpg`, textureStretch: true },
+      { id: 'W-353', article: 'W-353', name: 'Ясень серый',         color: '#787068', texture: `${BASE}textures/tex-353.jpg`, textureStretch: true },
+      { id: 'W-345', article: 'W-345', name: 'Орех тёмный',         color: '#6a4830', texture: `${BASE}textures/tex-345.jpg`, textureStretch: true },
+      { id: 'W-354', article: 'W-354', name: 'Ясень тёмный',        color: '#605848', texture: `${BASE}textures/tex-354.jpg`, textureStretch: true },
+      { id: 'W-335', article: 'W-335', name: 'Венге',               color: '#483830', texture: `${BASE}textures/tex-335.jpg`, textureStretch: true },
     ],
   },
   {
@@ -170,7 +170,7 @@ const PANEL_SERIES = [
   },
 ];
 
-type Panel = { id: string; article: string; name: string; color: string; texture: string; textureScale?: number };
+type Panel = { id: string; article: string; name: string; color: string; texture: string; textureScale?: number; textureStretch?: boolean };
 type PanelSeries = { id: string; name: string; panels: Panel[] };
 
 const BAMBOO_PANELS: Panel[] = (PANEL_SERIES as PanelSeries[]).flatMap(s => s.panels);
@@ -427,23 +427,29 @@ const BambooStudio = () => {
 
         const cachedTex = textureCacheRef.current[material.id];
         if (cachedTex) {
+          const panelW = maxX - minX;
           const panelH = maxY - minY;
-          const ts = material.textureScale ?? 1;
-          // If textureScale set: shrink tile to 1/ts (realistic repeat), else auto-fit
-          const scale = ts > 1
-            ? 1 / ts
-            : Math.max(1, panelH / (cachedTex.height * 3));
-          const pattern = tCtx.createPattern(cachedTex, 'repeat');
-          if (pattern) {
-            const m = new DOMMatrix();
-            m.scaleSelf(scale, scale);
-            m.translateSelf(minX / scale, minY / scale);
-            pattern.setTransform(m);
-            tCtx.fillStyle = pattern;
+          if (material.textureStretch) {
+            // Stretch mode: draw image scaled to fill the bounding box, no tiling
+            tCtx.drawImage(cachedTex, minX, minY, panelW, panelH);
           } else {
-            tCtx.fillStyle = material.color;
+            const ts = material.textureScale ?? 1;
+            // If textureScale set: shrink tile to 1/ts (realistic repeat), else auto-fit
+            const scale = ts > 1
+              ? 1 / ts
+              : Math.max(1, panelH / (cachedTex.height * 3));
+            const pattern = tCtx.createPattern(cachedTex, 'repeat');
+            if (pattern) {
+              const m = new DOMMatrix();
+              m.scaleSelf(scale, scale);
+              m.translateSelf(minX / scale, minY / scale);
+              pattern.setTransform(m);
+              tCtx.fillStyle = pattern;
+            } else {
+              tCtx.fillStyle = material.color;
+            }
+            tCtx.fillRect(minX - 1, minY - 1, panelW + 2, panelH + 2);
           }
-          tCtx.fillRect(minX - 1, minY - 1, maxX - minX + 2, maxY - minY + 2);
         } else {
           tCtx.fillStyle = material.color;
           tCtx.fillRect(0, 0, width, height);
