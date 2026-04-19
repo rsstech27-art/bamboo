@@ -399,6 +399,12 @@ const BambooStudio = () => {
       const tCtx = tempCanvas.getContext('2d');
       if (!tCtx) return;
 
+      // Separate canvas for wood panels — composited at higher alpha for more opacity
+      const woodCanvas = document.createElement('canvas');
+      woodCanvas.width = width;
+      woodCanvas.height = height;
+      const wCtx = woodCanvas.getContext('2d')!;
+
       const bounds = getSectorBounds(curDividers, curPanelCount);
 
       for (let i = 0; i < curPanelCount; i++) {
@@ -430,8 +436,33 @@ const BambooStudio = () => {
           const panelW = maxX - minX;
           const panelH = maxY - minY;
           if (material.textureStretch) {
-            // Stretch mode: draw image scaled to fill the bounding box, no tiling
-            tCtx.drawImage(cachedTex, minX, minY, panelW, panelH);
+            // Stretch mode: tile at 80% panel size so grain appears 20% smaller
+            const WOOD_SCALE = 0.8;
+            const tileW = Math.max(1, Math.ceil(panelW * WOOD_SCALE));
+            const tileH = Math.max(1, Math.ceil(panelH * WOOD_SCALE));
+            const tileCanvas = document.createElement('canvas');
+            tileCanvas.width = tileW; tileCanvas.height = tileH;
+            const tileCtx = tileCanvas.getContext('2d')!;
+            tileCtx.drawImage(cachedTex, 0, 0, tileW, tileH);
+            const woodPattern = tCtx.createPattern(tileCanvas, 'repeat');
+            if (woodPattern) {
+              woodPattern.setTransform(new DOMMatrix().translate(minX, minY));
+              tCtx.fillStyle = woodPattern;
+              tCtx.fillRect(minX - 1, minY - 1, panelW + 2, panelH + 2);
+            }
+            // Also draw to woodCanvas for extra opacity boost
+            wCtx.save();
+            wCtx.beginPath();
+            wCtx.moveTo(p1.x, p1.y); wCtx.lineTo(p2.x, p2.y);
+            wCtx.lineTo(p3.x, p3.y); wCtx.lineTo(p4.x, p4.y);
+            wCtx.closePath(); wCtx.clip();
+            const woodPattern2 = wCtx.createPattern(tileCanvas, 'repeat');
+            if (woodPattern2) {
+              woodPattern2.setTransform(new DOMMatrix().translate(minX, minY));
+              wCtx.fillStyle = woodPattern2;
+              wCtx.fillRect(minX - 1, minY - 1, panelW + 2, panelH + 2);
+            }
+            wCtx.restore();
           } else {
             const ts = material.textureScale ?? 1;
             // If textureScale set: shrink tile to 1/ts (realistic repeat), else auto-fit
@@ -725,6 +756,12 @@ const BambooStudio = () => {
       ctx.save();
       ctx.globalAlpha = 0.85;
       ctx.drawImage(tempCanvas, 0, 0);
+      ctx.restore();
+
+      // Extra opacity boost specifically for wood (textureStretch) panels
+      ctx.save();
+      ctx.globalAlpha = 0.10;
+      ctx.drawImage(woodCanvas, 0, 0);
       ctx.restore();
 
       // Overlay original photo with 'multiply' blend to preserve room shadows & lighting
