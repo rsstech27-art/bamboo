@@ -1471,7 +1471,6 @@ const BambooStudio = () => {
           {/* Bottom bar */}
           <div className="pt-6 flex flex-col md:flex-row justify-between items-center gap-3 text-xs text-gray-600">
             <span>© 2024 ALL WALL. Все права защищены.</span>
-            <span className="text-center">Инструмент «Визуализатор» — бесплатный сервис для клиентов ALL WALL</span>
             <a href="https://allwall.ru/privacy/" target="_blank" rel="noopener noreferrer" className="hover:text-gray-400 transition-colors">Политика конфиденциальности</a>
           </div>
         </div>
