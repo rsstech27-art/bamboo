@@ -1030,7 +1030,7 @@ const BambooStudio = () => {
       {/* ══════════════════════════════════════════
           WEBSITE HEADER — allwall.ru style
       ══════════════════════════════════════════ */}
-      <header className="sticky top-0 z-50 bg-[#111111] text-white">
+      <header className="sticky top-0 z-50 bg-[#1c1c1c] text-white">
         <div className="max-w-7xl mx-auto flex items-center justify-between px-6 h-16">
           {/* Logo */}
           <a href="https://allwall.ru" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 shrink-0">
@@ -1059,18 +1059,17 @@ const BambooStudio = () => {
       {/* ══════════════════════════════════════════
           HERO — описание и инструкция
       ══════════════════════════════════════════ */}
-      <section className="bg-[#111111] text-white pt-20 pb-24 px-6">
+      <section className="bg-[#1c1c1c] text-white pt-12 pb-14 px-6">
         <div className="max-w-5xl mx-auto text-center">
-          <p className="text-[#7ec662] text-xs font-bold tracking-widest uppercase mb-4">Бесплатный инструмент</p>
-          <h1 className="text-4xl md:text-5xl font-black leading-tight mb-6">
+          <h1 className="text-4xl md:text-5xl font-black leading-tight mb-5">
             Онлайн-примерочная<br/>стеновых панелей
           </h1>
-          <p className="text-gray-400 text-lg max-w-2xl mx-auto mb-14 leading-relaxed">
+          <p className="text-gray-400 text-lg max-w-2xl mx-auto mb-9 leading-relaxed">
             Загрузите фотографию вашего интерьера и посмотрите, как будут выглядеть панели ALL WALL прямо на вашей стене — до покупки и монтажа.
           </p>
 
           {/* Steps */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-14 text-left">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-9 text-left">
             {[
               { n: '01', title: 'Загрузите фото', desc: 'Любое фото интерьера с вашей стеной — JPG, PNG или WEBP.' },
               { n: '02', title: 'Отметьте стену', desc: 'Кликните по 4 углам стены по часовой стрелке.' },
@@ -1389,7 +1388,7 @@ const BambooStudio = () => {
       {/* ══════════════════════════════════════════
           FOOTER — allwall.ru style
       ══════════════════════════════════════════ */}
-      <footer className="bg-[#111111] text-white pt-14 pb-8 px-6">
+      <footer className="bg-[#1c1c1c] text-white pt-14 pb-8 px-6">
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-10 pb-10 border-b border-white/10">
             {/* Brand */}
