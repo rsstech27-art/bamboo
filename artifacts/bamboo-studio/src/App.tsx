@@ -1101,7 +1101,7 @@ const BambooStudio = () => {
             <div className="w-7 h-7 bg-black rounded-lg flex items-center justify-center">
               <Layout className="text-white w-4 h-4" />
             </div>
-            <span className="font-bold text-sm tracking-tight">Примерочная панелей</span>
+            <span className="font-bold text-sm tracking-tight">BambooStudio Pro</span>
           </div>
           <div className="flex items-center gap-3">
             {step === 'edit' && (
