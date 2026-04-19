@@ -36,7 +36,14 @@ Russian-language web app for visualising bamboo wall panels on interior photos.
 | mirror-gloss    | Зеркальная глянцевая   | 3      |
 | soft-touch      | Soft-touch / Кожа      | 26     |
 
-### Architecture (`src/App.tsx`, ~1250 lines)
+### Website Structure (full allwall.ru-style site)
+- **Website Header** (sticky, `#111111`): ALL WALL logo + favicon.jpg, nav links → allwall.ru, phone +7 495 151-09-46, green accent `#7ec662`
+- **Hero Section** (`#111111`): headline, subtitle, 4-step instruction cards (01-04), green CTA button → scrolls to tool
+- **App Tool Section** (`height: calc(100vh - 64px)`): internal nav + canvas + sidebar
+- **Footer** (`#111111`): brand, catalogue series, buyer links, contacts + "Открыть примерочную" button
+- Page title: "ALL WALL — Онлайн-примерочная стеновых панелей"
+
+### Architecture (`src/App.tsx`, ~1488 lines)
 - `PANEL_SERIES` — array of 12 series, each with `{ id, name, panels[] }`
 - `BAMBOO_PANELS` — flat array derived from `PANEL_SERIES.flatMap(s => s.panels)` (81 панель)
 - `openSeries` state — `Set<string>` of expanded series IDs (accordion)

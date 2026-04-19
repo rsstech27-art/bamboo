@@ -1021,37 +1021,107 @@ const BambooStudio = () => {
     );
   };
 
+  const toolRef = useRef<HTMLElement>(null);
+  const scrollToTool = () => toolRef.current?.scrollIntoView({ behavior: 'smooth' });
+
   return (
-    <div className="h-screen overflow-hidden bg-[#ebebed] text-[#1d1d1f] font-sans antialiased flex flex-col">
-      {/* ── Nav ── */}
-      <nav className="h-12 shrink-0 border-b border-gray-200 bg-white/90 backdrop-blur-xl flex justify-between items-center px-5 z-50">
-        <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 bg-black rounded-lg flex items-center justify-center">
-            <Layout className="text-white w-4 h-4" />
-          </div>
-          <span className="font-bold text-sm tracking-tight italic">BambooStudio Pro</span>
+    <div className="bg-white text-[#1d1d1f] font-sans antialiased">
+
+      {/* ══════════════════════════════════════════
+          WEBSITE HEADER — allwall.ru style
+      ══════════════════════════════════════════ */}
+      <header className="sticky top-0 z-50 bg-[#111111] text-white">
+        <div className="max-w-7xl mx-auto flex items-center justify-between px-6 h-16">
+          {/* Logo */}
+          <a href="https://allwall.ru" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 shrink-0">
+            <img src="/favicon.jpg" alt="ALL WALL" className="h-9 w-9 object-contain rounded"/>
+            <div className="leading-none">
+              <div className="font-black text-base tracking-widest">ALL WALL</div>
+              <div className="text-[9px] text-gray-400 tracking-widest uppercase mt-0.5">Технология быстрого монтажа</div>
+            </div>
+          </a>
+
+          {/* Nav links */}
+          <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-gray-300">
+            <a href="https://allwall.ru/catalog/" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Каталог</a>
+            <a href="https://allwall.ru/about/" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">О компании</a>
+            <a href="https://allwall.ru/cooperation/" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Сотрудничество</a>
+            <button onClick={scrollToTool} className="hover:text-white transition-colors text-[#7ec662]">Примерочная</button>
+          </nav>
+
+          {/* Phone */}
+          <a href="tel:+74951510946" className="shrink-0 text-sm font-bold text-white hover:text-[#7ec662] transition-colors hidden sm:block">
+            +7 (495) 151-09-46
+          </a>
         </div>
-        <div className="flex items-center gap-3">
-          {step === 'edit' && (
-            <button
-              onClick={undo}
-              className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
-              title="Ctrl+Z"
-            >
-              <Undo2 size={13} /> Отменить
-            </button>
-          )}
-          <button
-            onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setStep('upload'); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
-            className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
-          >
-            <RotateCcw size={13} /> Сброс
+      </header>
+
+      {/* ══════════════════════════════════════════
+          HERO — описание и инструкция
+      ══════════════════════════════════════════ */}
+      <section className="bg-[#111111] text-white pt-20 pb-24 px-6">
+        <div className="max-w-5xl mx-auto text-center">
+          <p className="text-[#7ec662] text-xs font-bold tracking-widest uppercase mb-4">Бесплатный инструмент</p>
+          <h1 className="text-4xl md:text-5xl font-black leading-tight mb-6">
+            Онлайн-примерочная<br/>стеновых панелей
+          </h1>
+          <p className="text-gray-400 text-lg max-w-2xl mx-auto mb-14 leading-relaxed">
+            Загрузите фотографию вашего интерьера и посмотрите, как будут выглядеть панели ALL WALL прямо на вашей стене — до покупки и монтажа.
+          </p>
+
+          {/* Steps */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-14 text-left">
+            {[
+              { n: '01', title: 'Загрузите фото', desc: 'Любое фото интерьера с вашей стеной — JPG, PNG или WEBP.' },
+              { n: '02', title: 'Отметьте стену', desc: 'Кликните по 4 углам стены по часовой стрелке.' },
+              { n: '03', title: 'Подберите панели', desc: 'Выбирайте из 81 варианта — текстуры, цвета, молдинги.' },
+              { n: '04', title: 'Сохраните результат', desc: 'Скачайте PNG и покажите дизайнеру или в магазин.' },
+            ].map(s => (
+              <div key={s.n} className="bg-white/5 border border-white/10 rounded-2xl p-5 hover:bg-white/8 transition-colors">
+                <div className="text-[#7ec662] text-3xl font-black mb-3 leading-none">{s.n}</div>
+                <div className="font-bold text-white mb-2 text-sm">{s.title}</div>
+                <div className="text-gray-400 text-xs leading-relaxed">{s.desc}</div>
+              </div>
+            ))}
+          </div>
+
+          <button onClick={scrollToTool}
+            className="inline-flex items-center gap-2 bg-[#7ec662] hover:bg-[#6ab352] text-black font-black text-sm px-8 py-4 rounded-xl transition-all active:scale-95 shadow-lg shadow-green-900/30">
+            Начать подбор
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
           </button>
         </div>
-      </nav>
+      </section>
 
-      {/* ── Main: canvas + right tool panel ── */}
-      <div className="flex-1 flex gap-3 p-3 overflow-hidden min-h-0">
+      {/* ══════════════════════════════════════════
+          APP TOOL
+      ══════════════════════════════════════════ */}
+      <section ref={toolRef} id="tool" className="flex flex-col bg-[#ebebed]" style={{ height: 'calc(100vh - 64px)' }}>
+        {/* ── App Nav ── */}
+        <nav className="h-12 shrink-0 border-b border-gray-200 bg-white/90 backdrop-blur-xl flex justify-between items-center px-5 z-40">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 bg-black rounded-lg flex items-center justify-center">
+              <Layout className="text-white w-4 h-4" />
+            </div>
+            <span className="font-bold text-sm tracking-tight">Примерочная панелей</span>
+          </div>
+          <div className="flex items-center gap-3">
+            {step === 'edit' && (
+              <button onClick={undo} className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors" title="Ctrl+Z">
+                <Undo2 size={13} /> Отменить
+              </button>
+            )}
+            <button
+              onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setStep('upload'); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
+              className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
+            >
+              <RotateCcw size={13} /> Сброс
+            </button>
+          </div>
+        </nav>
+
+        {/* ── Main: canvas + right tool panel ── */}
+        <div className="flex-1 flex gap-3 p-3 overflow-hidden min-h-0">
 
         {/* ── Canvas area ── */}
         <div className="flex-1 relative min-w-0">
@@ -1332,6 +1402,84 @@ const BambooStudio = () => {
           </>)}
         </div>
       </div>
+      </section>
+
+      {/* ══════════════════════════════════════════
+          FOOTER — allwall.ru style
+      ══════════════════════════════════════════ */}
+      <footer className="bg-[#111111] text-white pt-14 pb-8 px-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-10 pb-10 border-b border-white/10">
+            {/* Brand */}
+            <div className="md:col-span-1">
+              <div className="flex items-center gap-2.5 mb-4">
+                <img src="/favicon.jpg" alt="ALL WALL" className="h-8 w-8 object-contain rounded"/>
+                <div>
+                  <div className="font-black text-sm tracking-widest">ALL WALL</div>
+                  <div className="text-[8px] text-gray-500 tracking-widest uppercase">Технология быстрого монтажа</div>
+                </div>
+              </div>
+              <p className="text-gray-400 text-xs leading-relaxed">
+                Стеновые панели нового поколения. Быстрый монтаж. Премиальный результат.
+              </p>
+            </div>
+
+            {/* Каталог */}
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-4">Каталог</div>
+              <ul className="space-y-2.5 text-sm text-gray-400">
+                {['Металл', 'Soft-touch / Кожа', 'Жидкий металл', 'Частицы', 'Щебень / Камень', 'Патина / Медь'].map(t => (
+                  <li key={t}><a href="https://allwall.ru/catalog/" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">{t}</a></li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Покупателям */}
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-4">Покупателям</div>
+              <ul className="space-y-2.5 text-sm text-gray-400">
+                {[
+                  { label: 'Доставка и оплата', href: 'https://allwall.ru/delivery/' },
+                  { label: 'Монтаж', href: 'https://allwall.ru/installation/' },
+                  { label: 'Точки продаж', href: 'https://allwall.ru/dealers/' },
+                  { label: 'О компании', href: 'https://allwall.ru/about/' },
+                  { label: 'Контакты', href: 'https://allwall.ru/contacts/' },
+                ].map(l => (
+                  <li key={l.label}><a href={l.href} target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">{l.label}</a></li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Контакты */}
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-4">Контакты</div>
+              <div className="space-y-3 text-sm text-gray-400">
+                <div>
+                  <a href="tel:+74951510946" className="text-white font-bold text-base hover:text-[#7ec662] transition-colors">+7 (495) 151-09-46</a>
+                </div>
+                <div>
+                  <a href="mailto:info@allwall.ru" className="hover:text-white transition-colors">info@allwall.ru</a>
+                </div>
+                <div className="text-xs leading-relaxed pt-1">
+                  Доставка по России и СНГ
+                </div>
+                <button onClick={scrollToTool}
+                  className="mt-2 bg-[#7ec662] hover:bg-[#6ab352] text-black font-black text-xs px-5 py-2.5 rounded-lg transition-all active:scale-95">
+                  Открыть примерочную
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom bar */}
+          <div className="pt-6 flex flex-col md:flex-row justify-between items-center gap-3 text-xs text-gray-600">
+            <span>© 2024 ALL WALL. Все права защищены.</span>
+            <span className="text-center">Инструмент «Онлайн-примерочная» — бесплатный сервис для клиентов ALL WALL</span>
+            <a href="https://allwall.ru/privacy/" target="_blank" rel="noopener noreferrer" className="hover:text-gray-400 transition-colors">Политика конфиденциальности</a>
+          </div>
+        </div>
+      </footer>
+
     </div>
   );
 };
