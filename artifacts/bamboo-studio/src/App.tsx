@@ -1464,10 +1464,6 @@ const BambooStudio = () => {
                 <div className="text-xs leading-relaxed pt-1">
                   Доставка по России и СНГ
                 </div>
-                <button onClick={scrollToTool}
-                  className="mt-2 bg-[#7ec662] hover:bg-[#6ab352] text-black font-black text-xs px-5 py-2.5 rounded-lg transition-all active:scale-95">
-                  Открыть визуализатор
-                </button>
               </div>
             </div>
           </div>
