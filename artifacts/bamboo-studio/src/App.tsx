@@ -1174,24 +1174,6 @@ const BambooStudio = () => {
         {/* ── Right tool panel ── */}
         <div className="w-[232px] shrink-0 flex flex-col gap-2 overflow-y-auto pb-1" style={{ scrollbarWidth: 'none' }}>
 
-          {/* UPLOAD step */}
-          {step === 'upload' && (
-            <div className="bg-white rounded-2xl p-4 shadow-sm">
-              <div className="flex items-center gap-1.5 mb-3">
-                <Upload size={12} className="text-gray-400" />
-                <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Загрузка</span>
-              </div>
-              <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:bg-gray-50 transition-all">
-                <Upload className="text-gray-300 mb-2 w-5 h-5" />
-                <span className="text-[9px] font-bold text-gray-400 uppercase">Выбрать файл</span>
-                <input type="file" className="hidden" onChange={handleImageUpload} accept="image/*" />
-              </label>
-              <p className="text-[9px] text-gray-400 mt-3 leading-relaxed">
-                Загрузите фото интерьера — затем отметьте 4 угла стены и подберите панели.
-              </p>
-            </div>
-          )}
-
           {/* MARK step */}
           {step === 'mark' && (
             <div className="bg-white rounded-2xl p-4 shadow-sm">
