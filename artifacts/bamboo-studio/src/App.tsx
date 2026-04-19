@@ -138,6 +138,27 @@ const PANEL_SERIES = [
     ],
   },
   {
+    id: 'reiki', name: 'Рейки (деревянные)',
+    panels: [
+      { id: 'RK-468', article: 'RK-468', name: 'Дуб светлый',          color: '#d4c090', texture: `${BASE}textures/tex-468.jpg`, textureStretch: true, slatOverlay: true },
+      { id: 'RK-443', article: 'RK-443', name: 'Дуб кремовый',         color: '#d0c0a0', texture: `${BASE}textures/tex-443.jpg`, textureStretch: true, slatOverlay: true },
+      { id: 'RK-457', article: 'RK-457', name: 'Дуб натуральный',      color: '#c8a870', texture: `${BASE}textures/tex-457.jpg`, textureStretch: true, slatOverlay: true },
+      { id: 'RK-464', article: 'RK-464', name: 'Орех медовый',         color: '#b89060', texture: `${BASE}textures/tex-464.jpg`, textureStretch: true, slatOverlay: true },
+      { id: 'RK-459', article: 'RK-459', name: 'Дуб беж',              color: '#c0a880', texture: `${BASE}textures/tex-459.jpg`, textureStretch: true, slatOverlay: true },
+      { id: 'RK-444', article: 'RK-444', name: 'Дуб тоффи',            color: '#b09880', texture: `${BASE}textures/tex-444.jpg`, textureStretch: true, slatOverlay: true },
+      { id: 'RK-445', article: 'RK-445', name: 'Дуб гриж',             color: '#a89070', texture: `${BASE}textures/tex-445.jpg`, textureStretch: true, slatOverlay: true },
+      { id: 'RK-469', article: 'RK-469', name: 'Дуб тёплый серый',     color: '#908070', texture: `${BASE}textures/tex-469.jpg`, textureStretch: true, slatOverlay: true },
+      { id: 'RK-458', article: 'RK-458', name: 'Ясень серебро',        color: '#b0b0a8', texture: `${BASE}textures/tex-458.jpg`, textureStretch: true, slatOverlay: true },
+      { id: 'RK-452', article: 'RK-452', name: 'Дуб серый',            color: '#909898', texture: `${BASE}textures/tex-452.jpg`, textureStretch: true, slatOverlay: true },
+      { id: 'RK-465', article: 'RK-465', name: 'Дуб холодный серый',   color: '#808888', texture: `${BASE}textures/tex-465.jpg`, textureStretch: true, slatOverlay: true },
+      { id: 'RK-456', article: 'RK-456', name: 'Дуб сланец',           color: '#707068', texture: `${BASE}textures/tex-456.jpg`, textureStretch: true, slatOverlay: true },
+      { id: 'RK-449', article: 'RK-449', name: 'Дуб тёмно-коричн.',    color: '#6a5040', texture: `${BASE}textures/tex-449.jpg`, textureStretch: true, slatOverlay: true },
+      { id: 'RK-451', article: 'RK-451', name: 'Дуб эспрессо',         color: '#483830', texture: `${BASE}textures/tex-451.jpg`, textureStretch: true, slatOverlay: true },
+      { id: 'RK-466', article: 'RK-466', name: 'Орех тёмный',          color: '#503828', texture: `${BASE}textures/tex-466.jpg`, textureStretch: true, slatOverlay: true },
+      { id: 'RK-450', article: 'RK-450', name: 'Дуб эбони',            color: '#1c1614', texture: `${BASE}textures/tex-450.jpg`, textureStretch: true, slatOverlay: true },
+    ],
+  },
+  {
     id: 'soft-touch', name: 'Soft-touch / Кожа',
     panels: [
       { id: 'K3001',    article: 'K3001',    name: 'Зернистая кожа',      color: '#e8e0d8', texture: `${BASE}textures/tex-255.jpg`, textureScale: 8  },
@@ -170,7 +191,7 @@ const PANEL_SERIES = [
   },
 ];
 
-type Panel = { id: string; article: string; name: string; color: string; texture: string; textureScale?: number; textureStretch?: boolean };
+type Panel = { id: string; article: string; name: string; color: string; texture: string; textureScale?: number; textureStretch?: boolean; slatOverlay?: boolean };
 type PanelSeries = { id: string; name: string; panels: Panel[] };
 
 const BAMBOO_PANELS: Panel[] = (PANEL_SERIES as PanelSeries[]).flatMap(s => s.panels);
@@ -484,6 +505,25 @@ const BambooStudio = () => {
         } else {
           tCtx.fillStyle = material.color;
           tCtx.fillRect(0, 0, width, height);
+        }
+
+        // Slat (рейки) gap overlay — vertical dark stripes simulating gaps between slats
+        if (material.slatOverlay) {
+          const SLAT_W = 38;
+          const GAP_W = 6;
+          const PERIOD = SLAT_W + GAP_W;
+          const startX = Math.floor(minX / PERIOD) * PERIOD;
+          for (let sx = startX; sx < maxX + PERIOD; sx += PERIOD) {
+            const gx = sx + SLAT_W;
+            const gapGrad = tCtx.createLinearGradient(gx - 1, 0, gx + GAP_W + 1, 0);
+            gapGrad.addColorStop(0,    'rgba(0,0,0,0.00)');
+            gapGrad.addColorStop(0.2,  'rgba(0,0,0,0.55)');
+            gapGrad.addColorStop(0.5,  'rgba(0,0,0,0.80)');
+            gapGrad.addColorStop(0.8,  'rgba(0,0,0,0.55)');
+            gapGrad.addColorStop(1,    'rgba(0,0,0,0.00)');
+            tCtx.fillStyle = gapGrad;
+            tCtx.fillRect(gx - 1, minY - 1, GAP_W + 2, maxY - minY + 2);
+          }
         }
 
         // Light gradient overlay

@@ -19,7 +19,7 @@ Russian-language web app for visualising bamboo wall panels on interior photos.
 
 ### Textures (`public/textures/`)
 640 images extracted from the real ALL WALL PDF catalogue (`pdfimages -all`).
-69 named panels in 12 collapsible series (accordion UI in sidebar):
+115 named panels in 14 collapsible series (accordion UI in sidebar):
 
 | Series ID       | Name                   | Panels |
 |-----------------|------------------------|--------|
@@ -34,7 +34,15 @@ Russian-language web app for visualising bamboo wall panels on interior photos.
 | linen-cement    | Льняное / Цемент       | 6      |
 | rainbow         | Радуга / Хамелеон      | 3      |
 | mirror-gloss    | Зеркальная глянцевая   | 3      |
+| wood            | Натуральное дерево     | 18     |
+| reiki           | Рейки (деревянные)     | 16     |
 | soft-touch      | Soft-touch / Кожа      | 26     |
+
+### Рейки rendering
+Panels with `slatOverlay: true` get vertical dark-gradient stripes drawn over the wood texture
+inside the clipped panel polygon (SLAT_W=38px, GAP_W=6px, soft-edge gradient per gap).
+This simulates the physical gaps between narrow wooden slats on a reyeka-style wall panel.
+Textures for Рейки: tex-443..tex-469 range (light blonde to near-black ebony oak).
 
 ### Website Structure (full allwall.ru-style site)
 - **Website Header** (sticky, `#111111`): ALL WALL logo + favicon.jpg, nav links → allwall.ru, phone +7 495 151-09-46, green accent `#7ec662`
