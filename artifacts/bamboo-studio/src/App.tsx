@@ -90,12 +90,12 @@ const PANEL_SERIES = [
   {
     id: 'linen-cement', name: 'Льняное / Цемент',
     panels: [
-      { id: '8207-5',  article: '8207-5',  name: 'Льняное серебро',      color: '#c0c0c0', texture: `${BASE}textures/tex-198.jpg` },
-      { id: '8208-5',  article: '8208-5',  name: 'Серо-коричн. золото',  color: '#b0a890', texture: `${BASE}textures/tex-199.jpg` },
-      { id: '8209-5',  article: '8209-5',  name: 'Красн. бел. серебр.',  color: '#c0b8b8', texture: `${BASE}textures/tex-203.jpg` },
-      { id: '8210-5',  article: '8210-5',  name: 'Синий серый серебр.',  color: '#a0b0c0', texture: `${BASE}textures/tex-204.jpg` },
-      { id: '8211-5',  article: '8211-5',  name: 'Пик серого серебра',   color: '#b0b8c0', texture: `${BASE}textures/tex-205.jpg` },
-      { id: '8212-5',  article: '8212-5',  name: 'Цементный ясень',      color: '#a0a098', texture: `${BASE}textures/tex-206.jpg` },
+      { id: '8207-5',  article: '8207-5',  name: 'Льняное серебро',      color: '#c0c0c0', texture: `${BASE}textures/tex-198.jpg`, textureScale: 5 },
+      { id: '8208-5',  article: '8208-5',  name: 'Серо-коричн. золото',  color: '#b0a890', texture: `${BASE}textures/tex-199.jpg`, textureScale: 5 },
+      { id: '8209-5',  article: '8209-5',  name: 'Красн. бел. серебр.',  color: '#c0b8b8', texture: `${BASE}textures/tex-203.jpg`, textureScale: 5 },
+      { id: '8210-5',  article: '8210-5',  name: 'Синий серый серебр.',  color: '#a0b0c0', texture: `${BASE}textures/tex-204.jpg`, textureScale: 5 },
+      { id: '8211-5',  article: '8211-5',  name: 'Пик серого серебра',   color: '#b0b8c0', texture: `${BASE}textures/tex-205.jpg`, textureScale: 5 },
+      { id: '8212-5',  article: '8212-5',  name: 'Цементный ясень',      color: '#a0a098', texture: `${BASE}textures/tex-206.jpg`, textureScale: 5 },
     ],
   },
   {
@@ -117,16 +117,16 @@ const PANEL_SERIES = [
   {
     id: 'soft-touch', name: 'Soft-touch / Кожа',
     panels: [
-      { id: 'K3001',    article: 'K3001',    name: 'Зернистая кожа',      color: '#e8e0d8', texture: `${BASE}textures/tex-255.jpg` },
-      { id: 'K3002',    article: 'K3002',    name: 'Кожа личи',           color: '#8a7868', texture: `${BASE}textures/tex-257.jpg` },
-      { id: 'K3003',    article: 'K3003',    name: 'Плетёная кожа',       color: '#9a8878', texture: `${BASE}textures/tex-256.jpg` },
-      { id: 'K3004',    article: 'K3004',    name: 'Вафельная кожа',      color: '#888888', texture: `${BASE}textures/tex-258.jpg` },
-      { id: '1011-8',   article: '1011-8',   name: 'Тёмно-сер. облачный', color: '#5a5452', texture: `${BASE}textures/tex-263.jpg` },
-      { id: '1013-8',   article: '1013-8',   name: 'Бобовый песок',       color: '#b0a898', texture: `${BASE}textures/tex-265.jpg` },
-      { id: '1014-8',   article: '1014-8',   name: 'Бавар. коричневый',   color: '#c09080', texture: `${BASE}textures/tex-267.jpg` },
-      { id: '1015-8',   article: '1015-8',   name: 'Ванильный жёлтый',    color: '#d8c8a8', texture: `${BASE}textures/tex-264.jpg` },
-      { id: '1017-8',   article: '1017-8',   name: 'Сев. ветер серый',    color: '#d0ccc8', texture: `${BASE}textures/tex-266.jpg` },
-      { id: '1083-5',   article: '1083-5',   name: 'Клеточка чёрная',     color: '#202020', texture: `${BASE}textures/tex-270.jpg` },
+      { id: 'K3001',    article: 'K3001',    name: 'Зернистая кожа',      color: '#e8e0d8', texture: `${BASE}textures/tex-255.jpg`, textureScale: 8  },
+      { id: 'K3002',    article: 'K3002',    name: 'Кожа личи',           color: '#8a7868', texture: `${BASE}textures/tex-257.jpg`, textureScale: 8  },
+      { id: 'K3003',    article: 'K3003',    name: 'Плетёная кожа',       color: '#9a8878', texture: `${BASE}textures/tex-256.jpg`, textureScale: 10 },
+      { id: 'K3004',    article: 'K3004',    name: 'Вафельная кожа',      color: '#888888', texture: `${BASE}textures/tex-258.jpg`, textureScale: 8  },
+      { id: '1011-8',   article: '1011-8',   name: 'Тёмно-сер. облачный', color: '#5a5452', texture: `${BASE}textures/tex-263.jpg`, textureScale: 6  },
+      { id: '1013-8',   article: '1013-8',   name: 'Бобовый песок',       color: '#b0a898', texture: `${BASE}textures/tex-265.jpg`, textureScale: 8  },
+      { id: '1014-8',   article: '1014-8',   name: 'Бавар. коричневый',   color: '#c09080', texture: `${BASE}textures/tex-267.jpg`, textureScale: 6  },
+      { id: '1015-8',   article: '1015-8',   name: 'Ванильный жёлтый',    color: '#d8c8a8', texture: `${BASE}textures/tex-264.jpg`, textureScale: 6  },
+      { id: '1017-8',   article: '1017-8',   name: 'Сев. ветер серый',    color: '#d0ccc8', texture: `${BASE}textures/tex-266.jpg`, textureScale: 6  },
+      { id: '1083-5',   article: '1083-5',   name: 'Клеточка чёрная',     color: '#202020', texture: `${BASE}textures/tex-270.jpg`, textureScale: 8  },
       { id: '1002A-5',  article: '1002A-5',  name: 'Белая гладь',         color: '#f0eeec', texture: '' },
       { id: '1085-5',   article: '1085-5',   name: 'Нежная гладь',        color: '#d8c8b8', texture: '' },
       { id: '1082-5',   article: '1082-5',   name: 'Тёмная гладь',        color: '#303030', texture: '' },
@@ -147,7 +147,7 @@ const PANEL_SERIES = [
   },
 ];
 
-type Panel = { id: string; article: string; name: string; color: string; texture: string };
+type Panel = { id: string; article: string; name: string; color: string; texture: string; textureScale?: number };
 type PanelSeries = { id: string; name: string; panels: Panel[] };
 
 const BAMBOO_PANELS: Panel[] = (PANEL_SERIES as PanelSeries[]).flatMap(s => s.panels);
@@ -229,6 +229,7 @@ const BambooStudio = () => {
   const [hMoldingWidth, setHMoldingWidth] = useState(1);
   const [hMoldingPositions, setHMoldingPositions] = useState<number[]>([0.5]);
   const [openSeries, setOpenSeries] = useState<Set<string>>(() => new Set(['metall-25']));
+  const [footerCatalogOpen, setFooterCatalogOpen] = useState(false);
   const [lightMode, setLightMode] = useState<'off' | 'morning' | 'evening'>('off');
   const lightModeRef = useRef<'off' | 'morning' | 'evening'>('off');
 
@@ -403,9 +404,12 @@ const BambooStudio = () => {
 
         const cachedTex = textureCacheRef.current[material.id];
         if (cachedTex) {
-          // Tile pattern scaled so texture height ≈ panel height (max 3 repeats)
           const panelH = maxY - minY;
-          const scale = Math.max(1, panelH / (cachedTex.height * 3));
+          const ts = material.textureScale ?? 1;
+          // If textureScale set: shrink tile to 1/ts (realistic repeat), else auto-fit
+          const scale = ts > 1
+            ? 1 / ts
+            : Math.max(1, panelH / (cachedTex.height * 3));
           const pattern = tCtx.createPattern(cachedTex, 'repeat');
           if (pattern) {
             const m = new DOMMatrix();
@@ -1045,7 +1049,7 @@ const BambooStudio = () => {
           <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-gray-300">
             <a href="https://allwall.ru/catalog/" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Каталог</a>
             <a href="https://allwall.ru/about/" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">О компании</a>
-            <button onClick={scrollToTool} className="hover:text-white transition-colors text-[#7ec662]">Примерочная</button>
+            <button onClick={scrollToTool} className="hover:text-white transition-colors text-[#7ec662]">Визуализатор</button>
           </nav>
 
           {/* Phone */}
@@ -1061,7 +1065,7 @@ const BambooStudio = () => {
       <section className="bg-[#1c1c1c] text-white pt-12 pb-14 px-6">
         <div className="max-w-5xl mx-auto text-center">
           <h1 className="text-3xl md:text-5xl font-black leading-tight mb-5">
-            Онлайн-примерочная<br/>стеновых панелей
+            Визуализатор<br/>стеновых панелей
           </h1>
           <p className="text-gray-400 text-lg max-w-2xl mx-auto mb-9 leading-relaxed">
             Загрузите фотографию вашего интерьера и посмотрите, как будут выглядеть панели ALL WALL прямо на вашей стене — до покупки и монтажа.
@@ -1229,35 +1233,6 @@ const BambooStudio = () => {
                 className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
             </div>
 
-            {/* Light mode */}
-            <div className="bg-white rounded-2xl p-3.5 shadow-sm">
-              <div className="flex items-center gap-1.5 mb-2.5">
-                <Sun size={12} className="text-gray-400"/>
-                <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Освещение</span>
-              </div>
-              <div className="grid grid-cols-3 gap-1.5">
-                {([
-                  { key: 'off',     label: 'Выкл',  icon: null },
-                  { key: 'morning', label: 'Утро',  icon: 'sun'  },
-                  { key: 'evening', label: 'Вечер', icon: 'moon' },
-                ] as const).map(({ key, label, icon }) => (
-                  <button key={key} onClick={() => setLightMode(key)}
-                    className={`py-2 rounded-xl text-[9px] font-bold flex flex-col items-center gap-1 transition-all active:scale-95 ${
-                      lightMode === key
-                        ? key === 'morning' ? 'bg-blue-50 text-blue-600 ring-2 ring-blue-300'
-                          : key === 'evening' ? 'bg-amber-50 text-amber-600 ring-2 ring-amber-300'
-                          : 'bg-gray-100 text-gray-700 ring-2 ring-gray-300'
-                        : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
-                    }`}>
-                    {icon === 'sun'  && <Sun  size={14}/>}
-                    {icon === 'moon' && <Moon size={14}/>}
-                    {!icon && <span className="text-[10px]">○</span>}
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
             {/* Eraser */}
             <div className={`rounded-2xl p-3.5 shadow-sm transition-colors ${isErasing ? 'bg-red-50 ring-2 ring-red-400' : 'bg-white'}`}>
               <div className="flex items-center gap-1.5 mb-2.5">
@@ -1316,6 +1291,9 @@ const BambooStudio = () => {
                     for (let i = 0; i < panelCount; i++) all[i] = panel;
                     setSectorMaterials(all);
                   }
+                  // Auto-collapse all series except the one with the selected panel
+                  const owner = (PANEL_SERIES as PanelSeries[]).find(s => s.panels.some(p => p.id === panel.id));
+                  if (owner) setOpenSeries(new Set([owner.id]));
                 }}
               />
             </div>
@@ -1381,6 +1359,35 @@ const BambooStudio = () => {
               )}
             </div>
 
+            {/* Light mode */}
+            <div className="bg-white rounded-2xl p-3.5 shadow-sm">
+              <div className="flex items-center gap-1.5 mb-2.5">
+                <Sun size={12} className="text-gray-400"/>
+                <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Освещение</span>
+              </div>
+              <div className="grid grid-cols-3 gap-1.5">
+                {([
+                  { key: 'off',     label: 'Выкл',  icon: null },
+                  { key: 'morning', label: 'Утро',  icon: 'sun'  },
+                  { key: 'evening', label: 'Вечер', icon: 'moon' },
+                ] as const).map(({ key, label, icon }) => (
+                  <button key={key} onClick={() => setLightMode(key)}
+                    className={`py-2 rounded-xl text-[9px] font-bold flex flex-col items-center gap-1 transition-all active:scale-95 ${
+                      lightMode === key
+                        ? key === 'morning' ? 'bg-blue-50 text-blue-600 ring-2 ring-blue-300'
+                          : key === 'evening' ? 'bg-amber-50 text-amber-600 ring-2 ring-amber-300'
+                          : 'bg-gray-100 text-gray-700 ring-2 ring-gray-300'
+                        : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
+                    }`}>
+                    {icon === 'sun'  && <Sun  size={14}/>}
+                    {icon === 'moon' && <Moon size={14}/>}
+                    {!icon && <span className="text-[10px]">○</span>}
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Save */}
             <button onClick={handleSave}
               className="w-full flex items-center justify-center gap-2 bg-black text-white text-xs font-bold py-3 rounded-2xl hover:bg-gray-800 transition-all active:scale-95 mt-1 shadow-sm">
@@ -1414,8 +1421,14 @@ const BambooStudio = () => {
 
             {/* Каталог */}
             <div>
-              <div className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-4">Каталог</div>
-              <ul className="space-y-2.5 text-sm text-gray-400">
+              <button
+                className="w-full flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-gray-500 mb-4 md:cursor-default"
+                onClick={() => setFooterCatalogOpen(o => !o)}
+              >
+                <span>Каталог</span>
+                <span className="md:hidden text-gray-600">{footerCatalogOpen ? '▲' : '▼'}</span>
+              </button>
+              <ul className={`space-y-2.5 text-sm text-gray-400 ${footerCatalogOpen ? 'block' : 'hidden'} md:block`}>
                 {['Металл', 'Soft-touch / Кожа', 'Жидкий металл', 'Частицы', 'Щебень / Камень', 'Патина / Медь'].map(t => (
                   <li key={t}><a href="https://allwall.ru/catalog/" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">{t}</a></li>
                 ))}
@@ -1453,7 +1466,7 @@ const BambooStudio = () => {
                 </div>
                 <button onClick={scrollToTool}
                   className="mt-2 bg-[#7ec662] hover:bg-[#6ab352] text-black font-black text-xs px-5 py-2.5 rounded-lg transition-all active:scale-95">
-                  Открыть примерочную
+                  Открыть визуализатор
                 </button>
               </div>
             </div>
@@ -1462,7 +1475,7 @@ const BambooStudio = () => {
           {/* Bottom bar */}
           <div className="pt-6 flex flex-col md:flex-row justify-between items-center gap-3 text-xs text-gray-600">
             <span>© 2024 ALL WALL. Все права защищены.</span>
-            <span className="text-center">Инструмент «Онлайн-примерочная» — бесплатный сервис для клиентов ALL WALL</span>
+            <span className="text-center">Инструмент «Визуализатор» — бесплатный сервис для клиентов ALL WALL</span>
             <a href="https://allwall.ru/privacy/" target="_blank" rel="noopener noreferrer" className="hover:text-gray-400 transition-colors">Политика конфиденциальности</a>
           </div>
         </div>
