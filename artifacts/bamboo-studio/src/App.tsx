@@ -1045,7 +1045,6 @@ const BambooStudio = () => {
           <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-gray-300">
             <a href="https://allwall.ru/catalog/" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Каталог</a>
             <a href="https://allwall.ru/about/" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">О компании</a>
-            <a href="https://allwall.ru/cooperation/" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Сотрудничество</a>
             <button onClick={scrollToTool} className="hover:text-white transition-colors text-[#7ec662]">Примерочная</button>
           </nav>
 
