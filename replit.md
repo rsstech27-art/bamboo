@@ -62,7 +62,7 @@ Textures for Рейки: tex-443..tex-469 range (light blonde to near-black ebon
 - `textureCacheRef` — `Record<string, HTMLImageElement>` for loaded texture images
 - Texture preload `useEffect` runs after `drawFullScene` to avoid TDZ errors
 - `drawFullScene` uses `canvas.clip()` + `ctx.createPattern()` + `DOMMatrix` scale transform
-- Canvas composite: photo → tempCanvas (panels + dividers + moldings) → mask (destination-out) → 0.85 alpha → photo multiply 0.38
+- Canvas composite: photo → tempCanvas (panels + dividers + moldings) → mask (destination-out) → 0.95 alpha → woodCanvas 0.18 alpha → photo multiply 0.25
 - `PanelThumb` component renders 48×72 thumbnail + name + article code
 
 ## Stack

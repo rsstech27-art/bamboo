@@ -807,19 +807,19 @@ const BambooStudio = () => {
       }
 
       ctx.save();
-      ctx.globalAlpha = 0.85;
+      ctx.globalAlpha = 0.95;
       ctx.drawImage(tempCanvas, 0, 0);
       ctx.restore();
 
       // Extra opacity boost specifically for wood (textureStretch) panels
       ctx.save();
-      ctx.globalAlpha = 0.10;
+      ctx.globalAlpha = 0.18;
       ctx.drawImage(woodCanvas, 0, 0);
       ctx.restore();
 
       // Overlay original photo with 'multiply' blend to preserve room shadows & lighting
       ctx.save();
-      ctx.globalAlpha = 0.38;
+      ctx.globalAlpha = 0.25;
       ctx.globalCompositeOperation = 'multiply';
       ctx.drawImage(img, 0, 0, width, height);
       ctx.restore();
