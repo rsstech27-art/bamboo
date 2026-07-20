@@ -59,6 +59,7 @@ Textures for Рейки: tex-443..tex-469 range (light blonde to near-black ebon
 - Divider/molding handles + sector highlight rendered only for the active surface; interactive helpers (findNearDivider, canvasX/YToWallRatio, findNearHMolding) operate on active quad
 - Undo is surface-aware (`surfaceIndex` in HistorySnapshot); upload/«Назад» reset `activeSurface` and `surfacesRef`
 - `cornerTypes` array ('external'|'internal' per junction; junction j = walls j+1/j+2) controls edge visual between adjacent quads (bright bend vs dark seam); UI = `CornerTypeCheckboxes` (checkbox pair per junction, one type per junction, different types can coexist across junctions)
+- `wrapJunctions` boolean[] («Загиб одной панели»): on an external junction one panel bends around the corner — first sector of the next wall reuses the previous wall's last panel material (overrideFirstMaterial in renderQuad), seam drawn as soft light bend (no profile), КП counts it as ONE panel «(с загибом на угол)» and deducts junction profiles; corner/wrap state is in undo history and redraw deps
 
 ### Commercial proposal (КП) PDF
 - After «Сохранить PNG», a green «Рассчитать КП (PDF)» button appears

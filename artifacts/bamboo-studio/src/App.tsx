@@ -297,12 +297,14 @@ const MOLDING_INFO: Record<string, { article: string; name: string; price: numbe
   brass:    { article: 'PR-BRASS', name: 'Профиль латунь',        price: 990 },
 };
 
-const CornerTypeCheckboxes = ({ nJunctions, cornerTypes, setCornerTypes }: {
+const CornerTypeCheckboxes = ({ nJunctions, cornerTypes, setCornerTypes, wrapJunctions, setWrapJunctions }: {
   nJunctions: number;
   cornerTypes: ('external' | 'internal')[];
   setCornerTypes: React.Dispatch<React.SetStateAction<('external' | 'internal')[]>>;
+  wrapJunctions: boolean[];
+  setWrapJunctions: React.Dispatch<React.SetStateAction<boolean[]>>;
 }) => (
-  <div className="space-y-2">
+  <div className="space-y-2.5">
     {Array.from({ length: nJunctions }, (_, j) => (
       <div key={j}>
         <p className="text-[8px] text-gray-400 mb-1 font-bold">Угол между стенами {j + 1} и {j + 2}:</p>
@@ -319,6 +321,17 @@ const CornerTypeCheckboxes = ({ nJunctions, cornerTypes, setCornerTypes }: {
             </label>
           ))}
         </div>
+        {cornerTypes[j] === 'external' && (
+          <label className="flex items-center gap-1.5 cursor-pointer select-none mt-1.5 pl-0.5">
+            <input
+              type="checkbox"
+              checked={wrapJunctions[j] ?? false}
+              onChange={() => setWrapJunctions(prev => { const next = [...prev]; next[j] = !next[j]; return next; })}
+              className="w-3.5 h-3.5 rounded border-gray-300 accent-[#7ec662]"
+            />
+            <span className={`text-[9px] font-bold ${wrapJunctions[j] ? 'text-[#5a9c3e]' : 'text-gray-400'}`}>⤵ Загиб одной панели (без профиля)</span>
+          </label>
+        )}
       </div>
     ))}
   </div>
@@ -352,6 +365,9 @@ const BambooStudio = () => {
   // Corner type per junction (junction 0 = walls 1–2, junction 1 = walls 2–3)
   const [cornerTypes, setCornerTypes] = useState<('external' | 'internal')[]>(['external', 'external']);
   const cornerTypesRef = useRef<('external' | 'internal')[]>(['external', 'external']);
+  // Wrap (загиб): on an external corner one panel bends around the corner — no profile joint
+  const [wrapJunctions, setWrapJunctions] = useState<boolean[]>([false, false]);
+  const wrapJunctionsRef = useRef<boolean[]>([false, false]);
   const [savedPng, setSavedPng] = useState<string | null>(null);
   const [activeSurface, setActiveSurface] = useState(0);
   const activeSurfaceRef = useRef(0);
@@ -395,6 +411,8 @@ const BambooStudio = () => {
     sectorMaterials: Record<number, Panel>;
     dividerPositions: number[];
     panelCount: number;
+    cornerTypes: ('external' | 'internal')[];
+    wrapJunctions: boolean[];
   };
   const historyRef = useRef<HistorySnapshot[]>([]);
 
@@ -404,6 +422,8 @@ const BambooStudio = () => {
       sectorMaterials: { ...sectorMaterialsRef.current },
       dividerPositions: [...dividerPositionsRef.current],
       panelCount: panelCountRef.current,
+      cornerTypes: [...cornerTypesRef.current],
+      wrapJunctions: [...wrapJunctionsRef.current],
     });
     if (historyRef.current.length > 50) historyRef.current.shift();
   }, []);
@@ -411,6 +431,9 @@ const BambooStudio = () => {
   const undo = useCallback(() => {
     if (historyRef.current.length === 0) return;
     const prev = historyRef.current.pop()!;
+    // Corner/wrap settings are global — always restore
+    setCornerTypes(prev.cornerTypes);
+    setWrapJunctions(prev.wrapJunctions);
     if (prev.surfaceIndex === activeSurfaceRef.current) {
       // Snapshot belongs to the active surface — restore via live state
       setSectorMaterials(prev.sectorMaterials);
@@ -446,6 +469,7 @@ const BambooStudio = () => {
   useEffect(() => { hMoldingPositionsRef.current = hMoldingPositions; }, [hMoldingPositions]);
   useEffect(() => { lightModeRef.current = lightMode; }, [lightMode]);
   useEffect(() => { cornerTypesRef.current = cornerTypes; }, [cornerTypes]);
+  useEffect(() => { wrapJunctionsRef.current = wrapJunctions; }, [wrapJunctions]);
   useEffect(() => { activeSurfaceRef.current = activeSurface; }, [activeSurface]);
   // Persist current edits into the active surface's config
   useEffect(() => {
@@ -599,7 +623,7 @@ const BambooStudio = () => {
       const wCtx = woodCanvas.getContext('2d')!;
 
       // Helper: render one 4-point quad with panels, dividers, and moldings
-      const renderQuad = (qp: Point[], cfg: SurfaceConfig, isActive: boolean) => {
+      const renderQuad = (qp: Point[], cfg: SurfaceConfig, isActive: boolean, overrideFirstMaterial?: Panel) => {
         const bounds = getSectorBounds(cfg.dividerPositions, cfg.panelCount);
 
       for (let i = 0; i < cfg.panelCount; i++) {
@@ -610,7 +634,7 @@ const BambooStudio = () => {
         const p3 = { x: qp[3].x + (qp[2].x - qp[3].x) * rEnd, y: qp[3].y + (qp[2].y - qp[3].y) * rEnd };
         const p4 = { x: qp[3].x + (qp[2].x - qp[3].x) * rStart, y: qp[3].y + (qp[2].y - qp[3].y) * rStart };
 
-        const material = cfg.sectorMaterials[i] || BAMBOO_PANELS[0];
+        const material = (i === 0 && overrideFirstMaterial) ? overrideFirstMaterial : (cfg.sectorMaterials[i] || BAMBOO_PANELS[0]);
 
         // Draw panel with texture if available, else solid color
         const minX = Math.min(p1.x, p2.x, p3.x, p4.x);
@@ -979,9 +1003,19 @@ const BambooStudio = () => {
         hMoldingWidth: hMoldingWidthRef.current,
         hMoldingPositions: hMoldingPositionsRef.current,
       };
+      const quadCfgs: SurfaceConfig[] = [];
       for (let q = 0; q < nQuads; q++) {
-        const cfg = q === curActiveSurf ? liveCfg : (surfacesRef.current[q] ?? defaultSurfaceConfig());
-        renderQuad(pts.slice(q * 4, q * 4 + 4), cfg, q === curActiveSurf);
+        quadCfgs.push(q === curActiveSurf ? liveCfg : (surfacesRef.current[q] ?? defaultSurfaceConfig()));
+      }
+      for (let q = 0; q < nQuads; q++) {
+        // Wrap continuation: first sector of this wall reuses the LAST panel of the previous wall
+        let overrideMat: Panel | undefined;
+        if (q > 0 && (wrapJunctionsRef.current[q - 1] ?? false)
+            && (cornerTypesRef.current[q - 1] ?? 'external') === 'external') {
+          const prevCfg = quadCfgs[q - 1];
+          overrideMat = prevCfg.sectorMaterials[prevCfg.panelCount - 1] || BAMBOO_PANELS[0];
+        }
+        renderQuad(pts.slice(q * 4, q * 4 + 4), quadCfgs[q], q === curActiveSurf, overrideMat);
       }
 
       // Corner edge visual between adjacent quads (right edge of previous quad)
@@ -997,7 +1031,16 @@ const BambooStudio = () => {
           cMidX + cpx * 6, cMidY + cpy * 6,
           cMidX - cpx * 6, cMidY - cpy * 6
         );
-        if ((cornerTypesRef.current[q - 1] ?? 'external') === 'external') {
+        const jExternal = (cornerTypesRef.current[q - 1] ?? 'external') === 'external';
+        const jWrap = jExternal && (wrapJunctionsRef.current[q - 1] ?? false);
+        if (jWrap) {
+          // Single bent panel: soft light bend, texture continues, no joint seam
+          cGrad.addColorStop(0,    'rgba(0,0,0,0.18)');
+          cGrad.addColorStop(0.45, 'rgba(255,255,255,0.32)');
+          cGrad.addColorStop(0.5,  'rgba(255,255,255,0.42)');
+          cGrad.addColorStop(0.55, 'rgba(255,255,255,0.32)');
+          cGrad.addColorStop(1,    'rgba(0,0,0,0.18)');
+        } else if (jExternal) {
           cGrad.addColorStop(0,   'rgba(0,0,0,0.50)');
           cGrad.addColorStop(0.3, 'rgba(255,255,255,0.65)');
           cGrad.addColorStop(0.5, 'rgba(255,255,255,0.90)');
@@ -1012,7 +1055,7 @@ const BambooStudio = () => {
         }
         tCtx.save();
         tCtx.strokeStyle = cGrad;
-        tCtx.lineWidth = 12;
+        tCtx.lineWidth = jWrap ? 7 : 12;
         tCtx.lineCap = 'butt';
         tCtx.beginPath();
         tCtx.moveTo(cTopX, cTopY);
@@ -1195,7 +1238,7 @@ const BambooStudio = () => {
   useEffect(() => {
     if (!image) return;
     drawFullScene();
-  }, [points, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, lightMode, activeSurface, drawFullScene, image]);
+  }, [points, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, lightMode, activeSurface, cornerTypes, wrapJunctions, drawFullScene, image]);
 
   const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = mainCanvasRef.current;
@@ -1385,7 +1428,7 @@ const BambooStudio = () => {
     type KPItem = { article: string; name: string; qty: number; price: number };
     const items: KPItem[] = [];
     const addItem = (article: string, name: string, qty: number, price: number) => {
-      const ex = items.find(it => it.article === article);
+      const ex = items.find(it => it.article === article && it.name === name);
       if (ex) ex.qty += qty; else items.push({ article, name, qty, price });
     };
 
@@ -1403,13 +1446,22 @@ const BambooStudio = () => {
             hMoldingPositions: hMoldingPositionsRef.current,
           }
         : (surfacesRef.current[q] ?? defaultSurfaceConfig());
+      const wrapLeft = q > 0 && (wrapJunctionsRef.current[q - 1] ?? false)
+        && (cornerTypesRef.current[q - 1] ?? 'external') === 'external';
+      const wrapRight = q < nQuads - 1 && (wrapJunctionsRef.current[q] ?? false)
+        && (cornerTypesRef.current[q] ?? 'external') === 'external';
       for (let i = 0; i < cfg.panelCount; i++) {
+        // First sector after a wrap junction = continuation of the previous wall's bent panel
+        if (i === 0 && wrapLeft) continue;
         const mat = cfg.sectorMaterials[i] || BAMBOO_PANELS[0];
-        addItem(mat.article, `Панель «${mat.name}»`, 1, getPanelPrice(mat.id));
+        const isBent = i === cfg.panelCount - 1 && wrapRight;
+        addItem(mat.article, `Панель «${mat.name}»${isBent ? ' (с загибом на угол)' : ''}`, 1, getPanelPrice(mat.id));
       }
       if (cfg.moldingStyle !== 'none') {
         const info = MOLDING_INFO[cfg.moldingStyle];
-        addItem(info.article + '-V', info.name + ' (вертик.)', cfg.panelCount + 1, info.price);
+        // A wrapped (загиб) junction has NO profile at the shared edge — deduct it
+        const vQty = Math.max(0, cfg.panelCount + 1 - (wrapLeft ? 1 : 0) - (wrapRight ? 1 : 0));
+        if (vQty > 0) addItem(info.article + '-V', info.name + ' (вертик.)', vQty, info.price);
       }
       if (cfg.hMoldingStyle !== 'none') {
         const info = MOLDING_INFO[cfg.hMoldingStyle];
@@ -1523,6 +1575,7 @@ const BambooStudio = () => {
           activeSurfaceRef.current = 0;
           setActiveSurface(0);
           setCornerTypes(['external', 'external']);
+          setWrapJunctions([false, false]);
           setSavedPng(null);
           setImage(img);
           setStep('mark');
@@ -1657,7 +1710,7 @@ const BambooStudio = () => {
             )}
             {step !== 'zone' && (
               <button
-                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setSavedPng(null); setStep('zone'); setWallZone(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
+                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setSavedPng(null); setStep('zone'); setWallZone(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
                 className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
               >
                 ← Назад
@@ -1804,7 +1857,7 @@ const BambooStudio = () => {
                 {points.length >= 8 && (
                   <div className="mb-3">
                     <p className="text-[9px] text-gray-400 mb-1.5 font-bold uppercase tracking-wide">Тип углов:</p>
-                    <CornerTypeCheckboxes nJunctions={Math.min(2, Math.floor(points.length / 4) - 1)} cornerTypes={cornerTypes} setCornerTypes={setCornerTypes} />
+                    <CornerTypeCheckboxes nJunctions={Math.min(2, Math.floor(points.length / 4) - 1)} cornerTypes={cornerTypes} setCornerTypes={(v) => { pushHistory(); setCornerTypes(v); }} wrapJunctions={wrapJunctions} setWrapJunctions={(v) => { pushHistory(); setWrapJunctions(v); }} />
                   </div>
                 )}
               </>) : (
@@ -2005,7 +2058,7 @@ const BambooStudio = () => {
                 <div className="flex items-center gap-1.5 mb-2.5">
                   <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Тип углов</span>
                 </div>
-                <CornerTypeCheckboxes nJunctions={Math.min(2, Math.floor(points.length / 4) - 1)} cornerTypes={cornerTypes} setCornerTypes={setCornerTypes} />
+                <CornerTypeCheckboxes nJunctions={Math.min(2, Math.floor(points.length / 4) - 1)} cornerTypes={cornerTypes} setCornerTypes={(v) => { pushHistory(); setCornerTypes(v); }} wrapJunctions={wrapJunctions} setWrapJunctions={(v) => { pushHistory(); setWrapJunctions(v); }} />
               </div>
             )}
 
