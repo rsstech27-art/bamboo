@@ -254,7 +254,8 @@ function makeEqualDividers(count: number): number[] {
 
 const BambooStudio = () => {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
-  const [step, setStep] = useState<'upload' | 'mark' | 'edit'>('upload');
+  const [step, setStep] = useState<'zone' | 'upload' | 'mark' | 'edit'>('zone');
+  const [wallZone, setWallZone] = useState<string | null>(null);
   const [points, setPoints] = useState<Point[]>([]);
   const [panelCount, setPanelCount] = useState(5);
   // dividerPositions: array of N-1 values in (0,1), sorted ascending
@@ -289,7 +290,7 @@ const BambooStudio = () => {
 
   // Refs for stable drawFullScene
   const imageRef = useRef<HTMLImageElement | null>(null);
-  const stepRef = useRef<'upload' | 'mark' | 'edit'>('upload');
+  const stepRef = useRef<'zone' | 'upload' | 'mark' | 'edit'>('zone');
   const pointsRef = useRef<Point[]>([]);
   const panelCountRef = useRef(5);
   const dividerPositionsRef = useRef<number[]>(makeEqualDividers(5));
@@ -1233,7 +1234,7 @@ const BambooStudio = () => {
               </button>
             )}
             <button
-              onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setStep('upload'); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
+              onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setStep('zone'); setWallZone(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
               className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
             >
               <RotateCcw size={13} /> Сброс
@@ -1246,7 +1247,35 @@ const BambooStudio = () => {
 
         {/* ── Canvas area ── */}
         <div className="flex-1 relative min-w-0 min-h-[55vw] md:min-h-0">
-          {step === 'upload' ? (
+          {step === 'zone' ? (
+            <div className="flex flex-col items-center justify-center w-full h-full rounded-3xl bg-white border-2 border-dashed border-gray-200 p-6">
+              <div className="text-center mb-6">
+                <div className="w-12 h-12 bg-black rounded-2xl flex items-center justify-center mx-auto mb-3">
+                  <Layout className="text-white w-5 h-5" />
+                </div>
+                <h3 className="text-base font-black text-gray-900 mb-1">Выберите тип зоны</h3>
+                <p className="text-xs text-gray-400">Какой участок стены вы хотите оформить?</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3 w-full max-w-xs">
+                {([
+                  { id: 'window', label: 'Оконный проём', emoji: '🪟', desc: 'Стена с окном' },
+                  { id: 'door',   label: 'Дверной проём', emoji: '🚪', desc: 'Стена с дверью' },
+                  { id: 'tv',     label: 'ТВ-зона',       emoji: '📺', desc: 'Зона телевизора' },
+                  { id: 'column', label: 'Колонна',        emoji: '🏛️', desc: 'Колонна / выступ' },
+                ] as const).map(zone => (
+                  <button
+                    key={zone.id}
+                    onClick={() => { setWallZone(zone.id); setStep('upload'); }}
+                    className="flex flex-col items-center gap-1.5 p-4 rounded-2xl border-2 border-gray-100 bg-gray-50 hover:border-black hover:bg-black hover:text-white transition-all active:scale-95 group"
+                  >
+                    <span className="text-3xl">{zone.emoji}</span>
+                    <span className="text-[10px] font-black uppercase tracking-wide text-gray-800 group-hover:text-white">{zone.label}</span>
+                    <span className="text-[9px] text-gray-400 group-hover:text-gray-300">{zone.desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : step === 'upload' ? (
             <label className="relative flex flex-col items-center justify-center w-full h-full rounded-3xl border-2 border-dashed border-gray-300 cursor-pointer overflow-hidden shadow-sm group">
               {/* Background image at 50% opacity */}
               <div className="absolute inset-0 bg-cover bg-center transition-opacity group-hover:opacity-60"
