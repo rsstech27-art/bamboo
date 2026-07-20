@@ -1228,17 +1228,25 @@ const BambooStudio = () => {
             <span className="font-bold text-sm tracking-tight">BambooStudio Pro</span>
           </div>
           <div className="flex items-center gap-3">
+            {step === 'zone' && (
+              <button onClick={() => toolRef.current?.previousElementSibling?.scrollIntoView({ behavior: 'smooth' })}
+                className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors">
+                ← Назад
+              </button>
+            )}
             {step === 'edit' && (
               <button onClick={undo} className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors" title="Ctrl+Z">
                 <Undo2 size={13} /> Отменить
               </button>
             )}
-            <button
-              onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setStep('zone'); setWallZone(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
-              className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
-            >
-              <RotateCcw size={13} /> Сброс
-            </button>
+            {step !== 'zone' && (
+              <button
+                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setStep('zone'); setWallZone(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
+                className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
+              >
+                <RotateCcw size={13} /> Сброс
+              </button>
+            )}
           </div>
         </nav>
 
@@ -1248,29 +1256,34 @@ const BambooStudio = () => {
         {/* ── Canvas area ── */}
         <div className="flex-1 relative min-w-0 min-h-[55vw] md:min-h-0">
           {step === 'zone' ? (
-            <div className="flex flex-col items-center justify-center w-full h-full rounded-3xl bg-white border-2 border-dashed border-gray-200 p-6">
-              <div className="text-center mb-6">
-                <div className="w-12 h-12 bg-black rounded-2xl flex items-center justify-center mx-auto mb-3">
-                  <Layout className="text-white w-5 h-5" />
-                </div>
+            <div className="flex flex-col items-center justify-center w-full h-full rounded-3xl bg-white border-2 border-dashed border-gray-200 p-5">
+              <div className="text-center mb-5">
                 <h3 className="text-base font-black text-gray-900 mb-1">Выберите тип зоны</h3>
                 <p className="text-xs text-gray-400">Какой участок стены вы хотите оформить?</p>
               </div>
-              <div className="grid grid-cols-2 gap-3 w-full max-w-xs">
+              <div className="grid grid-cols-2 gap-3 w-full max-w-lg">
                 {([
-                  { id: 'window', label: 'Оконный проём', emoji: '🪟', desc: 'Стена с окном' },
-                  { id: 'door',   label: 'Дверной проём', emoji: '🚪', desc: 'Стена с дверью' },
-                  { id: 'tv',     label: 'ТВ-зона',       emoji: '📺', desc: 'Зона телевизора' },
-                  { id: 'column', label: 'Колонна',        emoji: '🏛️', desc: 'Колонна / выступ' },
+                  { id: 'window', label: 'Оконный проём', img: `${BASE}zones/window.jpg` },
+                  { id: 'door',   label: 'Дверной проём', img: `${BASE}zones/door.jpg` },
+                  { id: 'tv',     label: 'ТВ-зона',       img: `${BASE}zones/tv.jpg` },
+                  { id: 'column', label: 'Колонна',        img: `${BASE}zones/column.jpg` },
                 ] as const).map(zone => (
                   <button
                     key={zone.id}
                     onClick={() => { setWallZone(zone.id); setStep('upload'); }}
-                    className="flex flex-col items-center gap-1.5 p-4 rounded-2xl border-2 border-gray-100 bg-gray-50 hover:border-black hover:bg-black hover:text-white transition-all active:scale-95 group"
+                    className="flex flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-gray-50 hover:border-black hover:shadow-lg transition-all active:scale-95 group text-left"
                   >
-                    <span className="text-3xl">{zone.emoji}</span>
-                    <span className="text-[10px] font-black uppercase tracking-wide text-gray-800 group-hover:text-white">{zone.label}</span>
-                    <span className="text-[9px] text-gray-400 group-hover:text-gray-300">{zone.desc}</span>
+                    <div className="w-full h-36 bg-gray-200 overflow-hidden relative">
+                      <img
+                        src={zone.img}
+                        alt={zone.label}
+                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                      />
+                    </div>
+                    <div className="px-3 py-2.5">
+                      <span className="text-[11px] font-black uppercase tracking-wide text-gray-800 group-hover:text-black">{zone.label}</span>
+                    </div>
                   </button>
                 ))}
               </div>
