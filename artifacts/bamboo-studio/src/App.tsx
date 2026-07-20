@@ -1261,7 +1261,7 @@ const BambooStudio = () => {
                 <h3 className="text-base font-black text-gray-900 mb-1">Выберите тип зоны</h3>
                 <p className="text-xs text-gray-400">Какой участок стены вы хотите оформить?</p>
               </div>
-              <div className="grid grid-cols-2 gap-3 w-full max-w-lg">
+              <div className="grid grid-cols-3 gap-3 w-full max-w-2xl">
                 {([
                   { id: 'wall',       label: 'Стена',            img: `${BASE}zones/wall.jpg` },
                   { id: 'wall-niche', label: 'Стена с выступом', img: `${BASE}zones/wall-niche.jpg` },
