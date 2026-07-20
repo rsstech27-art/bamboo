@@ -64,7 +64,7 @@ Textures for Рейки: tex-443..tex-469 range (light blonde to near-black ebon
 ### Wall dimensions & area check
 - Panel physical size: `PANEL_H_MM=2800`, `PANEL_W_MM=1220` (area `PANEL_AREA_M2`≈3,42 м²)
 - Per-surface `wallWidthMm`/`wallHeightMm` in `SurfaceConfig` (0 = not set); persisted/switched/reset/undone like other surface fields; also in `liveCfg` (draw) and `kpCfgs` (КП)
-- Edit sidebar «Размеры стены N»: width/height inputs in meters (stored ×1000 as mm); shows area, panels-needed = `ceil(width/1220) × ceil(height/2800)` (cols×rows), warns + one-click «Установить N панелей» button if `panelCount < needed`, height>2800 → row-stacking note
+- Edit sidebar «Размеры стены N»: width/height inputs in meters (stored ×1000 as mm); shows area; the check/«Установить» button uses **cols only** (`ceil(width/1220)`) because the visualiser lays panels in a single row — never suggest cols×rows in the UI; height>2800 note mentions rows and total needed (КП handles the full cols×rows count in cost)
 - КП PDF gains a «Размеры стен и расход материала» section (per-wall dims, area, project vs computed panel count, total wall area, per-wall + total расчётная стоимость = needed × avg price of the wall's billed materials, wrap-aware)
 - КП «Итого» prioritises calculated cost: for walls with dimensions, project panel cost is replaced by расчётная стоимость (`finalTotal = total − projCostDimWalls + calcCost`); project-visualisation total shown below as reference when it differs
 

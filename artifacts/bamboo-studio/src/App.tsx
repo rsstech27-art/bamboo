@@ -2231,24 +2231,24 @@ const BambooStudio = () => {
                 const cols = Math.ceil(wallWidthMm / PANEL_W_MM);
                 const rows = Math.ceil(wallHeightMm / PANEL_H_MM);
                 const needed = cols * rows;
-                const enough = panelCount >= needed;
+                const enough = panelCount >= cols;
                 const tooTall = wallHeightMm > PANEL_H_MM;
                 return (
                   <div className="space-y-1">
                     <p className="text-[9px] font-bold text-gray-600">Площадь стены: {areaM2.toFixed(2).replace('.', ',')} м²</p>
                     <p className={`text-[9px] font-bold ${enough ? 'text-[#5a9c3e]' : 'text-amber-600'}`}>
                       {enough
-                        ? `✓ Панелей достаточно: ${panelCount} (расчётно ${needed}${rows > 1 ? `, ${cols}×${rows}` : ''})`
-                        : `⚠ Нужно ${needed} панел${needed === 1 ? 'ь' : needed % 10 >= 2 && needed % 10 <= 4 && (needed < 10 || needed > 20) ? 'и' : 'ей'}${rows > 1 ? ` (${cols} по ширине × ${rows} по высоте)` : ''} — в проекте ${panelCount}`}
+                        ? `✓ Панелей в ряду достаточно: ${panelCount} (по ширине ${cols})`
+                        : `⚠ По ширине нужно ${cols} панел${cols === 1 ? 'ь' : cols % 10 >= 2 && cols % 10 <= 4 && (cols < 10 || cols > 20) ? 'и' : 'ей'} в ряду — в проекте ${panelCount}`}
                     </p>
                     {!enough && (
-                      <button onClick={() => handleChangePanelCount(needed)}
+                      <button onClick={() => handleChangePanelCount(cols)}
                         className="w-full py-1.5 text-[9px] font-bold rounded-lg bg-[#7ec662] text-white hover:bg-[#6db453] transition-all active:scale-95">
-                        Установить {needed} панел{needed === 1 ? 'ь' : needed % 10 >= 2 && needed % 10 <= 4 && (needed < 10 || needed > 20) ? 'и' : 'ей'}
+                        Установить {cols} панел{cols === 1 ? 'ь' : cols % 10 >= 2 && cols % 10 <= 4 && (cols < 10 || cols > 20) ? 'и' : 'ей'} в ряд
                       </button>
                     )}
                     {tooTall && (
-                      <p className="text-[9px] font-bold text-amber-600">⚠ Высота стены больше 2,8 м — потребуется стыковка панелей по высоте</p>
+                      <p className="text-[9px] font-bold text-amber-600">⚠ Высота стены больше 2,8 м — потребуется {rows} ряда по высоте, всего {needed} панелей (в расчёте КП учтено)</p>
                     )}
                     <p className="text-[8px] text-gray-400">Ширина панели в проекте: {(wallWidthMm / panelCount / 1000).toFixed(2).replace('.', ',')} м (макс. 1,22 м)</p>
                   </div>
