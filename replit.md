@@ -65,7 +65,7 @@ Textures for Рейки: tex-443..tex-469 range (light blonde to near-black ebon
 - Panel physical size: `PANEL_H_MM=2800`, `PANEL_W_MM=1220` (area `PANEL_AREA_M2`≈3,42 м²)
 - Per-surface `wallWidthMm`/`wallHeightMm` in `SurfaceConfig` (0 = not set); persisted/switched/reset/undone like other surface fields; also in `liveCfg` (draw) and `kpCfgs` (КП)
 - Edit sidebar «Размеры стены N»: width/height inputs in meters (stored ×1000 as mm); shows area, panels-needed = `ceil(width/1220) × ceil(height/2800)` (cols×rows), warns + one-click «Установить N панелей» button if `panelCount < needed`, height>2800 → row-stacking note
-- КП PDF gains a «Размеры стен и расход материала» section (per-wall dims, area, project vs computed panel count, total wall area)
+- КП PDF gains a «Размеры стен и расход материала» section (per-wall dims, area, project vs computed panel count, total wall area, per-wall + total расчётная стоимость = needed × avg price of the wall's chosen materials)
 
 ### Commercial proposal (КП) PDF
 - After «Сохранить PNG», a green «Рассчитать КП (PDF)» button appears

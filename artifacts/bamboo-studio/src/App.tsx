@@ -1615,6 +1615,7 @@ const BambooStudio = () => {
       y += 34;
       c.font = '16px sans-serif';
       let totalWallArea = 0;
+      let totalCalcCost = 0;
       dimWalls.forEach(({ cfg, q }) => {
         const wM = cfg.wallWidthMm / 1000, hM = cfg.wallHeightMm / 1000;
         const area = wM * hM;
@@ -1623,15 +1624,29 @@ const BambooStudio = () => {
         const rows = Math.ceil(cfg.wallHeightMm / PANEL_H_MM);
         const needed = cols * rows;
         const heightNote = rows > 1 ? ` · ${rows} ряда по высоте` : '';
+        // Average per-panel price of this wall's chosen materials (fallback to catalogue default)
+        let priceSum = 0;
+        for (let sIdx = 0; sIdx < cfg.panelCount; sIdx++) {
+          const mat = cfg.sectorMaterials[sIdx] ?? BAMBOO_PANELS[0];
+          priceSum += getPanelPrice(mat.id);
+        }
+        const avgPrice = cfg.panelCount > 0 ? priceSum / cfg.panelCount : getPanelPrice(BAMBOO_PANELS[0].id);
+        const calcCost = Math.round(needed * avgPrice);
+        totalCalcCost += calcCost;
         c.fillStyle = '#333333';
         c.fillText(
-          `Стена ${q + 1}: ${wM.toLocaleString('ru-RU')} × ${hM.toLocaleString('ru-RU')} м · ${area.toFixed(2).replace('.', ',')} м² · панелей в проекте: ${cfg.panelCount}, расчётно: ${needed}${heightNote}`,
+          `Стена ${q + 1}: ${wM.toLocaleString('ru-RU')} × ${hM.toLocaleString('ru-RU')} м · ${area.toFixed(2).replace('.', ',')} м² · панелей в проекте: ${cfg.panelCount}, расчётно: ${needed}${heightNote} · расчётная стоимость: ${fmt(calcCost)}`,
           60, y + 8);
         y += 28;
       });
       c.fillStyle = '#555555'; c.font = 'bold 16px sans-serif';
       c.fillText(
         `Панель 2,8 × 1,22 м (${PANEL_AREA_M2.toFixed(2).replace('.', ',')} м²) · общая площадь стен: ${totalWallArea.toFixed(2).replace('.', ',')} м²`,
+        60, y + 8);
+      y += 26;
+      c.fillStyle = '#111111';
+      c.fillText(
+        `Расчётная стоимость панелей по размерам стен: ${fmt(Math.round(totalCalcCost))}`,
         60, y + 8);
       y += 30;
     }
