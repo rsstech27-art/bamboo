@@ -1379,9 +1379,20 @@ const BambooStudio = () => {
       const newRatio = canvasXToWallRatio(x, y);
       setDividerPositions(prev => {
         const updated = [...prev];
-        const minLeft = idx === 0 ? MIN_PANEL_RATIO : updated[idx - 1] + MIN_PANEL_RATIO;
-        const maxRight = idx === updated.length - 1 ? 1 - MIN_PANEL_RATIO : updated[idx + 1] - MIN_PANEL_RATIO;
-        updated[idx] = Math.max(minLeft, Math.min(maxRight, newRatio));
+        const leftEdge = idx === 0 ? 0 : updated[idx - 1];
+        const rightEdge = idx === updated.length - 1 ? 1 : updated[idx + 1];
+        let minLeft = leftEdge + MIN_PANEL_RATIO;
+        let maxRight = rightEdge - MIN_PANEL_RATIO;
+        // If real wall width is set, a sector cannot be wider than one physical panel (1220 mm)
+        const wallW = wallWidthMmRef.current;
+        if (wallW > 0) {
+          const maxSectorRatio = PANEL_W_MM / wallW;
+          maxRight = Math.min(maxRight, leftEdge + maxSectorRatio);   // left sector limit
+          minLeft = Math.max(minLeft, rightEdge - maxSectorRatio);    // right sector limit
+        }
+        if (minLeft <= maxRight) {
+          updated[idx] = Math.max(minLeft, Math.min(maxRight, newRatio));
+        }
         return updated;
       });
       return;

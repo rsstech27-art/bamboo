@@ -66,6 +66,7 @@ Textures for Рейки: tex-443..tex-469 range (light blonde to near-black ebon
 - Per-surface `wallWidthMm`/`wallHeightMm` in `SurfaceConfig` (0 = not set); persisted/switched/reset/undone like other surface fields; also in `liveCfg` (draw) and `kpCfgs` (КП)
 - Edit sidebar «Размеры стены N»: width/height inputs in meters (stored ×1000 as mm); shows area; the check/«Установить» button uses **cols only** (`ceil(width/1220)`) because the visualiser lays panels in a single row — never suggest cols×rows in the UI; height>2800 note mentions rows and total needed (КП handles the full cols×rows count in cost)
 - КП PDF gains a «Размеры стен и расход материала» section (per-wall dims, area, project vs computed panel count, total wall area, per-wall + total расчётная стоимость = needed × avg price of the wall's billed materials, wrap-aware)
+- Divider drag clamp: when active surface's `wallWidthMm` is set, a sector cannot be dragged wider than one physical panel (`maxSectorRatio = 1220/wallWidthMm` applied to both adjacent sectors)
 - КП «Итого» prioritises calculated cost: for walls with dimensions, project panel cost is replaced by расчётная стоимость (`finalTotal = total − projCostDimWalls + calcCost`); project-visualisation total shown below as reference when it differs
 
 ### Commercial proposal (КП) PDF
