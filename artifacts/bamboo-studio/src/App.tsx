@@ -277,6 +277,8 @@ const BambooStudio = () => {
   const [footerCatalogOpen, setFooterCatalogOpen] = useState(false);
   const [lightMode, setLightMode] = useState<'off' | 'morning' | 'evening'>('off');
   const lightModeRef = useRef<'off' | 'morning' | 'evening'>('off');
+  const [cornerType, setCornerType] = useState<'external' | 'internal'>('external');
+  const cornerTypeRef = useRef<'external' | 'internal'>('external');
 
   const toggleSeries = (id: string) => setOpenSeries(prev => {
     const next = new Set(prev);
@@ -350,6 +352,7 @@ const BambooStudio = () => {
   useEffect(() => { hMoldingWidthRef.current = hMoldingWidth; }, [hMoldingWidth]);
   useEffect(() => { hMoldingPositionsRef.current = hMoldingPositions; }, [hMoldingPositions]);
   useEffect(() => { lightModeRef.current = lightMode; }, [lightMode]);
+  useEffect(() => { cornerTypeRef.current = cornerType; }, [cornerType]);
 
   // Ctrl+Z global undo
   useEffect(() => {
@@ -429,188 +432,17 @@ const BambooStudio = () => {
       woodCanvas.height = height;
       const wCtx = woodCanvas.getContext('2d')!;
 
-      // For walls with protrusion (>4 points): clip both canvases to the full polygon.
-      // Panels are still computed from pts[0..3] as the reference quad.
-      if (pts.length > 4) {
-        // === POLYGON MODE: bounding-box panels clipped to full polygon ===
-        const allX = pts.map((p: Point) => p.x);
-        const allY = pts.map((p: Point) => p.y);
-        const polyMinX = Math.min(...allX);
-        const polyMaxX = Math.max(...allX);
-        const polyMinY = Math.min(...allY);
-        const polyMaxY = Math.max(...allY);
-        const polyW = polyMaxX - polyMinX;
-        const polyH = polyMaxY - polyMinY;
-
-        [tCtx, wCtx].forEach(c => {
-          c.beginPath();
-          c.moveTo(pts[0].x, pts[0].y);
-          pts.slice(1).forEach((p: Point) => c.lineTo(p.x, p.y));
-          c.closePath();
-          c.clip();
-        });
-
-        const polyBounds = getSectorBounds(curDividers, curPanelCount);
-
-        for (let i = 0; i < curPanelCount; i++) {
-          const { start: rStart, end: rEnd } = polyBounds[i];
-          const x1 = polyMinX + polyW * rStart;
-          const x2 = polyMinX + polyW * rEnd;
-          const panelW = x2 - x1;
-          const panelH = polyH;
-          const material = curMaterials[i] || BAMBOO_PANELS[0];
-
-          tCtx.save();
-          tCtx.beginPath();
-          tCtx.rect(x1, polyMinY, panelW, panelH);
-          tCtx.clip();
-
-          const pCachedTex = textureCacheRef.current[material.id];
-          if (pCachedTex) {
-            if (material.textureStretch) {
-              if (material.slatOverlay) {
-                tCtx.drawImage(pCachedTex, x1, polyMinY, panelW, panelH);
-                wCtx.save();
-                wCtx.beginPath(); wCtx.rect(x1, polyMinY, panelW, panelH); wCtx.clip();
-                wCtx.drawImage(pCachedTex, x1, polyMinY, panelW, panelH);
-                wCtx.restore();
-              } else {
-                const WOOD_SCALE = 0.8;
-                const tileW = Math.max(1, Math.ceil(panelW * WOOD_SCALE));
-                const tileH = Math.max(1, Math.ceil(panelH * WOOD_SCALE));
-                const pTileCanvas = document.createElement('canvas');
-                pTileCanvas.width = tileW; pTileCanvas.height = tileH;
-                const pTileCtx = pTileCanvas.getContext('2d')!;
-                pTileCtx.drawImage(pCachedTex, 0, 0, tileW, tileH);
-                const pWoodPat = tCtx.createPattern(pTileCanvas, 'repeat');
-                if (pWoodPat) {
-                  pWoodPat.setTransform(new DOMMatrix().translate(x1, polyMinY));
-                  tCtx.fillStyle = pWoodPat;
-                  tCtx.fillRect(x1 - 1, polyMinY - 1, panelW + 2, panelH + 2);
-                }
-                wCtx.save();
-                wCtx.beginPath(); wCtx.rect(x1, polyMinY, panelW, panelH); wCtx.clip();
-                const pWoodPat2 = wCtx.createPattern(pTileCanvas, 'repeat');
-                if (pWoodPat2) {
-                  pWoodPat2.setTransform(new DOMMatrix().translate(x1, polyMinY));
-                  wCtx.fillStyle = pWoodPat2;
-                  wCtx.fillRect(x1 - 1, polyMinY - 1, panelW + 2, panelH + 2);
-                }
-                wCtx.restore();
-              }
-            } else {
-              const ts = material.textureScale ?? 1;
-              const scale = ts > 1 ? 1 / ts : Math.max(1, panelH / (pCachedTex.height * 3));
-              const pPat = tCtx.createPattern(pCachedTex, 'repeat');
-              if (pPat) {
-                const m = new DOMMatrix();
-                m.scaleSelf(scale, scale);
-                m.translateSelf(x1 / scale, polyMinY / scale);
-                pPat.setTransform(m);
-                tCtx.fillStyle = pPat;
-              } else {
-                tCtx.fillStyle = material.color;
-              }
-              tCtx.fillRect(x1 - 1, polyMinY - 1, panelW + 2, panelH + 2);
-            }
-          } else {
-            tCtx.fillStyle = material.color;
-            tCtx.fillRect(x1, polyMinY, panelW, panelH);
-          }
-
-          if (material.slatOverlay) {
-            const SLAT_W = 4, GAP_W = 1, PERIOD = SLAT_W + GAP_W;
-            const startX = Math.floor(x1 / PERIOD) * PERIOD;
-            for (let sx = startX; sx < x2 + PERIOD; sx += PERIOD) {
-              const gx = sx + SLAT_W;
-              const gapGrad = tCtx.createLinearGradient(gx - 0.5, 0, gx + GAP_W + 0.5, 0);
-              gapGrad.addColorStop(0,   'rgba(0,0,0,0.00)');
-              gapGrad.addColorStop(0.3, 'rgba(0,0,0,0.65)');
-              gapGrad.addColorStop(0.5, 'rgba(0,0,0,0.85)');
-              gapGrad.addColorStop(0.7, 'rgba(0,0,0,0.65)');
-              gapGrad.addColorStop(1,   'rgba(0,0,0,0.00)');
-              tCtx.fillStyle = gapGrad;
-              tCtx.fillRect(gx - 0.5, polyMinY - 1, GAP_W + 1, panelH + 2);
-            }
-          }
-
-          const pLight = lightModeRef.current;
-          if (pLight !== 'off') {
-            const lgx0 = pLight === 'morning' ? x2 : x1;
-            const lgx1 = pLight === 'morning' ? x1 : x2;
-            const lBright = pLight === 'morning' ? 'rgba(200,225,255,0.30)' : 'rgba(255,200,100,0.30)';
-            const lFade   = pLight === 'morning' ? 'rgba(0,10,50,0.07)'     : 'rgba(50,20,0,0.07)';
-            const pLightGrad = tCtx.createLinearGradient(lgx0, polyMinY, lgx1, polyMaxY);
-            pLightGrad.addColorStop(0, lBright); pLightGrad.addColorStop(1, lFade);
-            tCtx.fillStyle = pLightGrad;
-            tCtx.fillRect(x1 - 1, polyMinY - 1, panelW + 2, panelH + 2);
-          }
-
-          tCtx.beginPath();
-          tCtx.rect(x1, polyMinY, panelW, panelH);
-          if (curActiveSector === i && !curIsErasing) {
-            tCtx.strokeStyle = 'white'; tCtx.lineWidth = 3; tCtx.stroke();
-          }
-          tCtx.strokeStyle = 'rgba(0,0,0,0.12)'; tCtx.lineWidth = 1; tCtx.stroke();
-          tCtx.restore();
-        }
-
-        if (!curIsErasing && !forExportRef.current) {
-          curDividers.forEach((ratio: number) => {
-            const dx = polyMinX + polyW * ratio;
-            const midY = (polyMinY + polyMaxY) / 2;
-            tCtx.save();
-            tCtx.strokeStyle = 'rgba(255,255,255,0.6)'; tCtx.lineWidth = 2; tCtx.setLineDash([6, 4]);
-            tCtx.beginPath(); tCtx.moveTo(dx, polyMinY); tCtx.lineTo(dx, polyMaxY); tCtx.stroke();
-            tCtx.setLineDash([]); tCtx.restore();
-            tCtx.save();
-            tCtx.fillStyle = 'white'; tCtx.strokeStyle = 'rgba(0,0,0,0.3)'; tCtx.lineWidth = 1.5;
-            tCtx.beginPath(); tCtx.arc(dx, midY, 8, 0, Math.PI * 2); tCtx.fill(); tCtx.stroke();
-            tCtx.fillStyle = '#555'; tCtx.font = 'bold 10px sans-serif';
-            tCtx.textAlign = 'center'; tCtx.textBaseline = 'middle'; tCtx.fillText('⇔', dx, midY);
-            tCtx.restore();
-          });
-        }
-
-        const pMoldStyle = moldingStyleRef.current;
-        const pMoldW = moldingWidthRef.current;
-        if (pMoldStyle !== 'none' && curDividers.length > 0) {
-          curDividers.forEach((ratio: number) => {
-            const dx = polyMinX + polyW * ratio;
-            const pGrad = tCtx.createLinearGradient(dx - pMoldW / 2, polyMinY, dx + pMoldW / 2, polyMinY + 1);
-            if (pMoldStyle === 'gold') {
-              pGrad.addColorStop(0, '#5a3d00'); pGrad.addColorStop(0.15, '#b8860b');
-              pGrad.addColorStop(0.35, '#ffd700'); pGrad.addColorStop(0.5, '#fff8c0');
-              pGrad.addColorStop(0.65, '#ffd700'); pGrad.addColorStop(0.85, '#b8860b'); pGrad.addColorStop(1, '#5a3d00');
-            } else if (pMoldStyle === 'black') {
-              pGrad.addColorStop(0, '#0a0a0a'); pGrad.addColorStop(0.25, '#1c1c1c');
-              pGrad.addColorStop(0.5, '#383838'); pGrad.addColorStop(0.75, '#1c1c1c'); pGrad.addColorStop(1, '#0a0a0a');
-            } else if (pMoldStyle === 'metallic') {
-              pGrad.addColorStop(0, '#4a4a4a'); pGrad.addColorStop(0.2, '#9a9a9a');
-              pGrad.addColorStop(0.45, '#e8e8e8'); pGrad.addColorStop(0.5, '#ffffff');
-              pGrad.addColorStop(0.55, '#e8e8e8'); pGrad.addColorStop(0.8, '#9a9a9a'); pGrad.addColorStop(1, '#4a4a4a');
-            } else if (pMoldStyle === 'brass') {
-              pGrad.addColorStop(0, '#2c1f00'); pGrad.addColorStop(0.15, '#7a5918');
-              pGrad.addColorStop(0.35, '#c49a27'); pGrad.addColorStop(0.5, '#e8c95a');
-              pGrad.addColorStop(0.65, '#c49a27'); pGrad.addColorStop(0.85, '#7a5918'); pGrad.addColorStop(1, '#2c1f00');
-            }
-            tCtx.save();
-            tCtx.strokeStyle = pGrad; tCtx.lineWidth = pMoldW; tCtx.lineCap = 'butt';
-            tCtx.beginPath(); tCtx.moveTo(dx, polyMinY); tCtx.lineTo(dx, polyMaxY); tCtx.stroke();
-            tCtx.restore();
-          });
-        }
-
-      } else {
+      // Helper: render one 4-point quad with panels, dividers, and moldings
+      const renderQuad = (qp: Point[]) => {
         const bounds = getSectorBounds(curDividers, curPanelCount);
 
       for (let i = 0; i < curPanelCount; i++) {
         const { start: rStart, end: rEnd } = bounds[i];
 
-        const p1 = { x: pts[0].x + (pts[1].x - pts[0].x) * rStart, y: pts[0].y + (pts[1].y - pts[0].y) * rStart };
-        const p2 = { x: pts[0].x + (pts[1].x - pts[0].x) * rEnd, y: pts[0].y + (pts[1].y - pts[0].y) * rEnd };
-        const p3 = { x: pts[3].x + (pts[2].x - pts[3].x) * rEnd, y: pts[3].y + (pts[2].y - pts[3].y) * rEnd };
-        const p4 = { x: pts[3].x + (pts[2].x - pts[3].x) * rStart, y: pts[3].y + (pts[2].y - pts[3].y) * rStart };
+        const p1 = { x: qp[0].x + (qp[1].x - qp[0].x) * rStart, y: qp[0].y + (qp[1].y - qp[0].y) * rStart };
+        const p2 = { x: qp[0].x + (qp[1].x - qp[0].x) * rEnd, y: qp[0].y + (qp[1].y - qp[0].y) * rEnd };
+        const p3 = { x: qp[3].x + (qp[2].x - qp[3].x) * rEnd, y: qp[3].y + (qp[2].y - qp[3].y) * rEnd };
+        const p4 = { x: qp[3].x + (qp[2].x - qp[3].x) * rStart, y: qp[3].y + (qp[2].y - qp[3].y) * rStart };
 
         const material = curMaterials[i] || BAMBOO_PANELS[0];
 
@@ -759,11 +591,11 @@ const BambooStudio = () => {
       if (!curIsErasing && !forExportRef.current) {
         curDividers.forEach((ratio) => {
           // Point on top edge
-          const topX = pts[0].x + (pts[1].x - pts[0].x) * ratio;
-          const topY = pts[0].y + (pts[1].y - pts[0].y) * ratio;
+          const topX = qp[0].x + (qp[1].x - qp[0].x) * ratio;
+          const topY = qp[0].y + (qp[1].y - qp[0].y) * ratio;
           // Point on bottom edge
-          const botX = pts[3].x + (pts[2].x - pts[3].x) * ratio;
-          const botY = pts[3].y + (pts[2].y - pts[3].y) * ratio;
+          const botX = qp[3].x + (qp[2].x - qp[3].x) * ratio;
+          const botY = qp[3].y + (qp[2].y - qp[3].y) * ratio;
 
           tCtx.save();
           tCtx.strokeStyle = 'rgba(255,255,255,0.6)';
@@ -801,10 +633,10 @@ const BambooStudio = () => {
       const curMoldingWidth = moldingWidthRef.current;
       if (curMoldingStyle !== 'none' && curDividers.length > 0) {
         curDividers.forEach((ratio) => {
-          const topX = pts[0].x + (pts[1].x - pts[0].x) * ratio;
-          const topY = pts[0].y + (pts[1].y - pts[0].y) * ratio;
-          const botX = pts[3].x + (pts[2].x - pts[3].x) * ratio;
-          const botY = pts[3].y + (pts[2].y - pts[3].y) * ratio;
+          const topX = qp[0].x + (qp[1].x - qp[0].x) * ratio;
+          const topY = qp[0].y + (qp[1].y - qp[0].y) * ratio;
+          const botX = qp[3].x + (qp[2].x - qp[3].x) * ratio;
+          const botY = qp[3].y + (qp[2].y - qp[3].y) * ratio;
 
           const dx = botX - topX;
           const dy = botY - topY;
@@ -870,12 +702,12 @@ const BambooStudio = () => {
       const curHPositions = hMoldingPositionsRef.current;
       if (curHMoldingStyle !== 'none' && curHPositions.length > 0) {
         curHPositions.forEach((r) => {
-          // Left edge: lerp between pts[0] (top-left) and pts[3] (bottom-left)
-          const lx = pts[0].x + (pts[3].x - pts[0].x) * r;
-          const ly = pts[0].y + (pts[3].y - pts[0].y) * r;
-          // Right edge: lerp between pts[1] (top-right) and pts[2] (bottom-right)
-          const rx = pts[1].x + (pts[2].x - pts[1].x) * r;
-          const ry = pts[1].y + (pts[2].y - pts[1].y) * r;
+          // Left edge: lerp between qp[0] (top-left) and qp[3] (bottom-left)
+          const lx = qp[0].x + (qp[3].x - qp[0].x) * r;
+          const ly = qp[0].y + (qp[3].y - qp[0].y) * r;
+          // Right edge: lerp between qp[1] (top-right) and qp[2] (bottom-right)
+          const rx = qp[1].x + (qp[2].x - qp[1].x) * r;
+          const ry = qp[1].y + (qp[2].y - qp[1].y) * r;
 
           const dx = rx - lx;
           const dy = ry - ly;
@@ -964,7 +796,50 @@ const BambooStudio = () => {
           }
         });
       }
-      } // end else (quad mode)
+      }; // end renderQuad
+
+      // Render main wall quad (always)
+      renderQuad(pts.slice(0, 4));
+
+      // Render protrusion face + corner visual when 8 points are marked
+      if (pts.length >= 8) {
+        renderQuad(pts.slice(4, 8));
+
+        // Corner edge visual between the two quads (at right edge of main quad)
+        const cTopX = pts[1].x, cTopY = pts[1].y;
+        const cBotX = pts[2].x, cBotY = pts[2].y;
+        const cDx = cBotX - cTopX, cDy = cBotY - cTopY;
+        const cLen = Math.sqrt(cDx * cDx + cDy * cDy) || 1;
+        const cpx = -cDy / cLen, cpy = cDx / cLen;
+        const cMidX = (cTopX + cBotX) / 2, cMidY = (cTopY + cBotY) / 2;
+        const cGrad = tCtx.createLinearGradient(
+          cMidX + cpx * 6, cMidY + cpy * 6,
+          cMidX - cpx * 6, cMidY - cpy * 6
+        );
+        if (cornerTypeRef.current === 'external') {
+          cGrad.addColorStop(0,   'rgba(0,0,0,0.50)');
+          cGrad.addColorStop(0.3, 'rgba(255,255,255,0.65)');
+          cGrad.addColorStop(0.5, 'rgba(255,255,255,0.90)');
+          cGrad.addColorStop(0.7, 'rgba(255,255,255,0.65)');
+          cGrad.addColorStop(1,   'rgba(0,0,0,0.50)');
+        } else {
+          cGrad.addColorStop(0,    'rgba(0,0,0,0.0)');
+          cGrad.addColorStop(0.35, 'rgba(0,0,0,0.55)');
+          cGrad.addColorStop(0.5,  'rgba(0,0,0,0.72)');
+          cGrad.addColorStop(0.65, 'rgba(0,0,0,0.55)');
+          cGrad.addColorStop(1,    'rgba(0,0,0,0.0)');
+        }
+        tCtx.save();
+        tCtx.strokeStyle = cGrad;
+        tCtx.lineWidth = 12;
+        tCtx.lineCap = 'butt';
+        tCtx.beginPath();
+        tCtx.moveTo(cTopX, cTopY);
+        tCtx.lineTo(cBotX, cBotY);
+        tCtx.stroke();
+        tCtx.restore();
+      }
+
 
       // Apply eraser mask — replay strokes from memory (never lost on canvas reset)
       if (maskStrokesRef.current.length > 0) {
@@ -1027,27 +902,20 @@ const BambooStudio = () => {
       const ratio = dividers[d];
       let midX: number, midY: number;
 
-      if (pts.length > 4) {
-        // Polygon mode: divider is a vertical line at bounding-box x position
-        const allX = pts.map((p: Point) => p.x);
-        const allY = pts.map((p: Point) => p.y);
-        const polyMinX = Math.min(...allX);
-        const polyMaxX = Math.max(...allX);
-        const polyMinY = Math.min(...allY);
-        const polyMaxY = Math.max(...allY);
-        midX = polyMinX + (polyMaxX - polyMinX) * ratio;
-        midY = (polyMinY + polyMaxY) / 2;
-      } else {
-        const topX = pts[0].x + (pts[1].x - pts[0].x) * ratio;
-        const topY = pts[0].y + (pts[1].y - pts[0].y) * ratio;
-        const botX = pts[3].x + (pts[2].x - pts[3].x) * ratio;
-        const botY = pts[3].y + (pts[2].y - pts[3].y) * ratio;
+      // Dual-quad: check midpoint in main quad; if pts.length >= 8 also check second quad
+      const quadPts = [pts.slice(0, 4), ...(pts.length >= 8 ? [pts.slice(4, 8)] : [])];
+      let minDistFound = Infinity;
+      for (const qp of quadPts) {
+        const topX = qp[0].x + (qp[1].x - qp[0].x) * ratio;
+        const topY = qp[0].y + (qp[1].y - qp[0].y) * ratio;
+        const botX = qp[3].x + (qp[2].x - qp[3].x) * ratio;
+        const botY = qp[3].y + (qp[2].y - qp[3].y) * ratio;
         midX = (topX + botX) / 2;
         midY = (topY + botY) / 2;
+        const dQ = Math.sqrt((cx - midX) ** 2 + (cy - midY) ** 2);
+        if (dQ < minDistFound) minDistFound = dQ;
       }
-
-      const dist = Math.sqrt((cx - midX) ** 2 + (cy - midY) ** 2);
-      if (dist <= DIVIDER_HIT_RADIUS * 2) return d;
+      if (minDistFound <= DIVIDER_HIT_RADIUS * 2) return d;
     }
     return -1;
   }, []);
@@ -1057,16 +925,32 @@ const BambooStudio = () => {
     const pts = pointsRef.current;
     if (pts.length < 4) return 0;
 
-    // Polygon mode (>4 points): bounding-box horizontal ratio
-    if (pts.length > 4) {
-      const allX = pts.map((p: Point) => p.x);
-      const minX = Math.min(...allX);
-      const maxX = Math.max(...allX);
-      if (maxX === minX) return 0;
-      return Math.max(0, Math.min(1, (cx - minX) / (maxX - minX)));
+    // Dual-quad: if pts.length >= 8 and click is closer to second quad, use its ratio
+    if (pts.length >= 8) {
+      const q2 = pts.slice(4, 8);
+      const totalLen2 = Math.sqrt((q2[1].x - q2[0].x) ** 2 + (q2[1].y - q2[0].y) ** 2);
+      if (totalLen2 > 0) {
+        const dx2 = q2[1].x - q2[0].x;
+        const dy2 = q2[1].y - q2[0].y;
+        const t2 = ((cx - q2[0].x) * dx2 + (cy - q2[0].y) * dy2) / (totalLen2 * totalLen2);
+        const q2ratio = Math.max(0, Math.min(1, t2));
+        // Projected point on q2 top edge
+        const projX2 = q2[0].x + dx2 * q2ratio;
+        const projY2 = q2[0].y + dy2 * q2ratio;
+        const dist2 = Math.sqrt((cx - projX2) ** 2 + (cy - projY2) ** 2);
+        const q1 = pts.slice(0, 4);
+        const dx1 = q1[1].x - q1[0].x, dy1 = q1[1].y - q1[0].y;
+        const totalLen1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
+        const t1 = totalLen1 > 0 ? ((cx - q1[0].x) * dx1 + (cy - q1[0].y) * dy1) / (totalLen1 * totalLen1) : 0;
+        const q1ratio = Math.max(0, Math.min(1, t1));
+        const projX1 = q1[0].x + dx1 * q1ratio;
+        const projY1 = q1[0].y + dy1 * q1ratio;
+        const dist1 = Math.sqrt((cx - projX1) ** 2 + (cy - projY1) ** 2);
+        if (dist2 < dist1) return q2ratio;
+      }
     }
 
-    // Quad mode: project point onto the top edge interpolation
+    // Single quad: project point onto the top edge interpolation
     const totalLen = Math.sqrt((pts[1].x - pts[0].x) ** 2 + (pts[1].y - pts[0].y) ** 2);
     if (totalLen === 0) return 0;
     const dx = pts[1].x - pts[0].x;
@@ -1572,17 +1456,35 @@ const BambooStudio = () => {
                 <Check size={12} className="text-gray-400" />
                 <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Разметка стены</span>
               </div>
-              {wallZone === 'wall-niche' ? (
-                <p className="text-[9px] text-gray-400 mb-4 leading-relaxed">
-                  Кликайте по углам стены с выступом по часовой стрелке.<br/>
-                  <span className="text-gray-500 font-bold">Мин. 4 точки, макс. 8.</span> Первые 4 — основная плоскость стены, остальные — выступ.
+              {wallZone === 'wall-niche' ? (<>
+                <p className="text-[9px] text-gray-400 mb-2 leading-relaxed">
+                  <span className="font-bold text-gray-600">Шаг 1 (точки 1–4):</span> отметьте основную плоскость стены по часовой стрелке.<br/>
+                  <span className="font-bold text-gray-600">Шаг 2 (точки 5–8):</span> отметьте грань выступа/ниши.
                 </p>
-              ) : (
+                {points.length >= 4 && (
+                  <div className="mb-3">
+                    <p className="text-[9px] text-gray-400 mb-1.5 font-bold uppercase tracking-wide">Тип угла:</p>
+                    <div className="flex gap-1.5">
+                      <button onClick={() => setCornerType('external')}
+                        className={`flex-1 py-1.5 text-[9px] font-bold rounded-lg border transition-all ${cornerType === 'external' ? 'bg-black text-white border-black' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'}`}>
+                        ↗ Наружный
+                      </button>
+                      <button onClick={() => setCornerType('internal')}
+                        className={`flex-1 py-1.5 text-[9px] font-bold rounded-lg border transition-all ${cornerType === 'internal' ? 'bg-black text-white border-black' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'}`}>
+                        ↙ Внутренний
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>) : (
                 <p className="text-[9px] text-gray-400 mb-4 leading-relaxed">Кликайте по 4 углам стены по часовой стрелке.</p>
               )}
               <div className="flex flex-wrap gap-1.5 mb-5">
                 {Array.from({ length: wallZone === 'wall-niche' ? 8 : 4 }, (_, i) => i + 1).map(i => (
-                  <div key={i} className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-all ${points.length >= i ? 'bg-black text-white border-black' : i <= 4 ? 'text-gray-300 border-gray-200' : 'text-gray-200 border-dashed border-gray-200'}`}>
+                  <div key={i} className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-all ${
+                    points.length >= i ? (i <= 4 ? 'bg-black text-white border-black' : 'bg-[#7ec662] text-white border-[#7ec662]')
+                    : i <= 4 ? 'text-gray-300 border-gray-200' : 'text-gray-200 border-dashed border-gray-200'
+                  }`}>
                     {points.length >= i ? <Check size={11}/> : i}
                   </div>
                 ))}
@@ -1746,6 +1648,25 @@ const BambooStudio = () => {
                 </div>
               )}
             </div>
+
+            {/* Corner type — shown only for wall-niche with 8 points */}
+            {wallZone === 'wall-niche' && points.length >= 8 && (
+              <div className="bg-white rounded-2xl p-3.5 shadow-sm">
+                <div className="flex items-center gap-1.5 mb-2.5">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Тип угла</span>
+                </div>
+                <div className="flex gap-1.5">
+                  <button onClick={() => setCornerType('external')}
+                    className={`flex-1 py-2 text-[9px] font-bold rounded-xl border transition-all active:scale-95 ${cornerType === 'external' ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
+                    ↗ Наружный<br/><span className="font-normal opacity-70">загиб</span>
+                  </button>
+                  <button onClick={() => setCornerType('internal')}
+                    className={`flex-1 py-2 text-[9px] font-bold rounded-xl border transition-all active:scale-95 ${cornerType === 'internal' ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
+                    ↙ Внутренний<br/><span className="font-normal opacity-70">стыковка</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Light mode */}
             <div className="bg-white rounded-2xl p-3.5 shadow-sm">
