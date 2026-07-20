@@ -252,6 +252,32 @@ function makeEqualDividers(count: number): number[] {
   return dividers;
 }
 
+type MoldingStyle = 'none' | 'gold' | 'black' | 'metallic' | 'brass';
+type SurfaceConfig = {
+  panelCount: number;
+  dividerPositions: number[];
+  sectorMaterials: Record<number, Panel>;
+  moldingStyle: MoldingStyle;
+  moldingWidth: number;
+  hMoldingStyle: MoldingStyle;
+  hMoldingCount: number;
+  hMoldingWidth: number;
+  hMoldingPositions: number[];
+};
+const defaultSurfaceConfig = (): SurfaceConfig => ({
+  panelCount: 5,
+  dividerPositions: makeEqualDividers(5),
+  sectorMaterials: {},
+  moldingStyle: 'none',
+  moldingWidth: 1,
+  hMoldingStyle: 'none',
+  hMoldingCount: 1,
+  hMoldingWidth: 1,
+  hMoldingPositions: [0.5],
+});
+
+const SURFACE_LABELS = ['1 · Основная стена', '2 · Выступ', '3 · Плоскость'];
+
 const BambooStudio = () => {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [step, setStep] = useState<'zone' | 'upload' | 'mark' | 'edit'>('zone');
@@ -279,6 +305,9 @@ const BambooStudio = () => {
   const lightModeRef = useRef<'off' | 'morning' | 'evening'>('off');
   const [cornerType, setCornerType] = useState<'external' | 'internal'>('external');
   const cornerTypeRef = useRef<'external' | 'internal'>('external');
+  const [activeSurface, setActiveSurface] = useState(0);
+  const activeSurfaceRef = useRef(0);
+  const surfacesRef = useRef<SurfaceConfig[]>([defaultSurfaceConfig()]);
 
   const toggleSeries = (id: string) => setOpenSeries(prev => {
     const next = new Set(prev);
@@ -314,6 +343,7 @@ const BambooStudio = () => {
   const textureCacheRef = useRef<Record<string, HTMLImageElement>>({}); // preloaded panel textures
 
   type HistorySnapshot = {
+    surfaceIndex: number;
     sectorMaterials: Record<number, Panel>;
     dividerPositions: number[];
     panelCount: number;
@@ -322,6 +352,7 @@ const BambooStudio = () => {
 
   const pushHistory = useCallback(() => {
     historyRef.current.push({
+      surfaceIndex: activeSurfaceRef.current,
       sectorMaterials: { ...sectorMaterialsRef.current },
       dividerPositions: [...dividerPositionsRef.current],
       panelCount: panelCountRef.current,
@@ -332,9 +363,23 @@ const BambooStudio = () => {
   const undo = useCallback(() => {
     if (historyRef.current.length === 0) return;
     const prev = historyRef.current.pop()!;
-    setSectorMaterials(prev.sectorMaterials);
-    setDividerPositions(prev.dividerPositions);
-    setPanelCount(prev.panelCount);
+    if (prev.surfaceIndex === activeSurfaceRef.current) {
+      // Snapshot belongs to the active surface — restore via live state
+      setSectorMaterials(prev.sectorMaterials);
+      setDividerPositions(prev.dividerPositions);
+      setPanelCount(prev.panelCount);
+    } else {
+      // Snapshot belongs to another surface — restore its stored config directly
+      const cfg = surfacesRef.current[prev.surfaceIndex] ?? defaultSurfaceConfig();
+      surfacesRef.current[prev.surfaceIndex] = {
+        ...cfg,
+        sectorMaterials: prev.sectorMaterials,
+        dividerPositions: prev.dividerPositions,
+        panelCount: prev.panelCount,
+      };
+      // Force redraw (stored configs are read from refs during draw)
+      setPoints(pv => [...pv]);
+    }
   }, []);
 
   useEffect(() => { imageRef.current = image; }, [image]);
@@ -353,6 +398,15 @@ const BambooStudio = () => {
   useEffect(() => { hMoldingPositionsRef.current = hMoldingPositions; }, [hMoldingPositions]);
   useEffect(() => { lightModeRef.current = lightMode; }, [lightMode]);
   useEffect(() => { cornerTypeRef.current = cornerType; }, [cornerType]);
+  useEffect(() => { activeSurfaceRef.current = activeSurface; }, [activeSurface]);
+  // Persist current edits into the active surface's config
+  useEffect(() => {
+    surfacesRef.current[activeSurface] = {
+      panelCount, dividerPositions, sectorMaterials,
+      moldingStyle, moldingWidth,
+      hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions,
+    };
+  }, [activeSurface, panelCount, dividerPositions, sectorMaterials, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions]);
 
   // Ctrl+Z global undo
   useEffect(() => {
@@ -365,6 +419,36 @@ const BambooStudio = () => {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [undo]);
+
+  // Switch active editing surface: snapshot current edits, load target config
+  const switchSurface = useCallback((idx: number) => {
+    if (idx === activeSurfaceRef.current) return;
+    surfacesRef.current[activeSurfaceRef.current] = {
+      panelCount: panelCountRef.current,
+      dividerPositions: [...dividerPositionsRef.current],
+      sectorMaterials: { ...sectorMaterialsRef.current },
+      moldingStyle: moldingStyleRef.current,
+      moldingWidth: moldingWidthRef.current,
+      hMoldingStyle: hMoldingStyleRef.current,
+      hMoldingCount: hMoldingCountRef.current,
+      hMoldingWidth: hMoldingWidthRef.current,
+      hMoldingPositions: [...hMoldingPositionsRef.current],
+    };
+    const cfg = surfacesRef.current[idx] ?? defaultSurfaceConfig();
+    surfacesRef.current[idx] = cfg;
+    activeSurfaceRef.current = idx;
+    setActiveSurface(idx);
+    setPanelCount(cfg.panelCount);
+    setDividerPositions(cfg.dividerPositions);
+    setSectorMaterials(cfg.sectorMaterials);
+    setMoldingStyle(cfg.moldingStyle);
+    setMoldingWidth(cfg.moldingWidth);
+    setHMoldingStyle(cfg.hMoldingStyle);
+    setHMoldingCount(cfg.hMoldingCount);
+    setHMoldingWidth(cfg.hMoldingWidth);
+    setHMoldingPositions(cfg.hMoldingPositions);
+    setActiveSector(null);
+  }, []);
 
   // Returns the start/end ratio for each sector based on divider positions
   const getSectorBounds = (dividers: number[], count: number) => {
@@ -433,10 +517,10 @@ const BambooStudio = () => {
       const wCtx = woodCanvas.getContext('2d')!;
 
       // Helper: render one 4-point quad with panels, dividers, and moldings
-      const renderQuad = (qp: Point[]) => {
-        const bounds = getSectorBounds(curDividers, curPanelCount);
+      const renderQuad = (qp: Point[], cfg: SurfaceConfig, isActive: boolean) => {
+        const bounds = getSectorBounds(cfg.dividerPositions, cfg.panelCount);
 
-      for (let i = 0; i < curPanelCount; i++) {
+      for (let i = 0; i < cfg.panelCount; i++) {
         const { start: rStart, end: rEnd } = bounds[i];
 
         const p1 = { x: qp[0].x + (qp[1].x - qp[0].x) * rStart, y: qp[0].y + (qp[1].y - qp[0].y) * rStart };
@@ -444,7 +528,7 @@ const BambooStudio = () => {
         const p3 = { x: qp[3].x + (qp[2].x - qp[3].x) * rEnd, y: qp[3].y + (qp[2].y - qp[3].y) * rEnd };
         const p4 = { x: qp[3].x + (qp[2].x - qp[3].x) * rStart, y: qp[3].y + (qp[2].y - qp[3].y) * rStart };
 
-        const material = curMaterials[i] || BAMBOO_PANELS[0];
+        const material = cfg.sectorMaterials[i] || BAMBOO_PANELS[0];
 
         // Draw panel with texture if available, else solid color
         const minX = Math.min(p1.x, p2.x, p3.x, p4.x);
@@ -576,7 +660,7 @@ const BambooStudio = () => {
         tCtx.lineTo(p4.x, p4.y);
         tCtx.closePath();
 
-        if (curActiveSector === i && !curIsErasing) {
+        if (isActive && curActiveSector === i && !curIsErasing) {
           tCtx.strokeStyle = 'white';
           tCtx.lineWidth = 3;
           tCtx.stroke();
@@ -588,8 +672,8 @@ const BambooStudio = () => {
       }
 
       // Draw draggable dividers as visible handles (hidden during export)
-      if (!curIsErasing && !forExportRef.current) {
-        curDividers.forEach((ratio) => {
+      if (isActive && !curIsErasing && !forExportRef.current) {
+        cfg.dividerPositions.forEach((ratio) => {
           // Point on top edge
           const topX = qp[0].x + (qp[1].x - qp[0].x) * ratio;
           const topY = qp[0].y + (qp[1].y - qp[0].y) * ratio;
@@ -629,10 +713,10 @@ const BambooStudio = () => {
       }
 
       // Draw moldings on tempCanvas BEFORE mask so eraser can erase through them
-      const curMoldingStyle = moldingStyleRef.current;
-      const curMoldingWidth = moldingWidthRef.current;
-      if (curMoldingStyle !== 'none' && curDividers.length > 0) {
-        curDividers.forEach((ratio) => {
+      const curMoldingStyle = cfg.moldingStyle;
+      const curMoldingWidth = cfg.moldingWidth;
+      if (curMoldingStyle !== 'none' && cfg.dividerPositions.length > 0) {
+        cfg.dividerPositions.forEach((ratio) => {
           const topX = qp[0].x + (qp[1].x - qp[0].x) * ratio;
           const topY = qp[0].y + (qp[1].y - qp[0].y) * ratio;
           const botX = qp[3].x + (qp[2].x - qp[3].x) * ratio;
@@ -697,9 +781,9 @@ const BambooStudio = () => {
       }
 
       // Draw horizontal moldings on tempCanvas BEFORE mask (also eraseable)
-      const curHMoldingStyle = hMoldingStyleRef.current;
-      const curHMoldingWidth = hMoldingWidthRef.current;
-      const curHPositions = hMoldingPositionsRef.current;
+      const curHMoldingStyle = cfg.hMoldingStyle;
+      const curHMoldingWidth = cfg.hMoldingWidth;
+      const curHPositions = cfg.hMoldingPositions;
       if (curHMoldingStyle !== 'none' && curHPositions.length > 0) {
         curHPositions.forEach((r) => {
           // Left edge: lerp between qp[0] (top-left) and qp[3] (bottom-left)
@@ -767,7 +851,7 @@ const BambooStudio = () => {
           tCtx.restore();
 
           // Draw drag handle (visible when not erasing and not exporting)
-          if (!curIsErasing && !forExportRef.current) {
+          if (isActive && !curIsErasing && !forExportRef.current) {
             tCtx.save();
             tCtx.strokeStyle = 'rgba(255,255,255,0.6)';
             tCtx.lineWidth = 2;
@@ -798,16 +882,31 @@ const BambooStudio = () => {
       }
       }; // end renderQuad
 
-      // Render main wall quad (always)
-      renderQuad(pts.slice(0, 4));
+      // Render each marked quad with its own per-surface config
+      const nQuads = Math.min(3, Math.floor(pts.length / 4));
+      // Invariant: active surface index must point at an existing quad
+      const curActiveSurf = Math.min(activeSurfaceRef.current, nQuads - 1);
+      const liveCfg: SurfaceConfig = {
+        panelCount: curPanelCount,
+        dividerPositions: curDividers,
+        sectorMaterials: curMaterials,
+        moldingStyle: moldingStyleRef.current,
+        moldingWidth: moldingWidthRef.current,
+        hMoldingStyle: hMoldingStyleRef.current,
+        hMoldingCount: hMoldingCountRef.current,
+        hMoldingWidth: hMoldingWidthRef.current,
+        hMoldingPositions: hMoldingPositionsRef.current,
+      };
+      for (let q = 0; q < nQuads; q++) {
+        const cfg = q === curActiveSurf ? liveCfg : (surfacesRef.current[q] ?? defaultSurfaceConfig());
+        renderQuad(pts.slice(q * 4, q * 4 + 4), cfg, q === curActiveSurf);
+      }
 
-      // Render protrusion face + corner visual when 8 points are marked
-      if (pts.length >= 8) {
-        renderQuad(pts.slice(4, 8));
-
-        // Corner edge visual between the two quads (at right edge of main quad)
-        const cTopX = pts[1].x, cTopY = pts[1].y;
-        const cBotX = pts[2].x, cBotY = pts[2].y;
+      // Corner edge visual between adjacent quads (right edge of previous quad)
+      for (let q = 1; q < nQuads; q++) {
+        const e1 = pts[(q - 1) * 4 + 1], e2 = pts[(q - 1) * 4 + 2];
+        const cTopX = e1.x, cTopY = e1.y;
+        const cBotX = e2.x, cBotY = e2.y;
         const cDx = cBotX - cTopX, cDy = cBotY - cTopY;
         const cLen = Math.sqrt(cDx * cDx + cDy * cDy) || 1;
         const cpx = -cDy / cLen, cpy = cDx / cLen;
@@ -840,6 +939,22 @@ const BambooStudio = () => {
         tCtx.restore();
       }
 
+      // Active surface outline (only with multiple surfaces, hidden on export)
+      if (nQuads > 1 && !forExportRef.current && !curIsErasing) {
+        const aq = pts.slice(curActiveSurf * 4, curActiveSurf * 4 + 4);
+        if (aq.length === 4) {
+          tCtx.save();
+          tCtx.strokeStyle = '#7ec662';
+          tCtx.lineWidth = 3;
+          tCtx.setLineDash([10, 6]);
+          tCtx.beginPath();
+          tCtx.moveTo(aq[0].x, aq[0].y);
+          aq.forEach(pp => tCtx.lineTo(pp.x, pp.y));
+          tCtx.closePath();
+          tCtx.stroke();
+          tCtx.restore();
+        }
+      }
 
       // Apply eraser mask — replay strokes from memory (never lost on canvas reset)
       if (maskStrokesRef.current.length > 0) {
@@ -902,8 +1017,10 @@ const BambooStudio = () => {
       const ratio = dividers[d];
       let midX: number, midY: number;
 
-      // Dual-quad: check midpoint in main quad; if pts.length >= 8 also check second quad
-      const quadPts = [pts.slice(0, 4), ...(pts.length >= 8 ? [pts.slice(4, 8)] : [])];
+      // Only the active surface's quad has draggable dividers
+      const asIdx = activeSurfaceRef.current;
+      const aq = pts.slice(asIdx * 4, asIdx * 4 + 4);
+      const quadPts = [aq.length === 4 ? aq : pts.slice(0, 4)];
       let minDistFound = Infinity;
       for (const qp of quadPts) {
         const topX = qp[0].x + (qp[1].x - qp[0].x) * ratio;
@@ -925,37 +1042,13 @@ const BambooStudio = () => {
     const pts = pointsRef.current;
     if (pts.length < 4) return 0;
 
-    // Dual-quad: if pts.length >= 8 and click is closer to second quad, use its ratio
-    if (pts.length >= 8) {
-      const q2 = pts.slice(4, 8);
-      const totalLen2 = Math.sqrt((q2[1].x - q2[0].x) ** 2 + (q2[1].y - q2[0].y) ** 2);
-      if (totalLen2 > 0) {
-        const dx2 = q2[1].x - q2[0].x;
-        const dy2 = q2[1].y - q2[0].y;
-        const t2 = ((cx - q2[0].x) * dx2 + (cy - q2[0].y) * dy2) / (totalLen2 * totalLen2);
-        const q2ratio = Math.max(0, Math.min(1, t2));
-        // Projected point on q2 top edge
-        const projX2 = q2[0].x + dx2 * q2ratio;
-        const projY2 = q2[0].y + dy2 * q2ratio;
-        const dist2 = Math.sqrt((cx - projX2) ** 2 + (cy - projY2) ** 2);
-        const q1 = pts.slice(0, 4);
-        const dx1 = q1[1].x - q1[0].x, dy1 = q1[1].y - q1[0].y;
-        const totalLen1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
-        const t1 = totalLen1 > 0 ? ((cx - q1[0].x) * dx1 + (cy - q1[0].y) * dy1) / (totalLen1 * totalLen1) : 0;
-        const q1ratio = Math.max(0, Math.min(1, t1));
-        const projX1 = q1[0].x + dx1 * q1ratio;
-        const projY1 = q1[0].y + dy1 * q1ratio;
-        const dist1 = Math.sqrt((cx - projX1) ** 2 + (cy - projY1) ** 2);
-        if (dist2 < dist1) return q2ratio;
-      }
-    }
-
-    // Single quad: project point onto the top edge interpolation
-    const totalLen = Math.sqrt((pts[1].x - pts[0].x) ** 2 + (pts[1].y - pts[0].y) ** 2);
-    if (totalLen === 0) return 0;
-    const dx = pts[1].x - pts[0].x;
-    const dy = pts[1].y - pts[0].y;
-    const t = ((cx - pts[0].x) * dx + (cy - pts[0].y) * dy) / (totalLen * totalLen);
+    const asIdx = activeSurfaceRef.current;
+    const q = pts.length >= asIdx * 4 + 4 ? pts.slice(asIdx * 4, asIdx * 4 + 4) : pts.slice(0, 4);
+    const dx = q[1].x - q[0].x;
+    const dy = q[1].y - q[0].y;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq === 0) return 0;
+    const t = ((cx - q[0].x) * dx + (cy - q[0].y) * dy) / lenSq;
     return Math.max(0, Math.min(1, t));
   }, []);
 
@@ -963,11 +1056,13 @@ const BambooStudio = () => {
   const canvasYToWallRatio = useCallback((cx: number, cy: number): number => {
     const pts = pointsRef.current;
     if (pts.length < 4) return 0;
-    // Project onto the center vertical axis of the wall
-    const topX = (pts[0].x + pts[1].x) / 2;
-    const topY = (pts[0].y + pts[1].y) / 2;
-    const botX = (pts[2].x + pts[3].x) / 2;
-    const botY = (pts[2].y + pts[3].y) / 2;
+    // Project onto the center vertical axis of the ACTIVE surface quad
+    const asIdx = activeSurfaceRef.current;
+    const q = pts.length >= asIdx * 4 + 4 ? pts.slice(asIdx * 4, asIdx * 4 + 4) : pts.slice(0, 4);
+    const topX = (q[0].x + q[1].x) / 2;
+    const topY = (q[0].y + q[1].y) / 2;
+    const botX = (q[2].x + q[3].x) / 2;
+    const botY = (q[2].y + q[3].y) / 2;
     const dx = botX - topX;
     const dy = botY - topY;
     const lenSq = dx * dx + dy * dy;
@@ -979,14 +1074,16 @@ const BambooStudio = () => {
   // Find which horizontal molding handle is near a canvas point, or -1
   const findNearHMolding = useCallback((cx: number, cy: number): number => {
     const pts = pointsRef.current;
-    if (pts.length !== 4) return -1;
+    if (pts.length < 4) return -1;
+    const asIdx = activeSurfaceRef.current;
+    const q = pts.length >= asIdx * 4 + 4 ? pts.slice(asIdx * 4, asIdx * 4 + 4) : pts.slice(0, 4);
     const positions = hMoldingPositionsRef.current;
     for (let i = 0; i < positions.length; i++) {
       const r = positions[i];
-      const lx = pts[0].x + (pts[3].x - pts[0].x) * r;
-      const ly = pts[0].y + (pts[3].y - pts[0].y) * r;
-      const rx = pts[1].x + (pts[2].x - pts[1].x) * r;
-      const ry = pts[1].y + (pts[2].y - pts[1].y) * r;
+      const lx = q[0].x + (q[3].x - q[0].x) * r;
+      const ly = q[0].y + (q[3].y - q[0].y) * r;
+      const rx = q[1].x + (q[2].x - q[1].x) * r;
+      const ry = q[1].y + (q[2].y - q[1].y) * r;
       const midX = (lx + rx) / 2;
       const midY = (ly + ry) / 2;
       if (Math.sqrt((cx - midX) ** 2 + (cy - midY) ** 2) <= 14) return i;
@@ -1016,7 +1113,7 @@ const BambooStudio = () => {
   useEffect(() => {
     if (!image) return;
     drawFullScene();
-  }, [points, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, lightMode, drawFullScene, image]);
+  }, [points, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, lightMode, activeSurface, drawFullScene, image]);
 
   const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = mainCanvasRef.current;
@@ -1127,12 +1224,29 @@ const BambooStudio = () => {
     // Don't trigger sector selection if click was near a divider or h-molding handle
     if (step === 'edit' && (findNearDivider(x, y) !== -1 || findNearHMolding(x, y) !== -1)) return;
 
-    if (step === 'mark' && points.length < (wallZone === 'wall-niche' ? 8 : 4)) {
+    if (step === 'mark' && points.length < (wallZone === 'wall-niche' ? 12 : 4)) {
       setPoints([...points, { x, y }]);
     } else if (step === 'edit') {
-      // Determine which sector was clicked using divider positions
       const pts = pointsRef.current;
       if (pts.length < 4) return;
+      // Determine clicked surface (point-in-quad); switch active surface if needed
+      const nQuads = Math.min(3, Math.floor(pts.length / 4));
+      const inQuad = (q: Point[]) => {
+        let inside = false;
+        for (let i = 0, j = 3; i < 4; j = i++) {
+          if ((q[i].y > y) !== (q[j].y > y) && x < ((q[j].x - q[i].x) * (y - q[i].y)) / (q[j].y - q[i].y) + q[i].x) inside = !inside;
+        }
+        return inside;
+      };
+      let clickedQuad = -1;
+      for (let qi = 0; qi < nQuads; qi++) {
+        if (inQuad(pts.slice(qi * 4, qi * 4 + 4))) { clickedQuad = qi; break; }
+      }
+      if (clickedQuad !== -1 && clickedQuad !== activeSurfaceRef.current) {
+        switchSurface(clickedQuad);
+        return;
+      }
+      // Determine which sector was clicked using divider positions
       const ratio = canvasXToWallRatio(x, y);
       const bounds = getSectorBounds(dividerPositionsRef.current, panelCountRef.current);
       const idx = bounds.findIndex(b => ratio >= b.start && ratio <= b.end);
@@ -1189,6 +1303,10 @@ const BambooStudio = () => {
         const img = new Image();
         img.onload = () => {
           maskStrokesRef.current = [];
+          historyRef.current = [];
+          surfacesRef.current = [defaultSurfaceConfig()];
+          activeSurfaceRef.current = 0;
+          setActiveSurface(0);
           setImage(img);
           setStep('mark');
           setPoints([]);
@@ -1197,6 +1315,10 @@ const BambooStudio = () => {
           setIsErasing(false);
           setPanelCount(5);
           setDividerPositions(makeEqualDividers(5));
+          setMoldingStyle('none');
+          setHMoldingStyle('none');
+          setHMoldingCount(1);
+          setHMoldingPositions([0.5]);
         };
         img.src = f.target?.result as string;
       };
@@ -1318,7 +1440,7 @@ const BambooStudio = () => {
             )}
             {step !== 'zone' && (
               <button
-                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setStep('zone'); setWallZone(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
+                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setStep('zone'); setWallZone(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
                 className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
               >
                 ← Назад
@@ -1405,7 +1527,7 @@ const BambooStudio = () => {
               {step === 'mark' && (
                 <div className="hidden md:flex absolute top-5 left-1/2 -translate-x-1/2 bg-white/90 text-black px-5 py-1.5 rounded-full text-[10px] font-bold shadow-lg backdrop-blur-md border border-gray-100 uppercase tracking-widest pointer-events-none">
                   {wallZone === 'wall-niche'
-                    ? (points.length < 4 ? `Угол стены (${points.length}/4 мин)` : points.length < 8 ? `Выступ: ещё ${8 - points.length} угл. или «Начать»` : 'Нажмите «Начать примерку»')
+                    ? (points.length < 4 ? `Угол стены (${points.length}/4 мин)` : points.length < 8 ? `Выступ: ещё ${8 - points.length} или «Начать»` : points.length < 12 ? `3-я плоскость: ещё ${12 - points.length} или «Начать»` : 'Нажмите «Начать примерку»')
                     : (points.length < 4 ? `Кликните на угол стены (${points.length}/4)` : 'Нажмите «Начать примерку»')}
                 </div>
               )}
@@ -1429,7 +1551,7 @@ const BambooStudio = () => {
             {step === 'mark' && (
               <div className="bg-white/90 text-black px-5 py-1.5 rounded-full text-[10px] font-bold shadow-lg backdrop-blur-md border border-gray-100 uppercase tracking-widest">
                 {wallZone === 'wall-niche'
-                  ? (points.length < 4 ? `Угол стены (${points.length}/4 мин)` : points.length < 8 ? `Выступ: ещё ${8 - points.length} или «Начать»` : 'Нажмите «Начать примерку»')
+                  ? (points.length < 4 ? `Угол стены (${points.length}/4 мин)` : points.length < 8 ? `Выступ: ещё ${8 - points.length} или «Начать»` : points.length < 12 ? `3-я плоскость: ещё ${12 - points.length} или «Начать»` : 'Нажмите «Начать примерку»')
                   : (points.length < 4 ? `Кликните на угол стены (${points.length}/4)` : 'Нажмите «Начать примерку»')}
               </div>
             )}
@@ -1459,7 +1581,8 @@ const BambooStudio = () => {
               {wallZone === 'wall-niche' ? (<>
                 <p className="text-[9px] text-gray-400 mb-2 leading-relaxed">
                   <span className="font-bold text-gray-600">Шаг 1 (точки 1–4):</span> отметьте основную плоскость стены по часовой стрелке.<br/>
-                  <span className="font-bold text-gray-600">Шаг 2 (точки 5–8):</span> отметьте грань выступа/ниши.
+                  <span className="font-bold text-gray-600">Шаг 2 (точки 5–8):</span> отметьте грань выступа/ниши.<br/>
+                  <span className="font-bold text-gray-600">Шаг 3 (точки 9–12, опц.):</span> третья плоскость.
                 </p>
                 {points.length >= 4 && (
                   <div className="mb-3">
@@ -1480,10 +1603,11 @@ const BambooStudio = () => {
                 <p className="text-[9px] text-gray-400 mb-4 leading-relaxed">Кликайте по 4 углам стены по часовой стрелке.</p>
               )}
               <div className="flex flex-wrap gap-1.5 mb-5">
-                {Array.from({ length: wallZone === 'wall-niche' ? 8 : 4 }, (_, i) => i + 1).map(i => (
-                  <div key={i} className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-all ${
-                    points.length >= i ? (i <= 4 ? 'bg-black text-white border-black' : 'bg-[#7ec662] text-white border-[#7ec662]')
-                    : i <= 4 ? 'text-gray-300 border-gray-200' : 'text-gray-200 border-dashed border-gray-200'
+                {Array.from({ length: wallZone === 'wall-niche' ? 12 : 4 }, (_, i) => i + 1).map(i => (
+                  <div key={i} className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-all ${
+                    points.length >= i
+                      ? (i <= 4 ? 'bg-black text-white border-black' : i <= 8 ? 'bg-[#7ec662] text-white border-[#7ec662]' : 'bg-[#007aff] text-white border-[#007aff]')
+                      : i <= 4 ? 'text-gray-300 border-gray-200' : 'text-gray-200 border-dashed border-gray-200'
                   }`}>
                     {points.length >= i ? <Check size={11}/> : i}
                   </div>
@@ -1648,6 +1772,24 @@ const BambooStudio = () => {
                 </div>
               )}
             </div>
+
+            {/* Surface selector — per-surface editing */}
+            {points.length >= 8 && (
+              <div className="bg-white rounded-2xl p-3.5 shadow-sm">
+                <div className="flex items-center gap-1.5 mb-2.5">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Поверхность</span>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  {Array.from({ length: Math.min(3, Math.floor(points.length / 4)) }, (_, i) => i).map(i => (
+                    <button key={i} onClick={() => switchSurface(i)}
+                      className={`w-full py-2 px-3 text-left text-[10px] font-bold rounded-xl border transition-all active:scale-95 ${activeSurface === i ? 'bg-[#7ec662] text-white border-[#7ec662]' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
+                      {SURFACE_LABELS[i]}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[8px] text-gray-400 mt-2 leading-relaxed">Кликните по плоскости на фото или выберите здесь. Панели, количество и профили настраиваются для каждой поверхности отдельно.</p>
+              </div>
+            )}
 
             {/* Corner type — shown only for wall-niche with 8 points */}
             {wallZone === 'wall-niche' && points.length >= 8 && (

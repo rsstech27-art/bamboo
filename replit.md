@@ -51,7 +51,16 @@ Textures for Рейки: tex-443..tex-469 range (light blonde to near-black ebon
 - **Footer** (`#111111`): brand, catalogue series, buyer links, contacts + "Открыть примерочную" button
 - Page title: "ALL WALL — Онлайн-примерочная стеновых панелей"
 
-### Architecture (`src/App.tsx`, ~1488 lines)
+### Per-surface editing (multi-quad)
+- Zone «Стена с выступом»: up to 12 marked points = up to 3 quads (main wall / protrusion / 3rd plane)
+- Each surface has its own `SurfaceConfig` {panelCount, dividerPositions, sectorMaterials, molding + hMolding settings} in `surfacesRef`
+- Global state = ACTIVE surface (switch-sync model): persist-effect writes globals into `surfacesRef[activeSurface]`; `switchSurface(idx)` snapshots refs into old index, loads target config into setters
+- Surface selection: click on a quad in canvas (point-in-quad) or «Поверхность» buttons in edit sidebar; active quad shown with green dashed outline
+- Divider/molding handles + sector highlight rendered only for the active surface; interactive helpers (findNearDivider, canvasX/YToWallRatio, findNearHMolding) operate on active quad
+- Undo is surface-aware (`surfaceIndex` in HistorySnapshot); upload/«Назад» reset `activeSurface` and `surfacesRef`
+- `cornerType` ('external'|'internal') controls edge visual between adjacent quads (bright bend vs dark seam)
+
+### Architecture (`src/App.tsx`, ~1900 lines)
 - `PANEL_SERIES` — array of 12 series, each with `{ id, name, panels[] }`
 - `BAMBOO_PANELS` — flat array derived from `PANEL_SERIES.flatMap(s => s.panels)` (81 панель)
 - `openSeries` state — `Set<string>` of expanded series IDs (accordion)
