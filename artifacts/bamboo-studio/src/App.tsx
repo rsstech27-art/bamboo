@@ -432,16 +432,177 @@ const BambooStudio = () => {
       // For walls with protrusion (>4 points): clip both canvases to the full polygon.
       // Panels are still computed from pts[0..3] as the reference quad.
       if (pts.length > 4) {
+        // === POLYGON MODE: bounding-box panels clipped to full polygon ===
+        const allX = pts.map((p: Point) => p.x);
+        const allY = pts.map((p: Point) => p.y);
+        const polyMinX = Math.min(...allX);
+        const polyMaxX = Math.max(...allX);
+        const polyMinY = Math.min(...allY);
+        const polyMaxY = Math.max(...allY);
+        const polyW = polyMaxX - polyMinX;
+        const polyH = polyMaxY - polyMinY;
+
         [tCtx, wCtx].forEach(c => {
           c.beginPath();
           c.moveTo(pts[0].x, pts[0].y);
-          pts.slice(1).forEach(p => c.lineTo(p.x, p.y));
+          pts.slice(1).forEach((p: Point) => c.lineTo(p.x, p.y));
           c.closePath();
           c.clip();
         });
-      }
 
-      const bounds = getSectorBounds(curDividers, curPanelCount);
+        const polyBounds = getSectorBounds(curDividers, curPanelCount);
+
+        for (let i = 0; i < curPanelCount; i++) {
+          const { start: rStart, end: rEnd } = polyBounds[i];
+          const x1 = polyMinX + polyW * rStart;
+          const x2 = polyMinX + polyW * rEnd;
+          const panelW = x2 - x1;
+          const panelH = polyH;
+          const material = curMaterials[i] || BAMBOO_PANELS[0];
+
+          tCtx.save();
+          tCtx.beginPath();
+          tCtx.rect(x1, polyMinY, panelW, panelH);
+          tCtx.clip();
+
+          const pCachedTex = textureCacheRef.current[material.id];
+          if (pCachedTex) {
+            if (material.textureStretch) {
+              if (material.slatOverlay) {
+                tCtx.drawImage(pCachedTex, x1, polyMinY, panelW, panelH);
+                wCtx.save();
+                wCtx.beginPath(); wCtx.rect(x1, polyMinY, panelW, panelH); wCtx.clip();
+                wCtx.drawImage(pCachedTex, x1, polyMinY, panelW, panelH);
+                wCtx.restore();
+              } else {
+                const WOOD_SCALE = 0.8;
+                const tileW = Math.max(1, Math.ceil(panelW * WOOD_SCALE));
+                const tileH = Math.max(1, Math.ceil(panelH * WOOD_SCALE));
+                const pTileCanvas = document.createElement('canvas');
+                pTileCanvas.width = tileW; pTileCanvas.height = tileH;
+                const pTileCtx = pTileCanvas.getContext('2d')!;
+                pTileCtx.drawImage(pCachedTex, 0, 0, tileW, tileH);
+                const pWoodPat = tCtx.createPattern(pTileCanvas, 'repeat');
+                if (pWoodPat) {
+                  pWoodPat.setTransform(new DOMMatrix().translate(x1, polyMinY));
+                  tCtx.fillStyle = pWoodPat;
+                  tCtx.fillRect(x1 - 1, polyMinY - 1, panelW + 2, panelH + 2);
+                }
+                wCtx.save();
+                wCtx.beginPath(); wCtx.rect(x1, polyMinY, panelW, panelH); wCtx.clip();
+                const pWoodPat2 = wCtx.createPattern(pTileCanvas, 'repeat');
+                if (pWoodPat2) {
+                  pWoodPat2.setTransform(new DOMMatrix().translate(x1, polyMinY));
+                  wCtx.fillStyle = pWoodPat2;
+                  wCtx.fillRect(x1 - 1, polyMinY - 1, panelW + 2, panelH + 2);
+                }
+                wCtx.restore();
+              }
+            } else {
+              const ts = material.textureScale ?? 1;
+              const scale = ts > 1 ? 1 / ts : Math.max(1, panelH / (pCachedTex.height * 3));
+              const pPat = tCtx.createPattern(pCachedTex, 'repeat');
+              if (pPat) {
+                const m = new DOMMatrix();
+                m.scaleSelf(scale, scale);
+                m.translateSelf(x1 / scale, polyMinY / scale);
+                pPat.setTransform(m);
+                tCtx.fillStyle = pPat;
+              } else {
+                tCtx.fillStyle = material.color;
+              }
+              tCtx.fillRect(x1 - 1, polyMinY - 1, panelW + 2, panelH + 2);
+            }
+          } else {
+            tCtx.fillStyle = material.color;
+            tCtx.fillRect(x1, polyMinY, panelW, panelH);
+          }
+
+          if (material.slatOverlay) {
+            const SLAT_W = 4, GAP_W = 1, PERIOD = SLAT_W + GAP_W;
+            const startX = Math.floor(x1 / PERIOD) * PERIOD;
+            for (let sx = startX; sx < x2 + PERIOD; sx += PERIOD) {
+              const gx = sx + SLAT_W;
+              const gapGrad = tCtx.createLinearGradient(gx - 0.5, 0, gx + GAP_W + 0.5, 0);
+              gapGrad.addColorStop(0,   'rgba(0,0,0,0.00)');
+              gapGrad.addColorStop(0.3, 'rgba(0,0,0,0.65)');
+              gapGrad.addColorStop(0.5, 'rgba(0,0,0,0.85)');
+              gapGrad.addColorStop(0.7, 'rgba(0,0,0,0.65)');
+              gapGrad.addColorStop(1,   'rgba(0,0,0,0.00)');
+              tCtx.fillStyle = gapGrad;
+              tCtx.fillRect(gx - 0.5, polyMinY - 1, GAP_W + 1, panelH + 2);
+            }
+          }
+
+          const pLight = lightModeRef.current;
+          if (pLight !== 'off') {
+            const lgx0 = pLight === 'morning' ? x2 : x1;
+            const lgx1 = pLight === 'morning' ? x1 : x2;
+            const lBright = pLight === 'morning' ? 'rgba(200,225,255,0.30)' : 'rgba(255,200,100,0.30)';
+            const lFade   = pLight === 'morning' ? 'rgba(0,10,50,0.07)'     : 'rgba(50,20,0,0.07)';
+            const pLightGrad = tCtx.createLinearGradient(lgx0, polyMinY, lgx1, polyMaxY);
+            pLightGrad.addColorStop(0, lBright); pLightGrad.addColorStop(1, lFade);
+            tCtx.fillStyle = pLightGrad;
+            tCtx.fillRect(x1 - 1, polyMinY - 1, panelW + 2, panelH + 2);
+          }
+
+          tCtx.beginPath();
+          tCtx.rect(x1, polyMinY, panelW, panelH);
+          if (curActiveSector === i && !curIsErasing) {
+            tCtx.strokeStyle = 'white'; tCtx.lineWidth = 3; tCtx.stroke();
+          }
+          tCtx.strokeStyle = 'rgba(0,0,0,0.12)'; tCtx.lineWidth = 1; tCtx.stroke();
+          tCtx.restore();
+        }
+
+        if (!curIsErasing && !forExportRef.current) {
+          curDividers.forEach((ratio: number) => {
+            const dx = polyMinX + polyW * ratio;
+            const midY = (polyMinY + polyMaxY) / 2;
+            tCtx.save();
+            tCtx.strokeStyle = 'rgba(255,255,255,0.6)'; tCtx.lineWidth = 2; tCtx.setLineDash([6, 4]);
+            tCtx.beginPath(); tCtx.moveTo(dx, polyMinY); tCtx.lineTo(dx, polyMaxY); tCtx.stroke();
+            tCtx.setLineDash([]); tCtx.restore();
+            tCtx.save();
+            tCtx.fillStyle = 'white'; tCtx.strokeStyle = 'rgba(0,0,0,0.3)'; tCtx.lineWidth = 1.5;
+            tCtx.beginPath(); tCtx.arc(dx, midY, 8, 0, Math.PI * 2); tCtx.fill(); tCtx.stroke();
+            tCtx.fillStyle = '#555'; tCtx.font = 'bold 10px sans-serif';
+            tCtx.textAlign = 'center'; tCtx.textBaseline = 'middle'; tCtx.fillText('⇔', dx, midY);
+            tCtx.restore();
+          });
+        }
+
+        const pMoldStyle = moldingStyleRef.current;
+        const pMoldW = moldingWidthRef.current;
+        if (pMoldStyle !== 'none' && curDividers.length > 0) {
+          curDividers.forEach((ratio: number) => {
+            const dx = polyMinX + polyW * ratio;
+            const pGrad = tCtx.createLinearGradient(dx - pMoldW / 2, polyMinY, dx + pMoldW / 2, polyMinY + 1);
+            if (pMoldStyle === 'gold') {
+              pGrad.addColorStop(0, '#5a3d00'); pGrad.addColorStop(0.15, '#b8860b');
+              pGrad.addColorStop(0.35, '#ffd700'); pGrad.addColorStop(0.5, '#fff8c0');
+              pGrad.addColorStop(0.65, '#ffd700'); pGrad.addColorStop(0.85, '#b8860b'); pGrad.addColorStop(1, '#5a3d00');
+            } else if (pMoldStyle === 'black') {
+              pGrad.addColorStop(0, '#0a0a0a'); pGrad.addColorStop(0.25, '#1c1c1c');
+              pGrad.addColorStop(0.5, '#383838'); pGrad.addColorStop(0.75, '#1c1c1c'); pGrad.addColorStop(1, '#0a0a0a');
+            } else if (pMoldStyle === 'metallic') {
+              pGrad.addColorStop(0, '#4a4a4a'); pGrad.addColorStop(0.2, '#9a9a9a');
+              pGrad.addColorStop(0.45, '#e8e8e8'); pGrad.addColorStop(0.5, '#ffffff');
+              pGrad.addColorStop(0.55, '#e8e8e8'); pGrad.addColorStop(0.8, '#9a9a9a'); pGrad.addColorStop(1, '#4a4a4a');
+            } else if (pMoldStyle === 'brass') {
+              pGrad.addColorStop(0, '#2c1f00'); pGrad.addColorStop(0.15, '#7a5918');
+              pGrad.addColorStop(0.35, '#c49a27'); pGrad.addColorStop(0.5, '#e8c95a');
+              pGrad.addColorStop(0.65, '#c49a27'); pGrad.addColorStop(0.85, '#7a5918'); pGrad.addColorStop(1, '#2c1f00');
+            }
+            tCtx.save();
+            tCtx.strokeStyle = pGrad; tCtx.lineWidth = pMoldW; tCtx.lineCap = 'butt';
+            tCtx.beginPath(); tCtx.moveTo(dx, polyMinY); tCtx.lineTo(dx, polyMaxY); tCtx.stroke();
+            tCtx.restore();
+          });
+        }
+
+      } else {
+        const bounds = getSectorBounds(curDividers, curPanelCount);
 
       for (let i = 0; i < curPanelCount; i++) {
         const { start: rStart, end: rEnd } = bounds[i];
@@ -803,6 +964,7 @@ const BambooStudio = () => {
           }
         });
       }
+      } // end else (quad mode)
 
       // Apply eraser mask — replay strokes from memory (never lost on canvas reset)
       if (maskStrokesRef.current.length > 0) {
@@ -863,12 +1025,26 @@ const BambooStudio = () => {
 
     for (let d = 0; d < dividers.length; d++) {
       const ratio = dividers[d];
-      const topX = pts[0].x + (pts[1].x - pts[0].x) * ratio;
-      const topY = pts[0].y + (pts[1].y - pts[0].y) * ratio;
-      const botX = pts[3].x + (pts[2].x - pts[3].x) * ratio;
-      const botY = pts[3].y + (pts[2].y - pts[3].y) * ratio;
-      const midX = (topX + botX) / 2;
-      const midY = (topY + botY) / 2;
+      let midX: number, midY: number;
+
+      if (pts.length > 4) {
+        // Polygon mode: divider is a vertical line at bounding-box x position
+        const allX = pts.map((p: Point) => p.x);
+        const allY = pts.map((p: Point) => p.y);
+        const polyMinX = Math.min(...allX);
+        const polyMaxX = Math.max(...allX);
+        const polyMinY = Math.min(...allY);
+        const polyMaxY = Math.max(...allY);
+        midX = polyMinX + (polyMaxX - polyMinX) * ratio;
+        midY = (polyMinY + polyMaxY) / 2;
+      } else {
+        const topX = pts[0].x + (pts[1].x - pts[0].x) * ratio;
+        const topY = pts[0].y + (pts[1].y - pts[0].y) * ratio;
+        const botX = pts[3].x + (pts[2].x - pts[3].x) * ratio;
+        const botY = pts[3].y + (pts[2].y - pts[3].y) * ratio;
+        midX = (topX + botX) / 2;
+        midY = (topY + botY) / 2;
+      }
 
       const dist = Math.sqrt((cx - midX) ** 2 + (cy - midY) ** 2);
       if (dist <= DIVIDER_HIT_RADIUS * 2) return d;
@@ -881,7 +1057,16 @@ const BambooStudio = () => {
     const pts = pointsRef.current;
     if (pts.length < 4) return 0;
 
-    // Project point onto the top edge interpolation
+    // Polygon mode (>4 points): bounding-box horizontal ratio
+    if (pts.length > 4) {
+      const allX = pts.map((p: Point) => p.x);
+      const minX = Math.min(...allX);
+      const maxX = Math.max(...allX);
+      if (maxX === minX) return 0;
+      return Math.max(0, Math.min(1, (cx - minX) / (maxX - minX)));
+    }
+
+    // Quad mode: project point onto the top edge interpolation
     const totalLen = Math.sqrt((pts[1].x - pts[0].x) ** 2 + (pts[1].y - pts[0].y) ** 2);
     if (totalLen === 0) return 0;
     const dx = pts[1].x - pts[0].x;
