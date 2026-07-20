@@ -276,7 +276,7 @@ const defaultSurfaceConfig = (): SurfaceConfig => ({
   hMoldingPositions: [0.5],
 });
 
-const SURFACE_LABELS = ['1 · Основная стена', '2 · Выступ', '3 · Плоскость'];
+const SURFACE_LABELS = ['Стена 1 · Основная', 'Стена 2', 'Стена 3'];
 
 const BambooStudio = () => {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
@@ -483,22 +483,56 @@ const BambooStudio = () => {
     ctx.drawImage(img, 0, 0, width, height);
 
     if (curStep === 'mark') {
-      ctx.fillStyle = '#007aff';
-      pts.forEach(p => {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
-        ctx.fill();
-      });
-      if (pts.length >= 2) {
-        ctx.strokeStyle = '#007aff';
-        ctx.lineWidth = 2;
-        ctx.setLineDash(pts.length >= 4 ? [] : [6, 4]);
-        ctx.beginPath();
-        ctx.moveTo(pts[0].x, pts[0].y);
-        pts.forEach(p => ctx.lineTo(p.x, p.y));
-        if (pts.length >= 4) ctx.closePath();
-        ctx.stroke();
-        ctx.setLineDash([]);
+      // Each wall (group of 4 points) is drawn as its OWN independent contour —
+      // points of different walls are never connected to each other
+      const QUAD_COLORS = ['#007aff', '#7ec662', '#ff9500'];
+      const nGroups = Math.ceil(pts.length / 4);
+      for (let g = 0; g < nGroups; g++) {
+        const gp = pts.slice(g * 4, g * 4 + 4);
+        const color = QUAD_COLORS[g] ?? '#007aff';
+        const complete = gp.length === 4;
+
+        // Contour of this wall only
+        if (gp.length >= 2) {
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 2;
+          ctx.setLineDash(complete ? [] : [6, 4]);
+          ctx.beginPath();
+          ctx.moveTo(gp[0].x, gp[0].y);
+          gp.forEach(p => ctx.lineTo(p.x, p.y));
+          if (complete) ctx.closePath();
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+
+        // Points of this wall
+        ctx.fillStyle = color;
+        gp.forEach((p, i) => {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+          ctx.fill();
+          // Point number inside
+          ctx.fillStyle = 'white';
+          ctx.font = 'bold 8px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(String(i + 1), p.x, p.y);
+          ctx.fillStyle = color;
+        });
+
+        // Wall label near the first point of a completed wall
+        if (complete) {
+          const cxm = (gp[0].x + gp[1].x + gp[2].x + gp[3].x) / 4;
+          const cym = (gp[0].y + gp[1].y + gp[2].y + gp[3].y) / 4;
+          ctx.save();
+          ctx.fillStyle = color;
+          ctx.font = 'bold 13px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.globalAlpha = 0.85;
+          ctx.fillText(`Стена ${g + 1}`, cxm, cym);
+          ctx.restore();
+        }
       }
       return;
     }
@@ -1527,7 +1561,7 @@ const BambooStudio = () => {
               {step === 'mark' && (
                 <div className="hidden md:flex absolute top-5 left-1/2 -translate-x-1/2 bg-white/90 text-black px-5 py-1.5 rounded-full text-[10px] font-bold shadow-lg backdrop-blur-md border border-gray-100 uppercase tracking-widest pointer-events-none">
                   {wallZone === 'wall-niche'
-                    ? (points.length < 4 ? `Угол стены (${points.length}/4 мин)` : points.length < 8 ? `Выступ: ещё ${8 - points.length} или «Начать»` : points.length < 12 ? `3-я плоскость: ещё ${12 - points.length} или «Начать»` : 'Нажмите «Начать примерку»')
+                    ? (points.length < 4 ? `Стена 1: точка ${points.length + 1}/4` : points.length < 8 ? `Стена 2 (опц.): точка ${points.length - 3}/4 или «Начать»` : points.length < 12 ? `Стена 3 (опц.): точка ${points.length - 7}/4 или «Начать»` : 'Нажмите «Начать примерку»')
                     : (points.length < 4 ? `Кликните на угол стены (${points.length}/4)` : 'Нажмите «Начать примерку»')}
                 </div>
               )}
@@ -1551,7 +1585,7 @@ const BambooStudio = () => {
             {step === 'mark' && (
               <div className="bg-white/90 text-black px-5 py-1.5 rounded-full text-[10px] font-bold shadow-lg backdrop-blur-md border border-gray-100 uppercase tracking-widest">
                 {wallZone === 'wall-niche'
-                  ? (points.length < 4 ? `Угол стены (${points.length}/4 мин)` : points.length < 8 ? `Выступ: ещё ${8 - points.length} или «Начать»` : points.length < 12 ? `3-я плоскость: ещё ${12 - points.length} или «Начать»` : 'Нажмите «Начать примерку»')
+                  ? (points.length < 4 ? `Стена 1: точка ${points.length + 1}/4` : points.length < 8 ? `Стена 2 (опц.): точка ${points.length - 3}/4 или «Начать»` : points.length < 12 ? `Стена 3 (опц.): точка ${points.length - 7}/4 или «Начать»` : 'Нажмите «Начать примерку»')
                   : (points.length < 4 ? `Кликните на угол стены (${points.length}/4)` : 'Нажмите «Начать примерку»')}
               </div>
             )}
@@ -1580,9 +1614,9 @@ const BambooStudio = () => {
               </div>
               {wallZone === 'wall-niche' ? (<>
                 <p className="text-[9px] text-gray-400 mb-2 leading-relaxed">
-                  <span className="font-bold text-gray-600">Шаг 1 (точки 1–4):</span> отметьте основную плоскость стены по часовой стрелке.<br/>
-                  <span className="font-bold text-gray-600">Шаг 2 (точки 5–8):</span> отметьте грань выступа/ниши.<br/>
-                  <span className="font-bold text-gray-600">Шаг 3 (точки 9–12, опц.):</span> третья плоскость.
+                  Каждая стена отмечается <span className="font-bold text-gray-600">отдельно</span> — 4 угла по часовой стрелке. Контуры стен не связаны между собой.<br/>
+                  <span className="font-bold text-[#007aff]">Стена 1</span> — основная (обязательно).<br/>
+                  <span className="font-bold text-[#7ec662]">Стена 2</span> и <span className="font-bold text-[#ff9500]">Стена 3</span> — по желанию.
                 </p>
                 {points.length >= 4 && (
                   <div className="mb-3">
@@ -1606,7 +1640,7 @@ const BambooStudio = () => {
                 {Array.from({ length: wallZone === 'wall-niche' ? 12 : 4 }, (_, i) => i + 1).map(i => (
                   <div key={i} className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-all ${
                     points.length >= i
-                      ? (i <= 4 ? 'bg-black text-white border-black' : i <= 8 ? 'bg-[#7ec662] text-white border-[#7ec662]' : 'bg-[#007aff] text-white border-[#007aff]')
+                      ? (i <= 4 ? 'bg-[#007aff] text-white border-[#007aff]' : i <= 8 ? 'bg-[#7ec662] text-white border-[#7ec662]' : 'bg-[#ff9500] text-white border-[#ff9500]')
                       : i <= 4 ? 'text-gray-300 border-gray-200' : 'text-gray-200 border-dashed border-gray-200'
                   }`}>
                     {points.length >= i ? <Check size={11}/> : i}
