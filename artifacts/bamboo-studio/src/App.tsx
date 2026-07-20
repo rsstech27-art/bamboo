@@ -1238,7 +1238,7 @@ const BambooStudio = () => {
                 onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setStep('zone'); setWallZone(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
                 className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
               >
-                <RotateCcw size={13} /> Сброс
+                ← Назад
               </button>
             )}
           </div>
