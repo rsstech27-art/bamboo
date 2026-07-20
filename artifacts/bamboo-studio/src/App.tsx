@@ -1115,6 +1115,42 @@ const BambooStudio = () => {
       ctx.globalCompositeOperation = 'multiply';
       ctx.drawImage(img, 0, 0, width, height);
       ctx.restore();
+
+      // Semi-transparent ALL WALL watermark — only on exported images (PNG / КП)
+      if (forExportRef.current) {
+        ctx.save();
+        const fontSize = Math.max(24, Math.round(width / 18));
+        ctx.font = `bold ${fontSize}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        // Diagonal tiled watermark
+        ctx.translate(width / 2, height / 2);
+        ctx.rotate(-Math.PI / 7);
+        const stepX = fontSize * 8;
+        const stepY = fontSize * 4;
+        const diag = Math.sqrt(width * width + height * height);
+        for (let wy = -diag / 2; wy <= diag / 2; wy += stepY) {
+          const rowOffset = (Math.round(wy / stepY) % 2) * (stepX / 2);
+          for (let wx = -diag / 2; wx <= diag / 2; wx += stepX) {
+            ctx.fillStyle = 'rgba(255,255,255,0.13)';
+            ctx.fillText('ALL WALL', wx + rowOffset, wy + 1);
+            ctx.fillStyle = 'rgba(0,0,0,0.07)';
+            ctx.fillText('ALL WALL', wx + rowOffset, wy - 1);
+          }
+        }
+        ctx.restore();
+        // Brand mark in the bottom-right corner
+        ctx.save();
+        const cornerSize = Math.max(14, Math.round(width / 55));
+        ctx.font = `bold ${cornerSize}px sans-serif`;
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'bottom';
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.fillText('ALL WALL · allwall.ru', width - 14, height - 11);
+        ctx.fillStyle = 'rgba(255,255,255,0.75)';
+        ctx.fillText('ALL WALL · allwall.ru', width - 15, height - 12);
+        ctx.restore();
+      }
     }
   }, []);
 
