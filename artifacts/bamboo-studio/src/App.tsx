@@ -1545,6 +1545,35 @@ const BambooStudio = () => {
     const total = items.reduce((sum, it) => sum + it.qty * it.price, 0);
     const fmt = (n: number) => n.toLocaleString('ru-RU') + ' ₽';
 
+    // Wall dimension calculations: if dimensions are set, the calculated
+    // (расчётная) panel cost takes priority over the project panel cost in Итого
+    const wallCalcs = kpCfgs
+      .map((cfg, q) => ({ cfg, q }))
+      .filter(w => w.cfg.wallWidthMm > 0 && w.cfg.wallHeightMm > 0)
+      .map(({ cfg, q }) => {
+        const cols = Math.ceil(cfg.wallWidthMm / PANEL_W_MM);
+        const rows = Math.ceil(cfg.wallHeightMm / PANEL_H_MM);
+        const needed = cols * rows;
+        // Match the items aggregation: sector 0 after a wrapped junction is
+        // a continuation of the previous wall's panel, not billed separately
+        const wrapL = q > 0 && (wrapJunctionsRef.current[q - 1] ?? false)
+          && (cornerTypesRef.current[q - 1] ?? 'external') === 'external';
+        let projCost = 0;
+        for (let sIdx = 0; sIdx < cfg.panelCount; sIdx++) {
+          if (sIdx === 0 && wrapL) continue;
+          const mat = cfg.sectorMaterials[sIdx] ?? BAMBOO_PANELS[0];
+          projCost += getPanelPrice(mat.id);
+        }
+        const billedCount = cfg.panelCount - (wrapL ? 1 : 0);
+        const avgPrice = billedCount > 0 ? projCost / billedCount : getPanelPrice(BAMBOO_PANELS[0].id);
+        const calcCost = Math.round(needed * avgPrice);
+        return { cfg, q, cols, rows, needed, projCost, calcCost };
+      });
+    const totalCalcCost = wallCalcs.reduce((sum, w) => sum + w.calcCost, 0);
+    const totalProjCostDimWalls = wallCalcs.reduce((sum, w) => sum + w.projCost, 0);
+    // Final total: replace project panel cost with calculated cost for walls that have dimensions
+    const finalTotal = wallCalcs.length > 0 ? total - totalProjCostDimWalls + totalCalcCost : total;
+
     // Render КП onto an A4 canvas (Cyrillic-safe), then embed into PDF
     const W = 1240, H = 1754; // A4 @ 150dpi
     const cv = document.createElement('canvas');
@@ -1607,32 +1636,18 @@ const BambooStudio = () => {
     });
 
     // Wall dimensions & area check
-    const dimWalls = kpCfgs.map((cfg, q) => ({ cfg, q })).filter(w => w.cfg.wallWidthMm > 0 && w.cfg.wallHeightMm > 0);
-    if (dimWalls.length > 0) {
+    if (wallCalcs.length > 0) {
       y += 18;
       c.fillStyle = '#111111'; c.font = 'bold 18px sans-serif';
       c.fillText('Размеры стен и расход материала', 60, y + 10);
       y += 34;
       c.font = '16px sans-serif';
       let totalWallArea = 0;
-      let totalCalcCost = 0;
-      dimWalls.forEach(({ cfg, q }) => {
+      wallCalcs.forEach(({ cfg, q, rows, needed, calcCost }) => {
         const wM = cfg.wallWidthMm / 1000, hM = cfg.wallHeightMm / 1000;
         const area = wM * hM;
         totalWallArea += area;
-        const cols = Math.ceil(cfg.wallWidthMm / PANEL_W_MM);
-        const rows = Math.ceil(cfg.wallHeightMm / PANEL_H_MM);
-        const needed = cols * rows;
         const heightNote = rows > 1 ? ` · ${rows} ряда по высоте` : '';
-        // Average per-panel price of this wall's chosen materials (fallback to catalogue default)
-        let priceSum = 0;
-        for (let sIdx = 0; sIdx < cfg.panelCount; sIdx++) {
-          const mat = cfg.sectorMaterials[sIdx] ?? BAMBOO_PANELS[0];
-          priceSum += getPanelPrice(mat.id);
-        }
-        const avgPrice = cfg.panelCount > 0 ? priceSum / cfg.panelCount : getPanelPrice(BAMBOO_PANELS[0].id);
-        const calcCost = Math.round(needed * avgPrice);
-        totalCalcCost += calcCost;
         c.fillStyle = '#333333';
         c.fillText(
           `Стена ${q + 1}: ${wM.toLocaleString('ru-RU')} × ${hM.toLocaleString('ru-RU')} м · ${area.toFixed(2).replace('.', ',')} м² · панелей в проекте: ${cfg.panelCount}, расчётно: ${needed}${heightNote} · расчётная стоимость: ${fmt(calcCost)}`,
@@ -1656,8 +1671,14 @@ const BambooStudio = () => {
     c.beginPath(); c.moveTo(60, y + 4); c.lineTo(W - 60, y + 4); c.stroke();
     y += 30;
     c.fillStyle = '#111111'; c.font = 'bold 24px sans-serif'; c.textAlign = 'right';
-    c.fillText(`Итого: ${fmt(total)}`, W - 60, y + 12);
+    c.fillText(`Итого${wallCalcs.length > 0 ? ' (по расчётным размерам стен)' : ''}: ${fmt(finalTotal)}`, W - 60, y + 12);
     c.textAlign = 'left';
+    if (wallCalcs.length > 0 && finalTotal !== total) {
+      y += 26;
+      c.fillStyle = '#888888'; c.font = '15px sans-serif'; c.textAlign = 'right';
+      c.fillText(`Стоимость по визуализации проекта: ${fmt(total)}`, W - 60, y + 12);
+      c.textAlign = 'left';
+    }
     y += 60;
     c.fillStyle = '#888888'; c.font = '14px sans-serif';
     c.fillText('Предложение носит информационный характер и не является публичной офертой.', 60, y);
