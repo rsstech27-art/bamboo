@@ -58,7 +58,12 @@ Textures for Рейки: tex-443..tex-469 range (light blonde to near-black ebon
 - Surface selection: click on a quad in canvas (point-in-quad) or «Поверхность» buttons in edit sidebar; active quad shown with green dashed outline
 - Divider/molding handles + sector highlight rendered only for the active surface; interactive helpers (findNearDivider, canvasX/YToWallRatio, findNearHMolding) operate on active quad
 - Undo is surface-aware (`surfaceIndex` in HistorySnapshot); upload/«Назад» reset `activeSurface` and `surfacesRef`
-- `cornerType` ('external'|'internal') controls edge visual between adjacent quads (bright bend vs dark seam)
+- `cornerTypes` array ('external'|'internal' per junction; junction j = walls j+1/j+2) controls edge visual between adjacent quads (bright bend vs dark seam); UI = `CornerTypeCheckboxes` (checkbox pair per junction, one type per junction, different types can coexist across junctions)
+
+### Commercial proposal (КП) PDF
+- After «Сохранить PNG», a green «Рассчитать КП (PDF)» button appears
+- `handleGenerateKP`: re-renders a fresh export image (never stale), aggregates items across all surfaces (panels by article via sectorMaterials with BAMBOO_PANELS[0] fallback; vertical profiles = panelCount+1 if moldingStyle set; horizontal = hMoldingCount), prices from `SERIES_PRICES` (placeholder ₽/panel per series) + `MOLDING_INFO` (profile article/name/price)
+- PDF built by drawing an A4 canvas (1240×1754, Cyrillic-safe via canvas text) and embedding into jsPDF as JPEG → `allwall-kp.pdf`
 
 ### Architecture (`src/App.tsx`, ~1900 lines)
 - `PANEL_SERIES` — array of 12 series, each with `{ id, name, panels[] }`

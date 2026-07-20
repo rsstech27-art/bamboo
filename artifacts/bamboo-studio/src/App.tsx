@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Upload, Layout, Eraser, RotateCcw, Download, Check, Columns, Undo2, Sun, Moon } from 'lucide-react';
+import { Upload, Layout, Eraser, RotateCcw, Download, Check, Columns, Undo2, Sun, Moon, FileText } from 'lucide-react';
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -278,6 +278,52 @@ const defaultSurfaceConfig = (): SurfaceConfig => ({
 
 const SURFACE_LABELS = ['Стена 1 · Основная', 'Стена 2', 'Стена 3'];
 
+// Retail price (RUB per panel) by series — placeholder pricing, editable
+const SERIES_PRICES: Record<string, number> = {
+  'metall-25': 6900, 'liqmetall-25': 6900, 'pet-25': 5900, 'galv-15': 5400,
+  'liqmetall-10': 4900, 'particles-10': 4900, 'stone-gravel': 4500,
+  'patina-copper': 4500, 'linen-cement': 3900, 'rainbow': 5900,
+  'mirror-gloss': 6400, 'wood': 5200, 'reiki': 7900, 'soft-touch': 4700,
+};
+const PANEL_TO_SERIES: Record<string, string> = {};
+PANEL_SERIES.forEach(sr => sr.panels.forEach(pl => { PANEL_TO_SERIES[pl.id] = sr.id; }));
+const getPanelPrice = (panelId: string) => SERIES_PRICES[PANEL_TO_SERIES[panelId] ?? ''] ?? 4900;
+
+// Profile (molding) catalogue info for the commercial proposal
+const MOLDING_INFO: Record<string, { article: string; name: string; price: number }> = {
+  gold:     { article: 'PR-GOLD',  name: 'Профиль золото',        price: 990 },
+  black:    { article: 'PR-BLACK', name: 'Профиль чёрный',        price: 890 },
+  metallic: { article: 'PR-METAL', name: 'Профиль металлик',      price: 940 },
+  brass:    { article: 'PR-BRASS', name: 'Профиль латунь',        price: 990 },
+};
+
+const CornerTypeCheckboxes = ({ nJunctions, cornerTypes, setCornerTypes }: {
+  nJunctions: number;
+  cornerTypes: ('external' | 'internal')[];
+  setCornerTypes: React.Dispatch<React.SetStateAction<('external' | 'internal')[]>>;
+}) => (
+  <div className="space-y-2">
+    {Array.from({ length: nJunctions }, (_, j) => (
+      <div key={j}>
+        <p className="text-[8px] text-gray-400 mb-1 font-bold">Угол между стенами {j + 1} и {j + 2}:</p>
+        <div className="flex gap-3">
+          {([['external', '↗ Наружный'], ['internal', '↙ Внутренний']] as const).map(([val, label]) => (
+            <label key={val} className="flex items-center gap-1.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={cornerTypes[j] === val}
+                onChange={() => setCornerTypes(prev => { const next = [...prev]; next[j] = val; return next; })}
+                className="w-3.5 h-3.5 rounded border-gray-300 accent-black"
+              />
+              <span className={`text-[9px] font-bold ${cornerTypes[j] === val ? 'text-black' : 'text-gray-400'}`}>{label}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
 const BambooStudio = () => {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [step, setStep] = useState<'zone' | 'upload' | 'mark' | 'edit'>('zone');
@@ -303,8 +349,10 @@ const BambooStudio = () => {
   const [footerCatalogOpen, setFooterCatalogOpen] = useState(false);
   const [lightMode, setLightMode] = useState<'off' | 'morning' | 'evening'>('off');
   const lightModeRef = useRef<'off' | 'morning' | 'evening'>('off');
-  const [cornerType, setCornerType] = useState<'external' | 'internal'>('external');
-  const cornerTypeRef = useRef<'external' | 'internal'>('external');
+  // Corner type per junction (junction 0 = walls 1–2, junction 1 = walls 2–3)
+  const [cornerTypes, setCornerTypes] = useState<('external' | 'internal')[]>(['external', 'external']);
+  const cornerTypesRef = useRef<('external' | 'internal')[]>(['external', 'external']);
+  const [savedPng, setSavedPng] = useState<string | null>(null);
   const [activeSurface, setActiveSurface] = useState(0);
   const activeSurfaceRef = useRef(0);
   const surfacesRef = useRef<SurfaceConfig[]>([defaultSurfaceConfig()]);
@@ -397,7 +445,7 @@ const BambooStudio = () => {
   useEffect(() => { hMoldingWidthRef.current = hMoldingWidth; }, [hMoldingWidth]);
   useEffect(() => { hMoldingPositionsRef.current = hMoldingPositions; }, [hMoldingPositions]);
   useEffect(() => { lightModeRef.current = lightMode; }, [lightMode]);
-  useEffect(() => { cornerTypeRef.current = cornerType; }, [cornerType]);
+  useEffect(() => { cornerTypesRef.current = cornerTypes; }, [cornerTypes]);
   useEffect(() => { activeSurfaceRef.current = activeSurface; }, [activeSurface]);
   // Persist current edits into the active surface's config
   useEffect(() => {
@@ -949,7 +997,7 @@ const BambooStudio = () => {
           cMidX + cpx * 6, cMidY + cpy * 6,
           cMidX - cpx * 6, cMidY - cpy * 6
         );
-        if (cornerTypeRef.current === 'external') {
+        if ((cornerTypesRef.current[q - 1] ?? 'external') === 'external') {
           cGrad.addColorStop(0,   'rgba(0,0,0,0.50)');
           cGrad.addColorStop(0.3, 'rgba(255,255,255,0.65)');
           cGrad.addColorStop(0.5, 'rgba(255,255,255,0.90)');
@@ -1316,6 +1364,139 @@ const BambooStudio = () => {
     link.download = 'bamboo-studio-project.png';
     link.href = dataUrl;
     link.click();
+    setSavedPng(dataUrl);
+  };
+
+  // ── Commercial proposal (КП) PDF generation ──────────────────────────
+  const handleGenerateKP = async () => {
+    const nQuads = Math.min(3, Math.floor(pointsRef.current.length / 4));
+    if (nQuads === 0) return;
+
+    // Always render a FRESH export image so the proposal visual matches current settings
+    let kpImage: string | null = null;
+    if (mainCanvasRef.current) {
+      forExportRef.current = true;
+      drawFullScene();
+      kpImage = mainCanvasRef.current.toDataURL('image/png');
+      forExportRef.current = false;
+      drawFullScene();
+    }
+
+    type KPItem = { article: string; name: string; qty: number; price: number };
+    const items: KPItem[] = [];
+    const addItem = (article: string, name: string, qty: number, price: number) => {
+      const ex = items.find(it => it.article === article);
+      if (ex) ex.qty += qty; else items.push({ article, name, qty, price });
+    };
+
+    for (let q = 0; q < nQuads; q++) {
+      const cfg: SurfaceConfig = q === activeSurfaceRef.current
+        ? {
+            panelCount: panelCountRef.current,
+            dividerPositions: dividerPositionsRef.current,
+            sectorMaterials: sectorMaterialsRef.current,
+            moldingStyle: moldingStyleRef.current,
+            moldingWidth: moldingWidthRef.current,
+            hMoldingStyle: hMoldingStyleRef.current,
+            hMoldingCount: hMoldingCountRef.current,
+            hMoldingWidth: hMoldingWidthRef.current,
+            hMoldingPositions: hMoldingPositionsRef.current,
+          }
+        : (surfacesRef.current[q] ?? defaultSurfaceConfig());
+      for (let i = 0; i < cfg.panelCount; i++) {
+        const mat = cfg.sectorMaterials[i] || BAMBOO_PANELS[0];
+        addItem(mat.article, `Панель «${mat.name}»`, 1, getPanelPrice(mat.id));
+      }
+      if (cfg.moldingStyle !== 'none') {
+        const info = MOLDING_INFO[cfg.moldingStyle];
+        addItem(info.article + '-V', info.name + ' (вертик.)', cfg.panelCount + 1, info.price);
+      }
+      if (cfg.hMoldingStyle !== 'none') {
+        const info = MOLDING_INFO[cfg.hMoldingStyle];
+        addItem(info.article + '-H', info.name + ' (горизонт.)', cfg.hMoldingCount, info.price);
+      }
+    }
+
+    const total = items.reduce((sum, it) => sum + it.qty * it.price, 0);
+    const fmt = (n: number) => n.toLocaleString('ru-RU') + ' ₽';
+
+    // Render КП onto an A4 canvas (Cyrillic-safe), then embed into PDF
+    const W = 1240, H = 1754; // A4 @ 150dpi
+    const cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    const c = cv.getContext('2d')!;
+    c.fillStyle = 'white'; c.fillRect(0, 0, W, H);
+
+    // Header
+    c.fillStyle = '#111111'; c.fillRect(0, 0, W, 130);
+    c.fillStyle = 'white'; c.font = 'bold 44px sans-serif'; c.textBaseline = 'middle';
+    c.fillText('ALL WALL', 60, 65);
+    c.fillStyle = '#7ec662'; c.font = 'bold 22px sans-serif';
+    c.fillText('Коммерческое предложение', 300, 68);
+    c.fillStyle = '#bbbbbb'; c.font = '18px sans-serif'; c.textAlign = 'right';
+    c.fillText(new Date().toLocaleDateString('ru-RU'), W - 60, 50);
+    c.fillText('+7 495 151-09-46 · allwall.ru', W - 60, 82);
+    c.textAlign = 'left';
+
+    let y = 170;
+    // Visualization preview
+    if (kpImage) {
+      await new Promise<void>((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          const maxW = W - 120, maxH = 560;
+          const k = Math.min(maxW / img.width, maxH / img.height);
+          const iw = img.width * k, ih = img.height * k;
+          c.drawImage(img, (W - iw) / 2, y, iw, ih);
+          c.strokeStyle = '#e5e5e5'; c.lineWidth = 1;
+          c.strokeRect((W - iw) / 2, y, iw, ih);
+          y += ih + 50;
+          resolve();
+        };
+        img.onerror = () => resolve();
+        img.src = kpImage;
+      });
+    }
+
+    // Table header
+    const colX = [60, 260, 760, 880, 1010]; // article | name | qty | price | sum
+    c.fillStyle = '#111111'; c.fillRect(60, y, W - 120, 44);
+    c.fillStyle = 'white'; c.font = 'bold 17px sans-serif'; c.textBaseline = 'middle';
+    c.fillText('Артикул', colX[0] + 14, y + 22);
+    c.fillText('Наименование', colX[1], y + 22);
+    c.fillText('Кол-во', colX[2], y + 22);
+    c.fillText('Цена', colX[3], y + 22);
+    c.fillText('Сумма', colX[4], y + 22);
+    y += 44;
+
+    c.font = '17px sans-serif';
+    items.forEach((it, idx) => {
+      if (idx % 2 === 1) { c.fillStyle = '#f7f7f7'; c.fillRect(60, y, W - 120, 40); }
+      c.fillStyle = '#333333';
+      c.fillText(it.article, colX[0] + 14, y + 20);
+      c.fillText(it.name, colX[1], y + 20);
+      c.fillText(`${it.qty} шт`, colX[2], y + 20);
+      c.fillText(fmt(it.price), colX[3], y + 20);
+      c.fillText(fmt(it.qty * it.price), colX[4], y + 20);
+      y += 40;
+    });
+
+    // Total
+    c.strokeStyle = '#111111'; c.lineWidth = 2;
+    c.beginPath(); c.moveTo(60, y + 4); c.lineTo(W - 60, y + 4); c.stroke();
+    y += 30;
+    c.fillStyle = '#111111'; c.font = 'bold 24px sans-serif'; c.textAlign = 'right';
+    c.fillText(`Итого: ${fmt(total)}`, W - 60, y + 12);
+    c.textAlign = 'left';
+    y += 60;
+    c.fillStyle = '#888888'; c.font = '14px sans-serif';
+    c.fillText('Предложение носит информационный характер и не является публичной офертой.', 60, y);
+    c.fillText('Точный расчёт с учётом размеров помещения уточняйте у менеджера: +7 495 151-09-46.', 60, y + 24);
+
+    const { jsPDF } = await import('jspdf');
+    const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
+    pdf.addImage(cv.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 210, 297);
+    pdf.save('allwall-kp.pdf');
   };
 
   const handleChangePanelCount = (count: number) => {
@@ -1341,6 +1522,8 @@ const BambooStudio = () => {
           surfacesRef.current = [defaultSurfaceConfig()];
           activeSurfaceRef.current = 0;
           setActiveSurface(0);
+          setCornerTypes(['external', 'external']);
+          setSavedPng(null);
           setImage(img);
           setStep('mark');
           setPoints([]);
@@ -1474,7 +1657,7 @@ const BambooStudio = () => {
             )}
             {step !== 'zone' && (
               <button
-                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setStep('zone'); setWallZone(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
+                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setSavedPng(null); setStep('zone'); setWallZone(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
                 className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
               >
                 ← Назад
@@ -1618,19 +1801,10 @@ const BambooStudio = () => {
                   <span className="font-bold text-[#007aff]">Стена 1</span> — основная (обязательно).<br/>
                   <span className="font-bold text-[#7ec662]">Стена 2</span> и <span className="font-bold text-[#ff9500]">Стена 3</span> — по желанию.
                 </p>
-                {points.length >= 4 && (
+                {points.length >= 8 && (
                   <div className="mb-3">
-                    <p className="text-[9px] text-gray-400 mb-1.5 font-bold uppercase tracking-wide">Тип угла:</p>
-                    <div className="flex gap-1.5">
-                      <button onClick={() => setCornerType('external')}
-                        className={`flex-1 py-1.5 text-[9px] font-bold rounded-lg border transition-all ${cornerType === 'external' ? 'bg-black text-white border-black' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'}`}>
-                        ↗ Наружный
-                      </button>
-                      <button onClick={() => setCornerType('internal')}
-                        className={`flex-1 py-1.5 text-[9px] font-bold rounded-lg border transition-all ${cornerType === 'internal' ? 'bg-black text-white border-black' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'}`}>
-                        ↙ Внутренний
-                      </button>
-                    </div>
+                    <p className="text-[9px] text-gray-400 mb-1.5 font-bold uppercase tracking-wide">Тип углов:</p>
+                    <CornerTypeCheckboxes nJunctions={Math.min(2, Math.floor(points.length / 4) - 1)} cornerTypes={cornerTypes} setCornerTypes={setCornerTypes} />
                   </div>
                 )}
               </>) : (
@@ -1825,22 +1999,13 @@ const BambooStudio = () => {
               </div>
             )}
 
-            {/* Corner type — shown only for wall-niche with 8 points */}
+            {/* Corner types — shown only for wall-niche with 8+ points */}
             {wallZone === 'wall-niche' && points.length >= 8 && (
               <div className="bg-white rounded-2xl p-3.5 shadow-sm">
                 <div className="flex items-center gap-1.5 mb-2.5">
-                  <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Тип угла</span>
+                  <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Тип углов</span>
                 </div>
-                <div className="flex gap-1.5">
-                  <button onClick={() => setCornerType('external')}
-                    className={`flex-1 py-2 text-[9px] font-bold rounded-xl border transition-all active:scale-95 ${cornerType === 'external' ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
-                    ↗ Наружный<br/><span className="font-normal opacity-70">загиб</span>
-                  </button>
-                  <button onClick={() => setCornerType('internal')}
-                    className={`flex-1 py-2 text-[9px] font-bold rounded-xl border transition-all active:scale-95 ${cornerType === 'internal' ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
-                    ↙ Внутренний<br/><span className="font-normal opacity-70">стыковка</span>
-                  </button>
-                </div>
+                <CornerTypeCheckboxes nJunctions={Math.min(2, Math.floor(points.length / 4) - 1)} cornerTypes={cornerTypes} setCornerTypes={setCornerTypes} />
               </div>
             )}
 
@@ -1878,6 +2043,12 @@ const BambooStudio = () => {
               className="w-full flex items-center justify-center gap-2 bg-black text-white text-xs font-bold py-3 rounded-2xl hover:bg-gray-800 transition-all active:scale-95 mt-1 shadow-sm">
               <Download size={13} /> Сохранить PNG
             </button>
+            {savedPng && (
+              <button onClick={handleGenerateKP}
+                className="w-full flex items-center justify-center gap-2 bg-[#7ec662] text-white text-xs font-bold py-3 rounded-2xl hover:bg-[#6db453] transition-all active:scale-95 shadow-sm">
+                <FileText size={13} /> Рассчитать КП (PDF)
+              </button>
+            )}
 
           </>)}
         </div>
