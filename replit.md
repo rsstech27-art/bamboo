@@ -61,6 +61,12 @@ Textures for Рейки: tex-443..tex-469 range (light blonde to near-black ebon
 - `cornerTypes` array ('external'|'internal' per junction; junction j = walls j+1/j+2) controls edge visual between adjacent quads (bright bend vs dark seam); UI = `CornerTypeCheckboxes` (checkbox pair per junction, one type per junction, different types can coexist across junctions)
 - `wrapJunctions` boolean[] («Загиб одной панели»): on an external junction one panel bends around the corner — first sector of the next wall reuses the previous wall's last panel material (overrideFirstMaterial in renderQuad), seam drawn as soft light bend (no profile), КП counts it as ONE panel «(с загибом на угол)» and deducts junction profiles; corner/wrap state is in undo history and redraw deps
 
+### Wall dimensions & area check
+- Panel physical size: `PANEL_H_MM=2800`, `PANEL_W_MM=1220` (area `PANEL_AREA_M2`≈3,42 м²)
+- Per-surface `wallWidthMm`/`wallHeightMm` in `SurfaceConfig` (0 = not set); persisted/switched/reset/undone like other surface fields; also in `liveCfg` (draw) and `kpCfgs` (КП)
+- Edit sidebar «Размеры стены N»: width/height inputs in meters (stored ×1000 as mm); shows area, panels-needed = `ceil(width/1220) × ceil(height/2800)` (cols×rows), warns + one-click «Установить N панелей» button if `panelCount < needed`, height>2800 → row-stacking note
+- КП PDF gains a «Размеры стен и расход материала» section (per-wall dims, area, project vs computed panel count, total wall area)
+
 ### Commercial proposal (КП) PDF
 - After «Сохранить PNG», a green «Рассчитать КП (PDF)» button appears
 - `handleGenerateKP`: re-renders a fresh export image (never stale), aggregates items across all surfaces (panels by article via sectorMaterials with BAMBOO_PANELS[0] fallback; vertical profiles = panelCount+1 if moldingStyle set; horizontal = hMoldingCount), prices from `SERIES_PRICES` (placeholder ₽/panel per series) + `MOLDING_INFO` (profile article/name/price)

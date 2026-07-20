@@ -263,6 +263,8 @@ type SurfaceConfig = {
   hMoldingCount: number;
   hMoldingWidth: number;
   hMoldingPositions: number[];
+  wallWidthMm: number;   // 0 = not specified
+  wallHeightMm: number;  // 0 = not specified
 };
 const defaultSurfaceConfig = (): SurfaceConfig => ({
   panelCount: 5,
@@ -274,6 +276,8 @@ const defaultSurfaceConfig = (): SurfaceConfig => ({
   hMoldingCount: 1,
   hMoldingWidth: 1,
   hMoldingPositions: [0.5],
+  wallWidthMm: 0,
+  wallHeightMm: 0,
 });
 
 const SURFACE_LABELS = ['Стена 1 · Основная', 'Стена 2', 'Стена 3'];
@@ -290,6 +294,11 @@ PANEL_SERIES.forEach(sr => sr.panels.forEach(pl => { PANEL_TO_SERIES[pl.id] = sr
 const getPanelPrice = (panelId: string) => SERIES_PRICES[PANEL_TO_SERIES[panelId] ?? ''] ?? 4900;
 
 // Profile (molding) catalogue info for the commercial proposal
+// Physical panel dimensions: 2800 mm (H) x 1220 mm (W)
+const PANEL_H_MM = 2800;
+const PANEL_W_MM = 1220;
+const PANEL_AREA_M2 = (PANEL_H_MM / 1000) * (PANEL_W_MM / 1000); // 3.416 m²
+
 const MOLDING_INFO: Record<string, { article: string; name: string; price: number }> = {
   gold:     { article: 'PR-GOLD',  name: 'Профиль золото',        price: 990 },
   black:    { article: 'PR-BLACK', name: 'Профиль чёрный',        price: 890 },
@@ -368,6 +377,11 @@ const BambooStudio = () => {
   // Wrap (загиб): on an external corner one panel bends around the corner — no profile joint
   const [wrapJunctions, setWrapJunctions] = useState<boolean[]>([false, false]);
   const wrapJunctionsRef = useRef<boolean[]>([false, false]);
+  // Real wall dimensions (mm) of the ACTIVE surface; 0 = not specified
+  const [wallWidthMm, setWallWidthMm] = useState(0);
+  const [wallHeightMm, setWallHeightMm] = useState(0);
+  const wallWidthMmRef = useRef(0);
+  const wallHeightMmRef = useRef(0);
   const [savedPng, setSavedPng] = useState<string | null>(null);
   const [activeSurface, setActiveSurface] = useState(0);
   const activeSurfaceRef = useRef(0);
@@ -413,6 +427,8 @@ const BambooStudio = () => {
     panelCount: number;
     cornerTypes: ('external' | 'internal')[];
     wrapJunctions: boolean[];
+    wallWidthMm: number;
+    wallHeightMm: number;
   };
   const historyRef = useRef<HistorySnapshot[]>([]);
 
@@ -424,6 +440,8 @@ const BambooStudio = () => {
       panelCount: panelCountRef.current,
       cornerTypes: [...cornerTypesRef.current],
       wrapJunctions: [...wrapJunctionsRef.current],
+      wallWidthMm: wallWidthMmRef.current,
+      wallHeightMm: wallHeightMmRef.current,
     });
     if (historyRef.current.length > 50) historyRef.current.shift();
   }, []);
@@ -439,6 +457,8 @@ const BambooStudio = () => {
       setSectorMaterials(prev.sectorMaterials);
       setDividerPositions(prev.dividerPositions);
       setPanelCount(prev.panelCount);
+      setWallWidthMm(prev.wallWidthMm);
+      setWallHeightMm(prev.wallHeightMm);
     } else {
       // Snapshot belongs to another surface — restore its stored config directly
       const cfg = surfacesRef.current[prev.surfaceIndex] ?? defaultSurfaceConfig();
@@ -447,6 +467,8 @@ const BambooStudio = () => {
         sectorMaterials: prev.sectorMaterials,
         dividerPositions: prev.dividerPositions,
         panelCount: prev.panelCount,
+        wallWidthMm: prev.wallWidthMm,
+        wallHeightMm: prev.wallHeightMm,
       };
       // Force redraw (stored configs are read from refs during draw)
       setPoints(pv => [...pv]);
@@ -470,6 +492,8 @@ const BambooStudio = () => {
   useEffect(() => { lightModeRef.current = lightMode; }, [lightMode]);
   useEffect(() => { cornerTypesRef.current = cornerTypes; }, [cornerTypes]);
   useEffect(() => { wrapJunctionsRef.current = wrapJunctions; }, [wrapJunctions]);
+  useEffect(() => { wallWidthMmRef.current = wallWidthMm; }, [wallWidthMm]);
+  useEffect(() => { wallHeightMmRef.current = wallHeightMm; }, [wallHeightMm]);
   useEffect(() => { activeSurfaceRef.current = activeSurface; }, [activeSurface]);
   // Persist current edits into the active surface's config
   useEffect(() => {
@@ -477,8 +501,9 @@ const BambooStudio = () => {
       panelCount, dividerPositions, sectorMaterials,
       moldingStyle, moldingWidth,
       hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions,
+      wallWidthMm, wallHeightMm,
     };
-  }, [activeSurface, panelCount, dividerPositions, sectorMaterials, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions]);
+  }, [activeSurface, panelCount, dividerPositions, sectorMaterials, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, wallWidthMm, wallHeightMm]);
 
   // Ctrl+Z global undo
   useEffect(() => {
@@ -505,6 +530,8 @@ const BambooStudio = () => {
       hMoldingCount: hMoldingCountRef.current,
       hMoldingWidth: hMoldingWidthRef.current,
       hMoldingPositions: [...hMoldingPositionsRef.current],
+      wallWidthMm: wallWidthMmRef.current,
+      wallHeightMm: wallHeightMmRef.current,
     };
     const cfg = surfacesRef.current[idx] ?? defaultSurfaceConfig();
     surfacesRef.current[idx] = cfg;
@@ -519,6 +546,8 @@ const BambooStudio = () => {
     setHMoldingCount(cfg.hMoldingCount);
     setHMoldingWidth(cfg.hMoldingWidth);
     setHMoldingPositions(cfg.hMoldingPositions);
+    setWallWidthMm(cfg.wallWidthMm);
+    setWallHeightMm(cfg.wallHeightMm);
     setActiveSector(null);
   }, []);
 
@@ -1002,6 +1031,8 @@ const BambooStudio = () => {
         hMoldingCount: hMoldingCountRef.current,
         hMoldingWidth: hMoldingWidthRef.current,
         hMoldingPositions: hMoldingPositionsRef.current,
+        wallWidthMm: wallWidthMmRef.current,
+        wallHeightMm: wallHeightMmRef.current,
       };
       const quadCfgs: SurfaceConfig[] = [];
       for (let q = 0; q < nQuads; q++) {
@@ -1468,8 +1499,9 @@ const BambooStudio = () => {
       if (ex) ex.qty += qty; else items.push({ article, name, qty, price });
     };
 
+    const kpCfgs: SurfaceConfig[] = [];
     for (let q = 0; q < nQuads; q++) {
-      const cfg: SurfaceConfig = q === activeSurfaceRef.current
+      kpCfgs.push(q === activeSurfaceRef.current
         ? {
             panelCount: panelCountRef.current,
             dividerPositions: dividerPositionsRef.current,
@@ -1480,8 +1512,13 @@ const BambooStudio = () => {
             hMoldingCount: hMoldingCountRef.current,
             hMoldingWidth: hMoldingWidthRef.current,
             hMoldingPositions: hMoldingPositionsRef.current,
+            wallWidthMm: wallWidthMmRef.current,
+            wallHeightMm: wallHeightMmRef.current,
           }
-        : (surfacesRef.current[q] ?? defaultSurfaceConfig());
+        : (surfacesRef.current[q] ?? defaultSurfaceConfig()));
+    }
+    for (let q = 0; q < nQuads; q++) {
+      const cfg = kpCfgs[q];
       const wrapLeft = q > 0 && (wrapJunctionsRef.current[q - 1] ?? false)
         && (cornerTypesRef.current[q - 1] ?? 'external') === 'external';
       const wrapRight = q < nQuads - 1 && (wrapJunctionsRef.current[q] ?? false)
@@ -1569,6 +1606,36 @@ const BambooStudio = () => {
       y += 40;
     });
 
+    // Wall dimensions & area check
+    const dimWalls = kpCfgs.map((cfg, q) => ({ cfg, q })).filter(w => w.cfg.wallWidthMm > 0 && w.cfg.wallHeightMm > 0);
+    if (dimWalls.length > 0) {
+      y += 18;
+      c.fillStyle = '#111111'; c.font = 'bold 18px sans-serif';
+      c.fillText('Размеры стен и расход материала', 60, y + 10);
+      y += 34;
+      c.font = '16px sans-serif';
+      let totalWallArea = 0;
+      dimWalls.forEach(({ cfg, q }) => {
+        const wM = cfg.wallWidthMm / 1000, hM = cfg.wallHeightMm / 1000;
+        const area = wM * hM;
+        totalWallArea += area;
+        const cols = Math.ceil(cfg.wallWidthMm / PANEL_W_MM);
+        const rows = Math.ceil(cfg.wallHeightMm / PANEL_H_MM);
+        const needed = cols * rows;
+        const heightNote = rows > 1 ? ` · ${rows} ряда по высоте` : '';
+        c.fillStyle = '#333333';
+        c.fillText(
+          `Стена ${q + 1}: ${wM.toLocaleString('ru-RU')} × ${hM.toLocaleString('ru-RU')} м · ${area.toFixed(2).replace('.', ',')} м² · панелей в проекте: ${cfg.panelCount}, расчётно: ${needed}${heightNote}`,
+          60, y + 8);
+        y += 28;
+      });
+      c.fillStyle = '#555555'; c.font = 'bold 16px sans-serif';
+      c.fillText(
+        `Панель 2,8 × 1,22 м (${PANEL_AREA_M2.toFixed(2).replace('.', ',')} м²) · общая площадь стен: ${totalWallArea.toFixed(2).replace('.', ',')} м²`,
+        60, y + 8);
+      y += 30;
+    }
+
     // Total
     c.strokeStyle = '#111111'; c.lineWidth = 2;
     c.beginPath(); c.moveTo(60, y + 4); c.lineTo(W - 60, y + 4); c.stroke();
@@ -1612,6 +1679,8 @@ const BambooStudio = () => {
           setActiveSurface(0);
           setCornerTypes(['external', 'external']);
           setWrapJunctions([false, false]);
+          setWallWidthMm(0);
+          setWallHeightMm(0);
           setSavedPng(null);
           setImage(img);
           setStep('mark');
@@ -1746,7 +1815,7 @@ const BambooStudio = () => {
             )}
             {step !== 'zone' && (
               <button
-                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setSavedPng(null); setStep('zone'); setWallZone(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
+                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setSavedPng(null); setStep('zone'); setWallZone(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
                 className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
               >
                 ← Назад
@@ -2097,6 +2166,59 @@ const BambooStudio = () => {
                 <CornerTypeCheckboxes nJunctions={Math.min(2, Math.floor(points.length / 4) - 1)} cornerTypes={cornerTypes} setCornerTypes={(v) => { pushHistory(); setCornerTypes(v); }} wrapJunctions={wrapJunctions} setWrapJunctions={(v) => { pushHistory(); setWrapJunctions(v); }} />
               </div>
             )}
+
+            {/* Wall dimensions & area check */}
+            <div className="bg-white rounded-2xl p-3.5 shadow-sm">
+              <div className="flex items-center gap-1.5 mb-2.5">
+                <Columns size={12} className="text-gray-400"/>
+                <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Размеры стены {activeSurface + 1}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 mb-2">
+                <label className="block">
+                  <span className="text-[8px] font-bold text-gray-400 uppercase">Ширина, м</span>
+                  <input type="number" min="0" step="0.01" placeholder="напр. 3.6"
+                    value={wallWidthMm > 0 ? wallWidthMm / 1000 : ''}
+                    onChange={(e) => { pushHistory(); setWallWidthMm(Math.max(0, Math.round((parseFloat(e.target.value) || 0) * 1000))); }}
+                    className="w-full mt-0.5 px-2 py-1.5 text-[11px] font-bold border border-gray-200 rounded-lg focus:outline-none focus:border-[#7ec662]" />
+                </label>
+                <label className="block">
+                  <span className="text-[8px] font-bold text-gray-400 uppercase">Высота, м</span>
+                  <input type="number" min="0" step="0.01" placeholder="напр. 2.7"
+                    value={wallHeightMm > 0 ? wallHeightMm / 1000 : ''}
+                    onChange={(e) => { pushHistory(); setWallHeightMm(Math.max(0, Math.round((parseFloat(e.target.value) || 0) * 1000))); }}
+                    className="w-full mt-0.5 px-2 py-1.5 text-[11px] font-bold border border-gray-200 rounded-lg focus:outline-none focus:border-[#7ec662]" />
+                </label>
+              </div>
+              <p className="text-[8px] text-gray-400 mb-1.5">Панель: 2,80 × 1,22 м ({PANEL_AREA_M2.toFixed(2).replace('.', ',')} м²)</p>
+              {wallWidthMm > 0 && wallHeightMm > 0 && (() => {
+                const areaM2 = (wallWidthMm / 1000) * (wallHeightMm / 1000);
+                const cols = Math.ceil(wallWidthMm / PANEL_W_MM);
+                const rows = Math.ceil(wallHeightMm / PANEL_H_MM);
+                const needed = cols * rows;
+                const enough = panelCount >= needed;
+                const tooTall = wallHeightMm > PANEL_H_MM;
+                return (
+                  <div className="space-y-1">
+                    <p className="text-[9px] font-bold text-gray-600">Площадь стены: {areaM2.toFixed(2).replace('.', ',')} м²</p>
+                    <p className={`text-[9px] font-bold ${enough ? 'text-[#5a9c3e]' : 'text-amber-600'}`}>
+                      {enough
+                        ? `✓ Панелей достаточно: ${panelCount} (расчётно ${needed}${rows > 1 ? `, ${cols}×${rows}` : ''})`
+                        : `⚠ Нужно ${needed} панел${needed === 1 ? 'ь' : needed % 10 >= 2 && needed % 10 <= 4 && (needed < 10 || needed > 20) ? 'и' : 'ей'}${rows > 1 ? ` (${cols} по ширине × ${rows} по высоте)` : ''} — в проекте ${panelCount}`}
+                    </p>
+                    {!enough && (
+                      <button onClick={() => handleChangePanelCount(needed)}
+                        className="w-full py-1.5 text-[9px] font-bold rounded-lg bg-[#7ec662] text-white hover:bg-[#6db453] transition-all active:scale-95">
+                        Установить {needed} панел{needed === 1 ? 'ь' : needed % 10 >= 2 && needed % 10 <= 4 && (needed < 10 || needed > 20) ? 'и' : 'ей'}
+                      </button>
+                    )}
+                    {tooTall && (
+                      <p className="text-[9px] font-bold text-amber-600">⚠ Высота стены больше 2,8 м — потребуется стыковка панелей по высоте</p>
+                    )}
+                    <p className="text-[8px] text-gray-400">Ширина панели в проекте: {(wallWidthMm / panelCount / 1000).toFixed(2).replace('.', ',')} м (макс. 1,22 м)</p>
+                  </div>
+                );
+              })()}
+            </div>
 
             {/* Light mode */}
             <div className="bg-white rounded-2xl p-3.5 shadow-sm">
