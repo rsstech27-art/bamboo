@@ -1228,12 +1228,6 @@ const BambooStudio = () => {
             <span className="font-bold text-sm tracking-tight">BambooStudio Pro</span>
           </div>
           <div className="flex items-center gap-3">
-            {step === 'zone' && (
-              <button onClick={() => toolRef.current?.previousElementSibling?.scrollIntoView({ behavior: 'smooth' })}
-                className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors">
-                ← Назад
-              </button>
-            )}
             {step === 'edit' && (
               <button onClick={undo} className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors" title="Ctrl+Z">
                 <Undo2 size={13} /> Отменить
