@@ -402,19 +402,21 @@ const BambooStudio = () => {
         ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
         ctx.fill();
       });
-      if (pts.length === 4) {
+      if (pts.length >= 2) {
         ctx.strokeStyle = '#007aff';
         ctx.lineWidth = 2;
+        ctx.setLineDash(pts.length >= 4 ? [] : [6, 4]);
         ctx.beginPath();
         ctx.moveTo(pts[0].x, pts[0].y);
         pts.forEach(p => ctx.lineTo(p.x, p.y));
-        ctx.closePath();
+        if (pts.length >= 4) ctx.closePath();
         ctx.stroke();
+        ctx.setLineDash([]);
       }
       return;
     }
 
-    if (curStep === 'edit' && pts.length === 4) {
+    if (curStep === 'edit' && pts.length >= 4) {
       const tempCanvas = document.createElement('canvas');
       tempCanvas.width = width;
       tempCanvas.height = height;
@@ -426,6 +428,18 @@ const BambooStudio = () => {
       woodCanvas.width = width;
       woodCanvas.height = height;
       const wCtx = woodCanvas.getContext('2d')!;
+
+      // For walls with protrusion (>4 points): clip both canvases to the full polygon.
+      // Panels are still computed from pts[0..3] as the reference quad.
+      if (pts.length > 4) {
+        [tCtx, wCtx].forEach(c => {
+          c.beginPath();
+          c.moveTo(pts[0].x, pts[0].y);
+          pts.slice(1).forEach(p => c.lineTo(p.x, p.y));
+          c.closePath();
+          c.clip();
+        });
+      }
 
       const bounds = getSectorBounds(curDividers, curPanelCount);
 
@@ -1044,7 +1058,7 @@ const BambooStudio = () => {
     // Don't trigger sector selection if click was near a divider or h-molding handle
     if (step === 'edit' && (findNearDivider(x, y) !== -1 || findNearHMolding(x, y) !== -1)) return;
 
-    if (step === 'mark' && points.length < 4) {
+    if (step === 'mark' && points.length < (wallZone === 'wall-niche' ? 8 : 4)) {
       setPoints([...points, { x, y }]);
     } else if (step === 'edit') {
       // Determine which sector was clicked using divider positions
@@ -1321,7 +1335,9 @@ const BambooStudio = () => {
               )}
               {step === 'mark' && (
                 <div className="hidden md:flex absolute top-5 left-1/2 -translate-x-1/2 bg-white/90 text-black px-5 py-1.5 rounded-full text-[10px] font-bold shadow-lg backdrop-blur-md border border-gray-100 uppercase tracking-widest pointer-events-none">
-                  {points.length < 4 ? `Кликните на угол стены (${points.length}/4)` : 'Нажмите «Начать примерку»'}
+                  {wallZone === 'wall-niche'
+                    ? (points.length < 4 ? `Угол стены (${points.length}/4 мин)` : points.length < 8 ? `Выступ: ещё ${8 - points.length} угл. или «Начать»` : 'Нажмите «Начать примерку»')
+                    : (points.length < 4 ? `Кликните на угол стены (${points.length}/4)` : 'Нажмите «Начать примерку»')}
                 </div>
               )}
               {step === 'edit' && !isErasing && (
@@ -1343,7 +1359,9 @@ const BambooStudio = () => {
           <div className="flex md:hidden justify-center">
             {step === 'mark' && (
               <div className="bg-white/90 text-black px-5 py-1.5 rounded-full text-[10px] font-bold shadow-lg backdrop-blur-md border border-gray-100 uppercase tracking-widest">
-                {points.length < 4 ? `Кликните на угол стены (${points.length}/4)` : 'Нажмите «Начать примерку»'}
+                {wallZone === 'wall-niche'
+                  ? (points.length < 4 ? `Угол стены (${points.length}/4 мин)` : points.length < 8 ? `Выступ: ещё ${8 - points.length} или «Начать»` : 'Нажмите «Начать примерку»')
+                  : (points.length < 4 ? `Кликните на угол стены (${points.length}/4)` : 'Нажмите «Начать примерку»')}
               </div>
             )}
             {step === 'edit' && !isErasing && (
@@ -1369,11 +1387,18 @@ const BambooStudio = () => {
                 <Check size={12} className="text-gray-400" />
                 <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Разметка стены</span>
               </div>
-              <p className="text-[9px] text-gray-400 mb-4 leading-relaxed">Кликайте по 4 углам стены по часовой стрелке.</p>
-              <div className="flex justify-between mb-5">
-                {[1,2,3,4].map(i => (
-                  <div key={i} className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${points.length >= i ? 'bg-black text-white border-black' : 'text-gray-200 border-gray-100'}`}>
-                    {points.length >= i ? <Check size={13}/> : i}
+              {wallZone === 'wall-niche' ? (
+                <p className="text-[9px] text-gray-400 mb-4 leading-relaxed">
+                  Кликайте по углам стены с выступом по часовой стрелке.<br/>
+                  <span className="text-gray-500 font-bold">Мин. 4 точки, макс. 8.</span> Первые 4 — основная плоскость стены, остальные — выступ.
+                </p>
+              ) : (
+                <p className="text-[9px] text-gray-400 mb-4 leading-relaxed">Кликайте по 4 углам стены по часовой стрелке.</p>
+              )}
+              <div className="flex flex-wrap gap-1.5 mb-5">
+                {Array.from({ length: wallZone === 'wall-niche' ? 8 : 4 }, (_, i) => i + 1).map(i => (
+                  <div key={i} className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-all ${points.length >= i ? 'bg-black text-white border-black' : i <= 4 ? 'text-gray-300 border-gray-200' : 'text-gray-200 border-dashed border-gray-200'}`}>
+                    {points.length >= i ? <Check size={11}/> : i}
                   </div>
                 ))}
               </div>
