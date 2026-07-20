@@ -1263,10 +1263,12 @@ const BambooStudio = () => {
               </div>
               <div className="grid grid-cols-2 gap-3 w-full max-w-lg">
                 {([
-                  { id: 'window', label: 'Оконный проём', img: `${BASE}zones/window.jpg` },
-                  { id: 'door',   label: 'Дверной проём', img: `${BASE}zones/door.jpg` },
-                  { id: 'tv',     label: 'ТВ-зона',       img: `${BASE}zones/tv.jpg` },
-                  { id: 'column', label: 'Колонна',        img: `${BASE}zones/column.jpg` },
+                  { id: 'wall',       label: 'Стена',            img: `${BASE}zones/wall.jpg` },
+                  { id: 'wall-niche', label: 'Стена с выступом', img: `${BASE}zones/wall-niche.jpg` },
+                  { id: 'window',     label: 'Оконный проём',    img: `${BASE}zones/window.jpg` },
+                  { id: 'door',       label: 'Дверной проём',    img: `${BASE}zones/door.jpg` },
+                  { id: 'tv',         label: 'ТВ-зона',          img: `${BASE}zones/tv.jpg` },
+                  { id: 'column',     label: 'Колонна',           img: `${BASE}zones/column.jpg` },
                 ] as const).map(zone => (
                   <button
                     key={zone.id}
