@@ -426,6 +426,9 @@ const BambooStudio = () => {
   const [footerCatalogOpen, setFooterCatalogOpen] = useState(false);
   const [lightMode, setLightMode] = useState<'off' | 'morning' | 'evening'>('off');
   const lightModeRef = useRef<'off' | 'morning' | 'evening'>('off');
+  // Cylinder highlight position for round columns: 0 = left edge, 0.5 = center, 1 = right edge
+  const [cylHighlightPos, setCylHighlightPos] = useState(0.5);
+  const cylHighlightPosRef = useRef(0.5);
   // Corner type per junction (junction 0 = walls 1–2, junction 1 = walls 2–3)
   const [cornerTypes, setCornerTypes] = useState<('external' | 'internal')[]>(['external', 'external']);
   const cornerTypesRef = useRef<('external' | 'internal')[]>(['external', 'external']);
@@ -551,6 +554,12 @@ const BambooStudio = () => {
   useEffect(() => { hMoldingWidthRef.current = hMoldingWidth; }, [hMoldingWidth]);
   useEffect(() => { hMoldingPositionsRef.current = hMoldingPositions; }, [hMoldingPositions]);
   useEffect(() => { lightModeRef.current = lightMode; }, [lightMode]);
+  useEffect(() => { cylHighlightPosRef.current = cylHighlightPos; }, [cylHighlightPos]);
+  // Auto-shift cylinder highlight when the light mode changes:
+  // morning light comes from the right (bright at right edge), evening — from the left
+  useEffect(() => {
+    setCylHighlightPos(lightMode === 'morning' ? 0.68 : lightMode === 'evening' ? 0.32 : 0.5);
+  }, [lightMode]);
   useEffect(() => { cornerTypesRef.current = cornerTypes; }, [cornerTypes]);
   useEffect(() => { wrapJunctionsRef.current = wrapJunctions; }, [wrapJunctions]);
   useEffect(() => { wallWidthMmRef.current = wallWidthMm; }, [wallWidthMm]);
@@ -1122,15 +1131,21 @@ const BambooStudio = () => {
           const lx = (qp[0].x + qp[3].x) / 2, ly = (qp[0].y + qp[3].y) / 2;
           const rx = (qp[1].x + qp[2].x) / 2, ry = (qp[1].y + qp[2].y) / 2;
           const cylGrad = tCtx.createLinearGradient(lx, ly, rx, ry);
-          cylGrad.addColorStop(0,    'rgba(0,0,0,0.50)');
-          cylGrad.addColorStop(0.10, 'rgba(0,0,0,0.28)');
-          cylGrad.addColorStop(0.26, 'rgba(0,0,0,0.06)');
-          cylGrad.addColorStop(0.38, 'rgba(255,255,255,0.16)');
-          cylGrad.addColorStop(0.50, 'rgba(255,255,255,0.24)');
-          cylGrad.addColorStop(0.62, 'rgba(255,255,255,0.16)');
-          cylGrad.addColorStop(0.74, 'rgba(0,0,0,0.06)');
-          cylGrad.addColorStop(0.90, 'rgba(0,0,0,0.28)');
-          cylGrad.addColorStop(1,    'rgba(0,0,0,0.50)');
+          // Highlight peak position (0 = left edge, 1 = right edge); remap the
+          // symmetric stop pattern so its center lands at `hc`
+          const hc = Math.min(0.9, Math.max(0.1, cylHighlightPosRef.current));
+          const remap = (t: number) => t < 0.5 ? t * (hc / 0.5) : hc + (t - 0.5) * ((1 - hc) / 0.5);
+          ([
+            [0,    'rgba(0,0,0,0.50)'],
+            [0.10, 'rgba(0,0,0,0.28)'],
+            [0.26, 'rgba(0,0,0,0.06)'],
+            [0.38, 'rgba(255,255,255,0.16)'],
+            [0.50, 'rgba(255,255,255,0.24)'],
+            [0.62, 'rgba(255,255,255,0.16)'],
+            [0.74, 'rgba(0,0,0,0.06)'],
+            [0.90, 'rgba(0,0,0,0.28)'],
+            [1,    'rgba(0,0,0,0.50)'],
+          ] as [number, string][]).forEach(([t, c]) => cylGrad.addColorStop(remap(t), c));
           tCtx.save();
           tCtx.beginPath();
           tCtx.moveTo(qp[0].x, qp[0].y);
@@ -1395,7 +1410,7 @@ const BambooStudio = () => {
   useEffect(() => {
     if (!image) return;
     drawFullScene();
-  }, [points, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, lightMode, activeSurface, cornerTypes, wrapJunctions, wallZone, columnShape, drawFullScene, image]);
+  }, [points, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, lightMode, cylHighlightPos, activeSurface, cornerTypes, wrapJunctions, wallZone, columnShape, drawFullScene, image]);
 
   const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = mainCanvasRef.current;
@@ -2561,6 +2576,21 @@ const BambooStudio = () => {
                   </button>
                 ))}
               </div>
+              {wallZone === 'column' && columnShape === 'round' && (
+                <div className="mt-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[8px] font-black uppercase tracking-widest text-gray-400">Положение блика</span>
+                    <span className="text-[8px] text-gray-400 font-mono">{cylHighlightPos < 0.45 ? '◀ слева' : cylHighlightPos > 0.55 ? 'справа ▶' : 'центр'}</span>
+                  </div>
+                  <input
+                    type="range" min={0.1} max={0.9} step={0.01}
+                    value={cylHighlightPos}
+                    onChange={e => setCylHighlightPos(parseFloat(e.target.value))}
+                    className="w-full accent-black"
+                  />
+                  <p className="text-[7px] text-gray-300 mt-0.5">Сместите блик цилиндра к источнику света на фото. Режимы «Утро/Вечер» смещают его автоматически.</p>
+                </div>
+              )}
             </div>
 
             {/* Save */}
