@@ -1908,11 +1908,75 @@ const BambooStudio = () => {
       scaleQtys(items.filter(it => panelArticles.has(it.article)), panelsTableTotal);
     } else if (wallCalcs.length > 0) {
       // Walls with dimensions: their project panels are replaced by the calculated
-      // count (own full panels + shared width-offcut panels); other walls keep project counts
+      // count (own full panels + shared width-offcut panels); other walls keep project counts.
+      // ДОКРОЙ ТЕМ ЖЕ ВИДОМ: each wall's extra panels (height donors + width strips)
+      // are billed as the SAME article mix used on THAT wall — never as another wall's panel type.
       const dimProj = wallCalcs.reduce((s, w) => s + w.billedCount, 0);
       const calcDim = wallCalcs.reduce((s, w) => s + w.ownPanels, 0) + sharedPanelsTotal;
       panelsTableTotal = Math.max(0, projectPanelCount - dimProj) + calcDim;
-      scaleQtys(items.filter(it => panelArticles.has(it.article)), panelsTableTotal);
+      // Integer per-wall targets (largest remainder, sum = calcDim)
+      const wallFloat = wallCalcs.map(w => w.needed);
+      const wallQty = wallFloat.map(Math.floor);
+      let remW2 = calcDim - wallQty.reduce((s, f) => s + f, 0);
+      wallFloat.map((v, i) => ({ i, frac: v - Math.floor(v) }))
+        .sort((a, b) => b.frac - a.frac)
+        .forEach(({ i }) => { if (remW2 > 0) { wallQty[i]++; remW2--; } });
+      // Per-article targets: walls WITHOUT dimensions keep their project counts;
+      // each dimensioned wall distributes its target over its OWN sector articles
+      const articleTarget = new Map<string, number>();
+      const bump = (a: string, n: number) => articleTarget.set(a, (articleTarget.get(a) ?? 0) + n);
+      const dimQs = new Set(wallCalcs.map(w => w.q));
+      for (let q = 0; q < nQuads; q++) {
+        if (dimQs.has(q)) continue;
+        const cfg = kpCfgs[q];
+        const wrapL = q > 0 && (wrapJunctionsRef.current[q - 1] ?? false)
+          && (cornerTypesRef.current[q - 1] ?? 'external') === 'external';
+        for (let sIdx = 0; sIdx < cfg.panelCount; sIdx++) {
+          if (sIdx === 0 && wrapL) continue;
+          bump((cfg.sectorMaterials[sIdx] ?? BAMBOO_PANELS[0]).article, 1);
+        }
+      }
+      wallCalcs.forEach((w, wi) => {
+        const target = wallQty[wi];
+        if (target <= 0) return;
+        const wrapL = w.q > 0 && (wrapJunctionsRef.current[w.q - 1] ?? false)
+          && (cornerTypesRef.current[w.q - 1] ?? 'external') === 'external';
+        const cnt = new Map<string, number>();
+        for (let sIdx = 0; sIdx < w.cfg.panelCount; sIdx++) {
+          if (sIdx === 0 && wrapL) continue;
+          const mat = w.cfg.sectorMaterials[sIdx] ?? BAMBOO_PANELS[0];
+          cnt.set(mat.article, (cnt.get(mat.article) ?? 0) + 1);
+        }
+        if (cnt.size === 0) {
+          // Wall whose only sector was consumed by a wrap — bill by its sector-0 material
+          const mat = w.cfg.sectorMaterials[0] ?? BAMBOO_PANELS[0];
+          cnt.set(mat.article, 1);
+          addItem(mat.article, `Панель «${mat.name}»`, 0, getPanelPrice(mat.id));
+          panelArticles.add(mat.article);
+        }
+        // Largest-remainder split of the wall target across ITS articles
+        const entries = [...cnt.entries()];
+        const cntSum = entries.reduce((s, [, n]) => s + n, 0);
+        const sc = entries.map(([, n]) => (n * target) / cntSum);
+        const fl = sc.map(Math.floor);
+        let r = target - fl.reduce((s, f) => s + f, 0);
+        sc.map((v, i) => ({ i, frac: v - Math.floor(v) }))
+          .sort((a, b) => b.frac - a.frac)
+          .forEach(({ i }) => { if (r > 0) { fl[i]++; r--; } });
+        entries.forEach(([a], i) => bump(a, fl[i]));
+      });
+      // One article can span several rows (e.g. regular + «с загибом на угол»):
+      // split the article target across its rows proportionally to project qtys
+      const byArticle = new Map<string, KPItem[]>();
+      items.forEach(it => {
+        if (!panelArticles.has(it.article)) return;
+        (byArticle.get(it.article) ?? byArticle.set(it.article, []).get(it.article)!).push(it);
+      });
+      byArticle.forEach((rows, article) => {
+        const target = articleTarget.get(article) ?? 0;
+        if (rows.length === 1) { rows[0].qty = target; return; }
+        scaleQtys(rows, target);
+      });
     }
     const panelsTableCost = items.filter(it => panelArticles.has(it.article))
       .reduce((s, it) => s + it.qty * it.price, 0);
