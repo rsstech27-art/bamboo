@@ -51,6 +51,27 @@ export const packWidthRemainders = (piecesMm: number[]): number => {
   return bins.length;
 };
 
+// Profile pieces are 3 m long. Given required run lengths (mm), count how many
+// 3 m pieces are needed — long runs are spliced from full pieces, and all
+// remainders/short runs are packed FFD so offcuts are reused (project-wide optimization).
+export const PROFILE_LEN_MM = 3000;
+export const packProfileRuns = (runsMm: number[]): number => {
+  let fullPieces = 0;
+  const shorts: number[] = [];
+  for (const L of runsMm) {
+    if (L <= 0) continue;
+    fullPieces += Math.floor(L / PROFILE_LEN_MM);
+    const rem = L % PROFILE_LEN_MM;
+    if (rem > 0) shorts.push(rem);
+  }
+  const bins: number[] = [];
+  for (const p of shorts.sort((a, b) => b - a)) {
+    const i = bins.findIndex(b => b >= p);
+    if (i >= 0) bins[i] -= p; else bins.push(PROFILE_LEN_MM - p);
+  }
+  return fullPieces + bins.length;
+};
+
 // Russian plural form: 1 панель / 2–4 панели / 5+ панелей (handles 11–14, 21, 22…)
 export const pluralRu = (n: number, one: string, few: string, many: string): string => {
   const abs = Math.abs(Math.trunc(n));

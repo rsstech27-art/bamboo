@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Upload, Layout, Eraser, RotateCcw, Download, Check, Columns, Undo2, Sun, Moon, FileText } from 'lucide-react';
-import { PANEL_H_MM, PANEL_W_MM, PANEL_AREA_M2, optimizedPanelCalc, packWidthRemainders, panelsWord, rowsWord } from './lib/panelCalc';
+import { PANEL_H_MM, PANEL_W_MM, PANEL_AREA_M2, optimizedPanelCalc, packWidthRemainders, packProfileRuns, panelsWord, rowsWord } from './lib/panelCalc';
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -412,6 +412,8 @@ const BambooStudio = () => {
   const [columnShape, setColumnShape] = useState<ColumnShape>('rect');
   const [columnSides, setColumnSides] = useState<number[]>([0, 0, 0, 0]); // mm
   const [columnHeightMm, setColumnHeightMm] = useState(0);
+  // Panels chosen for the column's INVISIBLE faces (ids; offered from panels already used on the visualization)
+  const [hiddenFaceMats, setHiddenFaceMats] = useState<string[]>([]);
   const [savedPng, setSavedPng] = useState<string | null>(null);
   const [activeSurface, setActiveSurface] = useState(0);
   const activeSurfaceRef = useRef(0);
@@ -1612,16 +1614,34 @@ const BambooStudio = () => {
         const isBent = i === cfg.panelCount - 1 && wrapRight;
         addItem(mat.article, `Панель «${mat.name}»${isBent ? ' (с загибом на угол)' : ''}`, 1, getPanelPrice(mat.id));
       }
+    }
+    // ── Profiles counted in 3 m pieces, like panels: collect required RUN LENGTHS
+    // per style, then pack them into 3 m pieces with offcut reuse (packProfileRuns).
+    const profileRuns: Partial<Record<Exclude<MoldingStyle, 'none'>, number[]>> = {};
+    const addRuns = (style: Exclude<MoldingStyle, 'none'>, lengthMm: number, count: number) => {
+      if (count <= 0 || lengthMm <= 0) return;
+      (profileRuns[style] ??= []).push(...Array(count).fill(lengthMm));
+    };
+    for (let q = 0; q < nQuads; q++) {
+      const cfg = kpCfgs[q];
+      const wrapLeft = q > 0 && (wrapJunctionsRef.current[q - 1] ?? false)
+        && (cornerTypesRef.current[q - 1] ?? 'external') === 'external';
+      const wrapRight = q < nQuads - 1 && (wrapJunctionsRef.current[q] ?? false)
+        && (cornerTypesRef.current[q] ?? 'external') === 'external';
+      const hMm = cfg.wallHeightMm > 0 ? cfg.wallHeightMm : PANEL_H_MM;
+      const wMm = cfg.wallWidthMm > 0 ? cfg.wallWidthMm : cfg.panelCount * PANEL_W_MM;
       if (cfg.moldingStyle !== 'none') {
-        const info = MOLDING_INFO[cfg.moldingStyle];
         // A wrapped (загиб) junction has NO profile at the shared edge — deduct it
         const vQty = Math.max(0, cfg.panelCount + 1 - (wrapLeft ? 1 : 0) - (wrapRight ? 1 : 0));
-        if (vQty > 0) addItem(info.article + '-V', info.name + ' (вертик.)', vQty, info.price);
+        addRuns(cfg.moldingStyle, hMm, vQty);
+      } else {
+        // MANDATORY joints: wall wider than one panel ⇒ panels in a row MUST be
+        // joined with vertical profiles between them, even with no molding chosen
+        const perRow = Math.ceil(wMm / PANEL_W_MM);
+        const joints = Math.max(0, perRow - 1);
+        addRuns('metallic', hMm, joints);
       }
-      if (cfg.hMoldingStyle !== 'none') {
-        const info = MOLDING_INFO[cfg.hMoldingStyle];
-        addItem(info.article + '-H', info.name + ' (горизонт.)', cfg.hMoldingCount, info.price);
-      }
+      if (cfg.hMoldingStyle !== 'none') addRuns(cfg.hMoldingStyle, wMm, cfg.hMoldingCount);
     }
     // Mandatory corner profiles: an external corner WITHOUT загиб always needs a
     // vertical profile at the shared edge — even if the walls have no molding style.
@@ -1632,12 +1652,20 @@ const BambooStudio = () => {
         const external = (cornerTypesRef.current[j] ?? 'external') === 'external';
         const wrapped = external && (wrapJunctionsRef.current[j] ?? false);
         if (!external || wrapped) continue;
-        // If either adjacent wall has vertical molding, its vQty already covers this edge
-        const leftHas = kpCfgs[j]?.moldingStyle !== 'none';
-        const rightHas = kpCfgs[j + 1]?.moldingStyle !== 'none';
-        if (leftHas || rightHas) continue;
-        const info = MOLDING_INFO.metallic;
-        addItem(info.article + '-V', info.name + ' (вертик., внешний угол — обязательно)', 1, info.price);
+        // If either adjacent wall has vertical molding, its runs already cover this edge
+        if (kpCfgs[j]?.moldingStyle !== 'none' || kpCfgs[j + 1]?.moldingStyle !== 'none') continue;
+        const hMm = Math.max(
+          kpCfgs[j]?.wallHeightMm > 0 ? kpCfgs[j].wallHeightMm : PANEL_H_MM,
+          kpCfgs[j + 1]?.wallHeightMm > 0 ? kpCfgs[j + 1].wallHeightMm : PANEL_H_MM);
+        addRuns('metallic', hMm, 1);
+      }
+    }
+    // Pack each style's runs into 3 m pieces (offcuts reused project-wide)
+    for (const style of Object.keys(profileRuns) as Array<Exclude<MoldingStyle, 'none'>>) {
+      const pieces = packProfileRuns(profileRuns[style]!);
+      if (pieces > 0) {
+        const info = MOLDING_INFO[style];
+        addItem(info.article + '-3M', `${info.name} (3 м, раскрой оптимизирован)`, pieces, info.price);
       }
     }
 
@@ -1670,12 +1698,25 @@ const BambooStudio = () => {
         }
       }
       const avgPrice = projCount > 0 ? projCost / projCount : getPanelPrice(BAMBOO_PANELS[0].id);
-      const calcCost = Math.round(needed * avgPrice);
+      // Invisible faces: if the client picked panels for them (checkboxes),
+      // price the hidden portion by those panels; otherwise by the visible average
+      // Only panels ACTUALLY used on the visualization count — a stale checkbox
+      // selection (panel later removed from visible faces) must not affect pricing
+      const usedNowIds = new Set<string>();
+      for (let q = 0; q < nQuads; q++) {
+        Object.values(kpCfgs[q].sectorMaterials).forEach(m => { if (m) usedNowIds.add(m.id); });
+      }
+      const hiddenSel = BAMBOO_PANELS.filter(p => hiddenFaceMats.includes(p.id) && usedNowIds.has(p.id));
+      const hiddenAvg = hiddenSel.length > 0
+        ? hiddenSel.reduce((s, p) => s + getPanelPrice(p.id), 0) / hiddenSel.length
+        : avgPrice;
+      const hiddenCount = Math.max(0, needed - projCount);
+      const calcCost = Math.round(projCost + hiddenCount * hiddenAvg);
       // Corners wrapped by bent panels — profiles are NOT tied to the number of faces
       const wrappedCorners = wrapJunctionsRef.current
         .slice(0, Math.max(0, nQuads - 1))
         .filter((w, j) => w && (cornerTypesRef.current[j] ?? 'external') === 'external').length;
-      return { perRow, opt, needed, areaM2, projCost, calcCost, wrappedCorners };
+      return { perRow, opt, needed, areaM2, projCost, calcCost, wrappedCorners, hiddenCount, hiddenNames: hiddenSel.map(p => p.name) };
     })() : null;
 
     // Wall dimension calculations: if dimensions are set, the calculated
@@ -1857,6 +1898,15 @@ const BambooStudio = () => {
       if (columnCalc.wrappedCorners > 0) {
         c.fillText(
           `Загибы панелей на углах: ${columnCalc.wrappedCorners} — угловые профили в местах загиба не требуются`,
+          60, y + 8);
+        y += 28;
+      }
+      if (columnCalc.hiddenCount > 0) {
+        c.fillStyle = '#333333'; c.font = '16px sans-serif';
+        c.fillText(
+          columnCalc.hiddenNames.length > 0
+            ? `Невидимые стороны: ${columnCalc.hiddenCount} ${panelsWord(columnCalc.hiddenCount)} — «${columnCalc.hiddenNames.join('», «')}» (выбрано клиентом)`
+            : `Невидимые стороны: ${columnCalc.hiddenCount} ${panelsWord(columnCalc.hiddenCount)} — по средней цене видимых панелей`,
           60, y + 8);
         y += 28;
       }
@@ -2491,6 +2541,29 @@ const BambooStudio = () => {
                       {opt.donorPanels > 0 && columnHeightMm > PANEL_H_MM && (
                         <p className="text-[9px] font-bold text-amber-600">⚠ Высота больше 2,8 м — недостающие {(opt.remMm / 10).toFixed(0)} см докраиваются: {opt.donorPanels} {panelsWord(opt.donorPanels)} режется на полосы ({opt.stripsPerPanel} шт. из одной панели)</p>
                       )}
+                    </div>
+                  );
+                })()}
+                {(() => {
+                  // Panels on INVISIBLE faces — offer the panels the client already picked on the visualization
+                  const usedIds = new Set<string>();
+                  Object.values(sectorMaterials).forEach(m => m && usedIds.add(m.id));
+                  surfacesRef.current.forEach((s, q) => { if (q !== activeSurface) Object.values(s.sectorMaterials).forEach(m => m && usedIds.add(m.id)); });
+                  const used = BAMBOO_PANELS.filter(p => usedIds.has(p.id));
+                  if (used.length === 0) return null;
+                  return (
+                    <div className="mt-2.5 pt-2.5 border-t border-gray-100">
+                      <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Панели на невидимых сторонах</p>
+                      <p className="text-[8px] text-gray-400 mb-1.5">Отметьте, какие панели идут на стороны, не видимые на фото (из уже выбранных). Если ничего не отмечено — считаем по средней цене видимых.</p>
+                      {used.map(p => (
+                        <label key={p.id} className="flex items-center gap-2 py-1 cursor-pointer">
+                          <input type="checkbox" className="accent-[#7ec662]"
+                            checked={hiddenFaceMats.includes(p.id)}
+                            onChange={(e) => setHiddenFaceMats(prev => e.target.checked ? [...prev, p.id] : prev.filter(id => id !== p.id))} />
+                          <span className="w-4 h-4 rounded border border-gray-200 shrink-0" style={{ backgroundColor: p.color }} />
+                          <span className="text-[9px] font-bold text-gray-600">{p.name} <span className="text-gray-300 font-mono">{p.article}</span></span>
+                        </label>
+                      ))}
                     </div>
                   );
                 })()}
