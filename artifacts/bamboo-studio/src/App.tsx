@@ -405,6 +405,8 @@ const BambooStudio = () => {
   const [wallHeightMm, setWallHeightMm] = useState(0);
   const wallWidthMmRef = useRef(0);
   const wallHeightMmRef = useRef(0);
+  const wallZoneRef = useRef<string | null>(null);
+  const columnShapeRef = useRef<ColumnShape>('rect');
   // Column (колонна) parameters
   const [columnShape, setColumnShape] = useState<ColumnShape>('rect');
   const [columnSides, setColumnSides] = useState<number[]>([0, 0, 0, 0]); // mm
@@ -523,6 +525,8 @@ const BambooStudio = () => {
   useEffect(() => { wallWidthMmRef.current = wallWidthMm; }, [wallWidthMm]);
   useEffect(() => { wallHeightMmRef.current = wallHeightMm; }, [wallHeightMm]);
   useEffect(() => { activeSurfaceRef.current = activeSurface; }, [activeSurface]);
+  useEffect(() => { wallZoneRef.current = wallZone; }, [wallZone]);
+  useEffect(() => { columnShapeRef.current = columnShape; }, [columnShape]);
   // Persist current edits into the active surface's config
   useEffect(() => {
     surfacesRef.current[activeSurface] = {
@@ -1077,6 +1081,38 @@ const BambooStudio = () => {
         renderQuad(pts.slice(q * 4, q * 4 + 4), quadCfgs[q], q === curActiveSurf, overrideMat);
       }
 
+      // Simplified cylindrical shading for round/oval columns:
+      // dark edges + light center overlay makes the flat marked plane read as a cylinder
+      if (wallZoneRef.current === 'column' && columnShapeRef.current === 'round') {
+        for (let q = 0; q < nQuads; q++) {
+          const qp = pts.slice(q * 4, q * 4 + 4);
+          if (qp.length < 4) continue;
+          // Gradient runs from mid-left edge (p0–p3) to mid-right edge (p1–p2)
+          const lx = (qp[0].x + qp[3].x) / 2, ly = (qp[0].y + qp[3].y) / 2;
+          const rx = (qp[1].x + qp[2].x) / 2, ry = (qp[1].y + qp[2].y) / 2;
+          const cylGrad = tCtx.createLinearGradient(lx, ly, rx, ry);
+          cylGrad.addColorStop(0,    'rgba(0,0,0,0.50)');
+          cylGrad.addColorStop(0.10, 'rgba(0,0,0,0.28)');
+          cylGrad.addColorStop(0.26, 'rgba(0,0,0,0.06)');
+          cylGrad.addColorStop(0.38, 'rgba(255,255,255,0.16)');
+          cylGrad.addColorStop(0.50, 'rgba(255,255,255,0.24)');
+          cylGrad.addColorStop(0.62, 'rgba(255,255,255,0.16)');
+          cylGrad.addColorStop(0.74, 'rgba(0,0,0,0.06)');
+          cylGrad.addColorStop(0.90, 'rgba(0,0,0,0.28)');
+          cylGrad.addColorStop(1,    'rgba(0,0,0,0.50)');
+          tCtx.save();
+          tCtx.beginPath();
+          tCtx.moveTo(qp[0].x, qp[0].y);
+          tCtx.lineTo(qp[1].x, qp[1].y);
+          tCtx.lineTo(qp[2].x, qp[2].y);
+          tCtx.lineTo(qp[3].x, qp[3].y);
+          tCtx.closePath();
+          tCtx.fillStyle = cylGrad;
+          tCtx.fill();
+          tCtx.restore();
+        }
+      }
+
       // Corner edge visual between adjacent quads (right edge of previous quad)
       for (let q = 1; q < nQuads; q++) {
         const e1 = pts[(q - 1) * 4 + 1], e2 = pts[(q - 1) * 4 + 2];
@@ -1333,7 +1369,7 @@ const BambooStudio = () => {
   useEffect(() => {
     if (!image) return;
     drawFullScene();
-  }, [points, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, lightMode, activeSurface, cornerTypes, wrapJunctions, drawFullScene, image]);
+  }, [points, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, lightMode, activeSurface, cornerTypes, wrapJunctions, wallZone, columnShape, drawFullScene, image]);
 
   const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = mainCanvasRef.current;
