@@ -492,8 +492,16 @@ const BambooStudio = () => {
     wrapJunctions: boolean[];
     wallWidthMm: number;
     wallHeightMm: number;
+    moldingStyle: 'none' | 'gold' | 'black' | 'metallic' | 'brass';
+    moldingWidth: number;
+    hMoldingStyle: 'none' | 'gold' | 'black' | 'metallic' | 'brass';
+    hMoldingCount: number;
+    hMoldingWidth: number;
+    hMoldingPositions: number[];
   };
   const historyRef = useRef<HistorySnapshot[]>([]);
+  // Mirrors historyRef.current.length so the «Отменить» button can show enabled/disabled state
+  const [historyLen, setHistoryLen] = useState(0);
 
   const pushHistory = useCallback(() => {
     historyRef.current.push({
@@ -505,13 +513,21 @@ const BambooStudio = () => {
       wrapJunctions: [...wrapJunctionsRef.current],
       wallWidthMm: wallWidthMmRef.current,
       wallHeightMm: wallHeightMmRef.current,
+      moldingStyle: moldingStyleRef.current,
+      moldingWidth: moldingWidthRef.current,
+      hMoldingStyle: hMoldingStyleRef.current,
+      hMoldingCount: hMoldingCountRef.current,
+      hMoldingWidth: hMoldingWidthRef.current,
+      hMoldingPositions: [...hMoldingPositionsRef.current],
     });
     if (historyRef.current.length > 50) historyRef.current.shift();
+    setHistoryLen(historyRef.current.length);
   }, []);
 
   const undo = useCallback(() => {
     if (historyRef.current.length === 0) return;
     const prev = historyRef.current.pop()!;
+    setHistoryLen(historyRef.current.length);
     // Corner/wrap settings are global — always restore
     setCornerTypes(prev.cornerTypes);
     setWrapJunctions(prev.wrapJunctions);
@@ -522,6 +538,12 @@ const BambooStudio = () => {
       setPanelCount(prev.panelCount);
       setWallWidthMm(prev.wallWidthMm);
       setWallHeightMm(prev.wallHeightMm);
+      setMoldingStyle(prev.moldingStyle);
+      setMoldingWidth(prev.moldingWidth);
+      setHMoldingStyle(prev.hMoldingStyle);
+      setHMoldingCount(prev.hMoldingCount);
+      setHMoldingWidth(prev.hMoldingWidth);
+      setHMoldingPositions(prev.hMoldingPositions);
     } else {
       // Snapshot belongs to another surface — restore its stored config directly
       const cfg = surfacesRef.current[prev.surfaceIndex] ?? defaultSurfaceConfig();
@@ -532,6 +554,12 @@ const BambooStudio = () => {
         panelCount: prev.panelCount,
         wallWidthMm: prev.wallWidthMm,
         wallHeightMm: prev.wallHeightMm,
+        moldingStyle: prev.moldingStyle,
+        moldingWidth: prev.moldingWidth,
+        hMoldingStyle: prev.hMoldingStyle,
+        hMoldingCount: prev.hMoldingCount,
+        hMoldingWidth: prev.hMoldingWidth,
+        hMoldingPositions: prev.hMoldingPositions,
       };
       // Force redraw (stored configs are read from refs during draw)
       setPoints(pv => [...pv]);
@@ -1441,6 +1469,7 @@ const BambooStudio = () => {
     const { x, y } = getCanvasCoords(e);
     const hIdx = findNearHMolding(x, y);
     if (hIdx !== -1) {
+      pushHistory();
       draggingHMoldingIndexRef.current = hIdx;
       return;
     }
@@ -2074,6 +2103,7 @@ const BambooStudio = () => {
         img.onload = () => {
           maskStrokesRef.current = [];
           historyRef.current = [];
+          setHistoryLen(0);
           surfacesRef.current = [defaultSurfaceConfig()];
           activeSurfaceRef.current = 0;
           setActiveSurface(0);
@@ -2209,13 +2239,15 @@ const BambooStudio = () => {
           </div>
           <div className="flex items-center gap-3">
             {step === 'edit' && (
-              <button onClick={undo} className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors" title="Ctrl+Z">
+              <button onClick={undo} disabled={historyLen === 0}
+                className={`text-xs font-medium flex items-center gap-1.5 transition-colors ${historyLen === 0 ? 'text-gray-300 cursor-default' : 'text-gray-600 hover:text-black'}`}
+                title={historyLen === 0 ? 'Нет действий для отмены' : 'Ctrl+Z'}>
                 <Undo2 size={13} /> Отменить
               </button>
             )}
             {step !== 'zone' && (
               <button
-                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setSavedPng(null); setStep('zone'); setWallZone(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
+                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setHistoryLen(0); surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setSavedPng(null); setStep('zone'); setWallZone(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
                 className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
               >
                 ← Назад
@@ -2495,7 +2527,7 @@ const BambooStudio = () => {
                   <div className="w-0.5 h-3.5 bg-yellow-500 rounded-full"/>
                   <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Молдинг верт.</span>
                 </div>
-                <MoldingStyleRow value={moldingStyle} onChange={(v) => { setMoldingStyle(v); if (v !== 'none') setMoldingWidth(1); }} vertical={true}/>
+                <MoldingStyleRow value={moldingStyle} onChange={(v) => { pushHistory(); setMoldingStyle(v); if (v !== 'none') setMoldingWidth(1); }} vertical={true}/>
                 {moldingStyle !== 'none' && (
                   <div className="mt-2.5">
                     <div className="flex justify-between mb-1">
@@ -2503,6 +2535,7 @@ const BambooStudio = () => {
                       <span className="text-[9px] font-bold">{moldingWidth}px</span>
                     </div>
                     <input type="range" min="1" max="4" value={moldingWidth}
+                      onPointerDown={pushHistory}
                       onChange={(e) => setMoldingWidth(parseInt(e.target.value))}
                       className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
                   </div>
@@ -2516,7 +2549,7 @@ const BambooStudio = () => {
                 <div className="w-3.5 h-0.5 bg-yellow-500 rounded-full"/>
                 <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Молдинг гориз.</span>
               </div>
-              <MoldingStyleRow value={hMoldingStyle} onChange={(v) => { setHMoldingStyle(v); if (v !== 'none') setHMoldingWidth(1); }} vertical={false}/>
+              <MoldingStyleRow value={hMoldingStyle} onChange={(v) => { pushHistory(); setHMoldingStyle(v); if (v !== 'none') setHMoldingWidth(1); }} vertical={false}/>
               {hMoldingStyle !== 'none' && (
                 <div className="mt-2.5 space-y-2.5">
                   <div>
@@ -2525,6 +2558,7 @@ const BambooStudio = () => {
                       <span className="text-[9px] font-bold">{hMoldingPositions.length}</span>
                     </div>
                     <input type="range" min="1" max="5" value={hMoldingCount}
+                      onPointerDown={pushHistory}
                       onChange={(e) => {
                         const n = parseInt(e.target.value);
                         setHMoldingCount(n);
