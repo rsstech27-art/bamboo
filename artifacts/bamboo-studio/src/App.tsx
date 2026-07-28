@@ -2894,12 +2894,10 @@ const BambooStudio = () => {
                 className="flex-1 min-w-0 flex items-center justify-center gap-1 bg-black text-white text-[10px] font-bold py-2 px-1.5 rounded-xl hover:bg-gray-800 transition-all active:scale-95 shadow-sm">
                 <Download size={11} className="shrink-0" /> Сохранить PNG
               </button>
-              {savedPng && (
-                <button onClick={handleGenerateKP}
-                  className="flex-1 min-w-0 flex items-center justify-center gap-1 bg-[#7ec662] text-white text-[10px] font-bold py-2 px-1.5 rounded-xl hover:bg-[#6db453] transition-all active:scale-95 shadow-sm">
-                  <FileText size={11} className="shrink-0" /> Рассчитать КП
-                </button>
-              )}
+              <button onClick={handleGenerateKP}
+                className="flex-1 min-w-0 flex items-center justify-center gap-1 bg-[#7ec662] text-white text-[10px] font-bold py-2 px-1.5 rounded-xl hover:bg-[#6db453] transition-all active:scale-95 shadow-sm">
+                <FileText size={11} className="shrink-0" /> Рассчитать КП
+              </button>
             </div>
 
           </>)}
