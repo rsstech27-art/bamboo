@@ -281,6 +281,29 @@ const defaultSurfaceConfig = (): SurfaceConfig => ({
 });
 
 const SURFACE_LABELS = ['Стена 1 · Основная', 'Стена 2', 'Стена 3'];
+const COLUMN_SURFACE_LABELS = ['Грань 1 · Основная', 'Грань 2', 'Грань 3'];
+
+// ── Column (колонна) shapes & perimeter helpers ──
+type ColumnShape = 'rect' | 'round' | 'triangle';
+const COLUMN_SHAPE_LABELS: Record<ColumnShape, string> = {
+  rect: 'Прямоугольная', round: 'Круглая / овальная', triangle: 'Треугольная',
+};
+// sides (mm): rect — 4 стороны; round — [d1, d2] (d2=0 → круг); triangle — 3 стороны
+const columnPerimeterMm = (shape: ColumnShape, sides: number[]): number => {
+  if (shape === 'rect') return (sides[0] || 0) + (sides[1] || 0) + (sides[2] || 0) + (sides[3] || 0);
+  if (shape === 'round') {
+    const d1 = sides[0] || 0, d2 = sides[1] || 0;
+    if (d1 <= 0) return 0;
+    return d2 > 0 ? Math.PI * (d1 + d2) / 2 : Math.PI * d1; // овал — приближение по двум диаметрам
+  }
+  return (sides[0] || 0) + (sides[1] || 0) + (sides[2] || 0);
+};
+const columnSizesText = (shape: ColumnShape, sides: number[]): string => {
+  const m = (v: number) => (v / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 });
+  if (shape === 'rect') return `стороны ${m(sides[0]||0)} × ${m(sides[1]||0)} × ${m(sides[2]||0)} × ${m(sides[3]||0)} м`;
+  if (shape === 'round') return (sides[1]||0) > 0 ? `диаметры ${m(sides[0]||0)} × ${m(sides[1]||0)} м` : `диаметр ${m(sides[0]||0)} м`;
+  return `стороны ${m(sides[0]||0)} × ${m(sides[1]||0)} × ${m(sides[2]||0)} м`;
+};
 
 // Retail price (RUB per panel) by series — placeholder pricing, editable
 const SERIES_PRICES: Record<string, number> = {
@@ -382,6 +405,11 @@ const BambooStudio = () => {
   const [wallHeightMm, setWallHeightMm] = useState(0);
   const wallWidthMmRef = useRef(0);
   const wallHeightMmRef = useRef(0);
+  // Column (колонна) parameters
+  const [columnShape, setColumnShape] = useState<ColumnShape>('rect');
+  const [columnSides, setColumnSides] = useState<number[]>([0, 0, 0, 0]); // mm
+  const [columnHeightMm, setColumnHeightMm] = useState(0);
+  const [columnUnfold, setColumnUnfold] = useState(false); // развёртка (только прямоугольная)
   const [savedPng, setSavedPng] = useState<string | null>(null);
   const [activeSurface, setActiveSurface] = useState(0);
   const activeSurfaceRef = useRef(0);
@@ -1427,7 +1455,7 @@ const BambooStudio = () => {
     // Don't trigger sector selection if click was near a divider or h-molding handle
     if (step === 'edit' && (findNearDivider(x, y) !== -1 || findNearHMolding(x, y) !== -1)) return;
 
-    if (step === 'mark' && points.length < (wallZone === 'wall-niche' ? 12 : 4)) {
+    if (step === 'mark' && points.length < (wallZone === 'wall-niche' ? 12 : wallZone === 'column' ? 8 : 4)) {
       setPoints([...points, { x, y }]);
     } else if (step === 'edit') {
       const pts = pointsRef.current;
@@ -1556,9 +1584,38 @@ const BambooStudio = () => {
     const total = items.reduce((sum, it) => sum + it.qty * it.price, 0);
     const fmt = (n: number) => n.toLocaleString('ru-RU') + ' ₽';
 
+    // ── Column (колонна) calculation: panels by full perimeter ──
+    const isColumn = wallZone === 'column';
+    const colPerMm = isColumn ? columnPerimeterMm(columnShape, columnSides) : 0;
+    const columnCalc = (isColumn && colPerMm > 0) ? (() => {
+      const perRow = Math.ceil(colPerMm / PANEL_W_MM);
+      const rows = columnHeightMm > 0 ? Math.max(1, Math.ceil(columnHeightMm / PANEL_H_MM)) : 1;
+      const needed = perRow * rows;
+      const areaM2 = columnHeightMm > 0 ? (colPerMm / 1000) * (columnHeightMm / 1000) : 0;
+      // Average price of panels used in the project (visible faces) → price for full perimeter
+      let projCost = 0, projCount = 0;
+      for (let q = 0; q < nQuads; q++) {
+        const cfg = kpCfgs[q];
+        const wrapL = q > 0 && (wrapJunctionsRef.current[q - 1] ?? false)
+          && (cornerTypesRef.current[q - 1] ?? 'external') === 'external';
+        for (let sIdx = 0; sIdx < cfg.panelCount; sIdx++) {
+          if (sIdx === 0 && wrapL) continue;
+          projCost += getPanelPrice((cfg.sectorMaterials[sIdx] ?? BAMBOO_PANELS[0]).id);
+          projCount++;
+        }
+      }
+      const avgPrice = projCount > 0 ? projCost / projCount : getPanelPrice(BAMBOO_PANELS[0].id);
+      const calcCost = Math.round(needed * avgPrice);
+      // Corners wrapped by bent panels — profiles are NOT tied to the number of faces
+      const wrappedCorners = wrapJunctionsRef.current
+        .slice(0, Math.max(0, nQuads - 1))
+        .filter((w, j) => w && (cornerTypesRef.current[j] ?? 'external') === 'external').length;
+      return { perRow, rows, needed, areaM2, projCost, calcCost, wrappedCorners };
+    })() : null;
+
     // Wall dimension calculations: if dimensions are set, the calculated
     // (расчётная) panel cost takes priority over the project panel cost in Итого
-    const wallCalcs = kpCfgs
+    const wallCalcs = isColumn ? [] : kpCfgs
       .map((cfg, q) => ({ cfg, q }))
       .filter(w => w.cfg.wallWidthMm > 0 && w.cfg.wallHeightMm > 0)
       .map(({ cfg, q }) => {
@@ -1583,7 +1640,10 @@ const BambooStudio = () => {
     const totalCalcCost = wallCalcs.reduce((sum, w) => sum + w.calcCost, 0);
     const totalProjCostDimWalls = wallCalcs.reduce((sum, w) => sum + w.projCost, 0);
     // Final total: replace project panel cost with calculated cost for walls that have dimensions
-    const finalTotal = wallCalcs.length > 0 ? total - totalProjCostDimWalls + totalCalcCost : total;
+    // (for a column — the calculated full-perimeter cost takes priority, like for walls)
+    const finalTotal = columnCalc
+      ? total - columnCalc.projCost + columnCalc.calcCost
+      : wallCalcs.length > 0 ? total - totalProjCostDimWalls + totalCalcCost : total;
 
     // Render КП onto an A4 canvas (Cyrillic-safe), then embed into PDF
     const W = 1240, H = 1754; // A4 @ 150dpi
@@ -1677,14 +1737,40 @@ const BambooStudio = () => {
       y += 30;
     }
 
+    // Column block: shape, sizes, perimeter, area, panels, cost
+    if (columnCalc) {
+      y += 18;
+      c.fillStyle = '#111111'; c.font = 'bold 18px sans-serif';
+      c.fillText('Колонна — расчёт по периметру', 60, y + 10);
+      y += 34;
+      c.font = '16px sans-serif'; c.fillStyle = '#333333';
+      c.fillText(
+        `Форма: ${COLUMN_SHAPE_LABELS[columnShape]} · ${columnSizesText(columnShape, columnSides)}${columnHeightMm > 0 ? ` · высота ${(columnHeightMm / 1000).toLocaleString('ru-RU')} м` : ''}`,
+        60, y + 8);
+      y += 28;
+      c.fillText(
+        `Периметр: ${(colPerMm / 1000).toFixed(2).replace('.', ',')} м${columnCalc.areaM2 > 0 ? ` · площадь: ${columnCalc.areaM2.toFixed(2).replace('.', ',')} м²` : ''} · панелей: ${columnCalc.perRow}${columnCalc.rows > 1 ? ` × ${columnCalc.rows} ряда = ${columnCalc.needed}` : ''} (периметр ÷ 1,22 м, вкл. заднюю грань)`,
+        60, y + 8);
+      y += 28;
+      if (columnCalc.wrappedCorners > 0) {
+        c.fillText(
+          `Загибы панелей на углах: ${columnCalc.wrappedCorners} — угловые профили в местах загиба не требуются`,
+          60, y + 8);
+        y += 28;
+      }
+      c.fillStyle = '#111111'; c.font = 'bold 16px sans-serif';
+      c.fillText(`Расчётная стоимость панелей колонны: ${fmt(columnCalc.calcCost)}`, 60, y + 8);
+      y += 30;
+    }
+
     // Total
     c.strokeStyle = '#111111'; c.lineWidth = 2;
     c.beginPath(); c.moveTo(60, y + 4); c.lineTo(W - 60, y + 4); c.stroke();
     y += 30;
     c.fillStyle = '#111111'; c.font = 'bold 24px sans-serif'; c.textAlign = 'right';
-    c.fillText(`Итого${wallCalcs.length > 0 ? ' (по расчётным размерам стен)' : ''}: ${fmt(finalTotal)}`, W - 60, y + 12);
+    c.fillText(`Итого${columnCalc ? ' (по периметру колонны)' : wallCalcs.length > 0 ? ' (по расчётным размерам стен)' : ''}: ${fmt(finalTotal)}`, W - 60, y + 12);
     c.textAlign = 'left';
-    if (wallCalcs.length > 0 && finalTotal !== total) {
+    if ((wallCalcs.length > 0 || columnCalc) && finalTotal !== total) {
       y += 26;
       c.fillStyle = '#888888'; c.font = '15px sans-serif'; c.textAlign = 'right';
       c.fillText(`Стоимость по визуализации проекта: ${fmt(total)}`, W - 60, y + 12);
@@ -1725,9 +1811,10 @@ const BambooStudio = () => {
           activeSurfaceRef.current = 0;
           setActiveSurface(0);
           setCornerTypes(['external', 'external']);
-          setWrapJunctions([false, false]);
+          setWrapJunctions(wallZone === 'column' ? [true, true] : [false, false]);
           setWallWidthMm(0);
           setWallHeightMm(0);
+          setColumnUnfold(false);
           setSavedPng(null);
           setImage(img);
           setStep('mark');
@@ -1862,7 +1949,7 @@ const BambooStudio = () => {
             )}
             {step !== 'zone' && (
               <button
-                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setSavedPng(null); setStep('zone'); setWallZone(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
+                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setColumnUnfold(false); setSavedPng(null); setStep('zone'); setWallZone(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
                 className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
               >
                 ← Назад
@@ -1893,7 +1980,7 @@ const BambooStudio = () => {
                 ] as const).map(zone => (
                   <button
                     key={zone.id}
-                    onClick={() => { setWallZone(zone.id); setStep('upload'); }}
+                    onClick={() => { setWallZone(zone.id); if (zone.id === 'column') { setCornerTypes(['external', 'external']); setWrapJunctions([true, true]); } setStep('upload'); }}
                     className="flex flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-gray-50 hover:border-black hover:shadow-lg transition-all active:scale-95 group text-left"
                   >
                     <div className="w-full h-36 bg-gray-200 overflow-hidden relative">
@@ -1950,6 +2037,8 @@ const BambooStudio = () => {
                 <div className="hidden md:flex absolute top-5 left-1/2 -translate-x-1/2 bg-white/90 text-black px-5 py-1.5 rounded-full text-[10px] font-bold shadow-lg backdrop-blur-md border border-gray-100 uppercase tracking-widest pointer-events-none">
                   {wallZone === 'wall-niche'
                     ? (points.length < 4 ? `Стена 1: точка ${points.length + 1}/4` : points.length < 8 ? `Стена 2 (опц.): точка ${points.length - 3}/4 или «Начать»` : points.length < 12 ? `Стена 3 (опц.): точка ${points.length - 7}/4 или «Начать»` : 'Нажмите «Начать примерку»')
+                    : wallZone === 'column'
+                    ? (points.length < 4 ? `Грань 1: точка ${points.length + 1}/4` : points.length < 8 ? `Грань 2 (опц.): точка ${points.length - 3}/4 или «Начать»` : 'Нажмите «Начать примерку»')
                     : (points.length < 4 ? `Кликните на угол стены (${points.length}/4)` : 'Нажмите «Начать примерку»')}
                 </div>
               )}
@@ -1974,6 +2063,8 @@ const BambooStudio = () => {
               <div className="bg-white/90 text-black px-5 py-1.5 rounded-full text-[10px] font-bold shadow-lg backdrop-blur-md border border-gray-100 uppercase tracking-widest">
                 {wallZone === 'wall-niche'
                   ? (points.length < 4 ? `Стена 1: точка ${points.length + 1}/4` : points.length < 8 ? `Стена 2 (опц.): точка ${points.length - 3}/4 или «Начать»` : points.length < 12 ? `Стена 3 (опц.): точка ${points.length - 7}/4 или «Начать»` : 'Нажмите «Начать примерку»')
+                  : wallZone === 'column'
+                  ? (points.length < 4 ? `Грань 1: точка ${points.length + 1}/4` : points.length < 8 ? `Грань 2 (опц.): точка ${points.length - 3}/4 или «Начать»` : 'Нажмите «Начать примерку»')
                   : (points.length < 4 ? `Кликните на угол стены (${points.length}/4)` : 'Нажмите «Начать примерку»')}
               </div>
             )}
@@ -2012,11 +2103,17 @@ const BambooStudio = () => {
                     <CornerTypeCheckboxes nJunctions={Math.min(2, Math.floor(points.length / 4) - 1)} cornerTypes={cornerTypes} setCornerTypes={(v) => { pushHistory(); setCornerTypes(v); }} wrapJunctions={wrapJunctions} setWrapJunctions={(v) => { pushHistory(); setWrapJunctions(v); }} />
                   </div>
                 )}
-              </>) : (
+              </>) : wallZone === 'column' ? (
+                <p className="text-[9px] text-gray-400 mb-2 leading-relaxed">
+                  Отметьте <span className="font-bold text-gray-600">видимые грани</span> колонны — каждая грань отдельно, 4 угла по часовой стрелке.<br/>
+                  <span className="font-bold text-[#007aff]">Грань 1</span> — обязательно, <span className="font-bold text-[#7ec662]">Грань 2</span> — по желанию.<br/>
+                  На углах панель <span className="font-bold text-[#5a9c3e]">загибается</span> — профиль не требуется. Для круглой колонны отметьте видимую часть одной плоскостью.
+                </p>
+              ) : (
                 <p className="text-[9px] text-gray-400 mb-4 leading-relaxed">Кликайте по 4 углам стены по часовой стрелке.</p>
               )}
               <div className="flex flex-wrap gap-1.5 mb-5">
-                {Array.from({ length: wallZone === 'wall-niche' ? 12 : 4 }, (_, i) => i + 1).map(i => (
+                {Array.from({ length: wallZone === 'wall-niche' ? 12 : wallZone === 'column' ? 8 : 4 }, (_, i) => i + 1).map(i => (
                   <div key={i} className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-all ${
                     points.length >= i
                       ? (i <= 4 ? 'bg-[#007aff] text-white border-[#007aff]' : i <= 8 ? 'bg-[#7ec662] text-white border-[#7ec662]' : 'bg-[#ff9500] text-white border-[#ff9500]')
@@ -2196,7 +2293,7 @@ const BambooStudio = () => {
                   {Array.from({ length: Math.min(3, Math.floor(points.length / 4)) }, (_, i) => i).map(i => (
                     <button key={i} onClick={() => switchSurface(i)}
                       className={`w-full py-2 px-3 text-left text-[10px] font-bold rounded-xl border transition-all active:scale-95 ${activeSurface === i ? 'bg-[#7ec662] text-white border-[#7ec662]' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
-                      {SURFACE_LABELS[i]}
+                      {(wallZone === 'column' ? COLUMN_SURFACE_LABELS : SURFACE_LABELS)[i]}
                     </button>
                   ))}
                 </div>
@@ -2205,7 +2302,7 @@ const BambooStudio = () => {
             )}
 
             {/* Corner types — shown only for wall-niche with 8+ points */}
-            {wallZone === 'wall-niche' && points.length >= 8 && (
+            {(wallZone === 'wall-niche' || wallZone === 'column') && points.length >= 8 && (
               <div className="bg-white rounded-2xl p-3.5 shadow-sm">
                 <div className="flex items-center gap-1.5 mb-2.5">
                   <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Тип углов</span>
@@ -2214,7 +2311,85 @@ const BambooStudio = () => {
               </div>
             )}
 
+            {/* Column shape & dimensions */}
+            {wallZone === 'column' && (
+              <div className="bg-white rounded-2xl p-3.5 shadow-sm">
+                <div className="flex items-center gap-1.5 mb-2.5">
+                  <Columns size={12} className="text-gray-400"/>
+                  <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Колонна · форма и размеры</span>
+                </div>
+                <div className="grid grid-cols-3 gap-1.5 mb-2.5">
+                  {(['rect', 'round', 'triangle'] as ColumnShape[]).map(sh => (
+                    <button key={sh}
+                      onClick={() => { pushHistory(); setColumnShape(sh); setColumnSides([0, 0, 0, 0]); setColumnUnfold(false); }}
+                      className={`py-2 rounded-xl text-[8px] font-bold uppercase tracking-wide transition-all active:scale-95 ${columnShape === sh ? 'bg-black text-white' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}>
+                      {sh === 'rect' ? 'Прямоуг.' : sh === 'round' ? 'Круг/овал' : 'Треуг.'}
+                    </button>
+                  ))}
+                </div>
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  {(columnShape === 'rect'
+                    ? ['Сторона A, м', 'Сторона B, м', 'Сторона C, м', 'Сторона D, м']
+                    : columnShape === 'round'
+                    ? ['Диаметр 1, м', 'Диаметр 2, м (овал)']
+                    : ['Сторона A, м', 'Сторона B, м', 'Сторона C, м']
+                  ).map((label, idx) => (
+                    <label key={label} className="block">
+                      <span className="text-[8px] font-bold text-gray-400 uppercase">{label}</span>
+                      <input type="number" min="0" step="0.01" placeholder="0.40"
+                        value={columnSides[idx] > 0 ? columnSides[idx] / 1000 : ''}
+                        onChange={(e) => {
+                          const v = Math.max(0, Math.round((parseFloat(e.target.value) || 0) * 1000));
+                          setColumnSides(prev => { const next = [...prev]; next[idx] = v; return next; });
+                        }}
+                        className="w-full mt-0.5 px-2 py-1.5 text-[11px] font-bold border border-gray-200 rounded-lg focus:outline-none focus:border-[#7ec662]" />
+                    </label>
+                  ))}
+                  <label className="block">
+                    <span className="text-[8px] font-bold text-gray-400 uppercase">Высота, м</span>
+                    <input type="number" min="0" step="0.01" placeholder="напр. 2.7"
+                      value={columnHeightMm > 0 ? columnHeightMm / 1000 : ''}
+                      onChange={(e) => setColumnHeightMm(Math.max(0, Math.round((parseFloat(e.target.value) || 0) * 1000)))}
+                      className="w-full mt-0.5 px-2 py-1.5 text-[11px] font-bold border border-gray-200 rounded-lg focus:outline-none focus:border-[#7ec662]" />
+                  </label>
+                </div>
+                <p className="text-[8px] text-gray-400 mb-1.5">Панель загибается вокруг колонны — расчёт по полному периметру (включая заднюю грань). Панель: 2,80 × 1,22 м.</p>
+                {(() => {
+                  const perMm = columnPerimeterMm(columnShape, columnSides);
+                  if (perMm <= 0) return null;
+                  const perRow = Math.ceil(perMm / PANEL_W_MM);
+                  const rows = columnHeightMm > 0 ? Math.max(1, Math.ceil(columnHeightMm / PANEL_H_MM)) : 1;
+                  const needed = perRow * rows;
+                  const areaM2 = columnHeightMm > 0 ? (perMm / 1000) * (columnHeightMm / 1000) : 0;
+                  return (
+                    <div className="space-y-1">
+                      <p className="text-[9px] font-bold text-gray-600">Периметр: {(perMm / 1000).toFixed(2).replace('.', ',')} м{areaM2 > 0 ? ` · площадь: ${areaM2.toFixed(2).replace('.', ',')} м²` : ''}</p>
+                      <p className="text-[9px] font-bold text-[#5a9c3e]">Панелей по периметру: {perRow}{rows > 1 ? ` × ${rows} ряда = ${needed}` : ''} (периметр ÷ 1,22 м, округление вверх)</p>
+                      {columnHeightMm > PANEL_H_MM && (
+                        <p className="text-[9px] font-bold text-amber-600">⚠ Высота больше 2,8 м — {rows} ряда по высоте, всего {needed} панелей (в расчёте КП учтено)</p>
+                      )}
+                      {columnShape === 'rect' && (
+                        <button
+                          onClick={() => {
+                            const next = !columnUnfold;
+                            setColumnUnfold(next);
+                            if (next) handleChangePanelCount(Math.min(15, perRow));
+                          }}
+                          className={`w-full py-1.5 text-[9px] font-bold rounded-lg transition-all active:scale-95 ${columnUnfold ? 'bg-black text-white' : 'bg-[#7ec662] text-white hover:bg-[#6db453]'}`}>
+                          {columnUnfold ? '✓ Развёртка включена — колонна раскрыта в длину' : `Развёртка: показать все ${perRow} панел${perRow === 1 ? 'ь' : perRow >= 2 && perRow <= 4 ? 'и' : 'ей'} по периметру`}
+                        </button>
+                      )}
+                      {columnShape === 'rect' && columnUnfold && (
+                        <p className="text-[8px] text-gray-400">Активная плоскость показывает полный периметр колонны как развёртку.</p>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
             {/* Wall dimensions & area check */}
+            {wallZone !== 'column' && (
             <div className="bg-white rounded-2xl p-3.5 shadow-sm">
               <div className="flex items-center gap-1.5 mb-2.5">
                 <Columns size={12} className="text-gray-400"/>
@@ -2266,6 +2441,7 @@ const BambooStudio = () => {
                 );
               })()}
             </div>
+            )}
 
             {/* Light mode */}
             <div className="bg-white rounded-2xl p-3.5 shadow-sm">
