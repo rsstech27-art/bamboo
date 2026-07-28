@@ -1657,6 +1657,23 @@ const BambooStudio = () => {
         addItem(info.article + '-H', info.name + ' (горизонт.)', cfg.hMoldingCount, info.price);
       }
     }
+    // Mandatory corner profiles: an external corner WITHOUT загиб always needs a
+    // vertical profile at the shared edge — even if the walls have no molding style.
+    // Exception: round/oval column (panel bends smoothly, no corner edges).
+    const isRoundColumn = wallZone === 'column' && columnShape === 'round';
+    if (!isRoundColumn) {
+      for (let j = 0; j < nQuads - 1; j++) {
+        const external = (cornerTypesRef.current[j] ?? 'external') === 'external';
+        const wrapped = external && (wrapJunctionsRef.current[j] ?? false);
+        if (!external || wrapped) continue;
+        // If either adjacent wall has vertical molding, its vQty already covers this edge
+        const leftHas = kpCfgs[j]?.moldingStyle !== 'none';
+        const rightHas = kpCfgs[j + 1]?.moldingStyle !== 'none';
+        if (leftHas || rightHas) continue;
+        const info = MOLDING_INFO.metallic;
+        addItem(info.article + '-V', info.name + ' (вертик., внешний угол — обязательно)', 1, info.price);
+      }
+    }
 
     const total = items.reduce((sum, it) => sum + it.qty * it.price, 0);
     const fmt = (n: number) => n.toLocaleString('ru-RU') + ' ₽';
