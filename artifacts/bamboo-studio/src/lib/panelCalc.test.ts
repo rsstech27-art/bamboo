@@ -1,7 +1,7 @@
 // Edge-case unit tests for the докрой (donor-strip) calculation.
 // Run: pnpm --filter @workspace/bamboo-studio run test:calc
 import { strict as assert } from 'node:assert';
-import { optimizedPanelCalc, packWidthRemainders, panelsWord, rowsWord, PANEL_H_MM } from './panelCalc.ts';
+import { optimizedPanelCalc, packWidthRemainders, columnHiddenJoints, panelsWord, rowsWord, PANEL_H_MM } from './panelCalc.ts';
 
 let passed = 0;
 const check = (name: string, fn: () => void) => {
@@ -112,6 +112,26 @@ check('склонения: панель / панели / панелей', () => 
   assert.equal(rowsWord(2), 'ряда');
   assert.equal(rowsWord(5), 'рядов');
   assert.equal(rowsWord(21), 'ряд');
+});
+
+check('columnHiddenJoints: круглая колонна — 4 панели по периметру, 2 видимые', () => {
+  // Замкнутый контур из 4 панелей = 4 стыка; на видимой части учтён 1 стык
+  // (между двумя видимыми панелями) ⇒ на скрытой части не хватает 3
+  assert.equal(columnHiddenJoints(4, 1, 0), 3);
+});
+
+check('columnHiddenJoints: прямоугольная колонна с загибами', () => {
+  // 4 грани по 1 панели, 1 видимый загиб: всего стыков 4−1=3, видимых учтено 0 ⇒ 3
+  assert.equal(columnHiddenJoints(4, 0, 1), 3);
+  // угловой профиль на видимом стыке уже учтён ⇒ остаётся 2
+  assert.equal(columnHiddenJoints(4, 1, 1), 2);
+});
+
+check('columnHiddenJoints: граничные случаи', () => {
+  assert.equal(columnHiddenJoints(1, 0, 0), 0);  // одна панель оборачивает колонну — стыков нет
+  assert.equal(columnHiddenJoints(0, 0, 0), 0);
+  assert.equal(columnHiddenJoints(3, 5, 0), 0);  // видимых учтено больше — ничего не добавляем
+  assert.equal(columnHiddenJoints(4, 0, 9), 0);  // загибов больше, чем стыков
 });
 
 console.log(`\n${passed} tests passed`);

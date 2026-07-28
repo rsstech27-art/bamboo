@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Upload, Layout, Eraser, RotateCcw, Download, Check, Columns, Undo2, Sun, Moon, FileText } from 'lucide-react';
-import { PANEL_H_MM, PANEL_W_MM, PANEL_AREA_M2, optimizedPanelCalc, packWidthRemainders, packProfileRuns, panelsWord, rowsWord } from './lib/panelCalc';
+import { PANEL_H_MM, PANEL_W_MM, PANEL_AREA_M2, optimizedPanelCalc, packWidthRemainders, packProfileRuns, columnHiddenJoints, panelsWord, rowsWord } from './lib/panelCalc';
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -1686,6 +1686,11 @@ const BambooStudio = () => {
       if (count <= 0 || lengthMm <= 0) return;
       (profileRuns[style] ??= []).push(...Array(count).fill(lengthMm));
     };
+    // Column zone: needed early so profile joints can cover the FULL perimeter
+    const isColumn = wallZone === 'column';
+    const colPerMm = isColumn ? columnPerimeterMm(columnShape, columnSides) : 0;
+    // Vertical joints already counted on the VISIBLE column faces (incl. corner profiles)
+    let columnVisibleJoints = 0;
     for (let q = 0; q < nQuads; q++) {
       const cfg = kpCfgs[q];
       const wrapLeft = q > 0 && (wrapJunctionsRef.current[q - 1] ?? false)
@@ -1698,12 +1703,21 @@ const BambooStudio = () => {
         // A wrapped (загиб) junction has NO profile at the shared edge — deduct it
         const vQty = Math.max(0, cfg.panelCount + 1 - (wrapLeft ? 1 : 0) - (wrapRight ? 1 : 0));
         addRuns(cfg.moldingStyle, hMm, vQty);
+        if (isColumn) {
+          // UNIQUE contour joints covered by this face's molding: internal seams
+          // + the OUTER edges bordering the hidden part (only first/last face).
+          // Junctions between adjacent visible faces are counted once, below.
+          columnVisibleJoints += Math.max(0, cfg.panelCount - 1);
+          if (q === 0 && !wrapLeft) columnVisibleJoints++;
+          if (q === nQuads - 1 && !wrapRight) columnVisibleJoints++;
+        }
       } else {
         // MANDATORY joints: wall wider than one panel ⇒ panels in a row MUST be
         // joined with vertical profiles between them, even with no molding chosen
         const perRow = Math.ceil(wMm / PANEL_W_MM);
         const joints = Math.max(0, perRow - 1);
         addRuns('metallic', hMm, joints);
+        if (isColumn) columnVisibleJoints += joints;
       }
       if (cfg.hMoldingStyle !== 'none') addRuns(cfg.hMoldingStyle, wMm, cfg.hMoldingCount);
     }
@@ -1722,6 +1736,33 @@ const BambooStudio = () => {
           kpCfgs[j]?.wallHeightMm > 0 ? kpCfgs[j].wallHeightMm : PANEL_H_MM,
           kpCfgs[j + 1]?.wallHeightMm > 0 ? kpCfgs[j + 1].wallHeightMm : PANEL_H_MM);
         addRuns('metallic', hMm, 1);
+        if (isColumn) columnVisibleJoints++;
+      }
+    }
+    // Junctions between adjacent visible column faces covered by a MOLDING edge
+    // run (counted once, not per face — molding on either side covers the joint)
+    if (isColumn) {
+      for (let j = 0; j < nQuads - 1; j++) {
+        const external = (cornerTypesRef.current[j] ?? 'external') === 'external';
+        const wrapped = external && (wrapJunctionsRef.current[j] ?? false);
+        if (wrapped) continue;
+        if (kpCfgs[j]?.moldingStyle !== 'none' || kpCfgs[j + 1]?.moldingStyle !== 'none') columnVisibleJoints++;
+      }
+    }
+    // Hidden part of the column perimeter: panels there also join every 1.22 m.
+    // A closed contour of N panels has N vertical joints (загиб removes one);
+    // add the joints NOT yet counted on the visible faces — same style as the
+    // visible molding, otherwise metallic by default.
+    if (isColumn && colPerMm > 0) {
+      const perRowCol = Math.ceil(colPerMm / PANEL_W_MM);
+      const visibleWraps = wrapJunctionsRef.current
+        .slice(0, Math.max(0, nQuads - 1))
+        .filter((w, j) => w && (cornerTypesRef.current[j] ?? 'external') === 'external').length;
+      const hiddenJoints = columnHiddenJoints(perRowCol, columnVisibleJoints, visibleWraps);
+      if (hiddenJoints > 0) {
+        const visStyle = kpCfgs.find(cfg => cfg.moldingStyle !== 'none')?.moldingStyle;
+        addRuns(visStyle && visStyle !== 'none' ? visStyle : 'metallic',
+          columnHeightMm > 0 ? columnHeightMm : PANEL_H_MM, hiddenJoints);
       }
     }
     // Pack each style's runs into 3 m pieces (offcuts reused project-wide)
@@ -1739,8 +1780,6 @@ const BambooStudio = () => {
     const fmt = (n: number) => n.toLocaleString('ru-RU') + ' ₽';
 
     // ── Column (колонна) calculation: panels by full perimeter ──
-    const isColumn = wallZone === 'column';
-    const colPerMm = isColumn ? columnPerimeterMm(columnShape, columnSides) : 0;
     const columnCalc = (isColumn && colPerMm > 0) ? (() => {
       const perRow = Math.ceil(colPerMm / PANEL_W_MM);
       const opt = optimizedPanelCalc(perRow, columnHeightMm);

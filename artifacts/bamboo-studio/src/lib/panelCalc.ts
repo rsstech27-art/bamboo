@@ -72,6 +72,16 @@ export const packProfileRuns = (runsMm: number[]): number => {
   return fullPieces + bins.length;
 };
 
+// Joints on a CLOSED column contour: panels wrap the full perimeter, so a
+// contour of N panels has N vertical joints; each загиб (wrapped corner)
+// removes one joint. `visibleJoints` — joints already counted on the visible
+// faces (incl. corner profiles); the rest belong to the hidden part.
+export const columnHiddenJoints = (perRow: number, visibleJoints: number, wrappedCorners: number): number => {
+  if (perRow <= 1) return 0; // a single panel wraps onto itself — no joints beyond the visible ones
+  const totalJoints = Math.max(0, perRow - Math.max(0, wrappedCorners));
+  return Math.max(0, totalJoints - Math.max(0, visibleJoints));
+};
+
 // Russian plural form: 1 панель / 2–4 панели / 5+ панелей (handles 11–14, 21, 22…)
 export const pluralRu = (n: number, one: string, few: string, many: string): string => {
   const abs = Math.abs(Math.trunc(n));
