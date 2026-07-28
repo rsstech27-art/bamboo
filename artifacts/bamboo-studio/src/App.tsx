@@ -2708,17 +2708,19 @@ const BambooStudio = () => {
               )}
             </div>
 
-            {/* Save */}
-            <button onClick={handleSave}
-              className="w-full flex items-center justify-center gap-2 bg-black text-white text-xs font-bold py-3 rounded-2xl hover:bg-gray-800 transition-all active:scale-95 mt-1 shadow-sm">
-              <Download size={13} /> Сохранить PNG
-            </button>
-            {savedPng && (
-              <button onClick={handleGenerateKP}
-                className="w-full flex items-center justify-center gap-2 bg-[#7ec662] text-white text-xs font-bold py-3 rounded-2xl hover:bg-[#6db453] transition-all active:scale-95 shadow-sm">
-                <FileText size={13} /> Рассчитать КП (PDF)
+            {/* Save + КП — side by side, compact so both fit on screen without scrolling */}
+            <div className="flex gap-1.5 mt-1">
+              <button onClick={handleSave}
+                className="flex-1 min-w-0 flex items-center justify-center gap-1 bg-black text-white text-[10px] font-bold py-2 px-1.5 rounded-xl hover:bg-gray-800 transition-all active:scale-95 shadow-sm">
+                <Download size={11} className="shrink-0" /> Сохранить PNG
               </button>
-            )}
+              {savedPng && (
+                <button onClick={handleGenerateKP}
+                  className="flex-1 min-w-0 flex items-center justify-center gap-1 bg-[#7ec662] text-white text-[10px] font-bold py-2 px-1.5 rounded-xl hover:bg-[#6db453] transition-all active:scale-95 shadow-sm">
+                  <FileText size={11} className="shrink-0" /> Рассчитать КП
+                </button>
+              )}
+            </div>
 
           </>)}
         </div>
