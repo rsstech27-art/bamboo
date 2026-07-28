@@ -322,6 +322,25 @@ const PANEL_H_MM = 2800;
 const PANEL_W_MM = 1220;
 const PANEL_AREA_M2 = (PANEL_H_MM / 1000) * (PANEL_W_MM / 1000); // 3.416 m²
 
+// Optimized panel count for a grid of `columns` × height:
+// full rows use whole panels; the remaining strip height is CUT from as few
+// donor panels as possible (one 2800 mm panel yields floor(2800/rem) strips).
+const optimizedPanelCalc = (columns: number, heightMm: number) => {
+  if (columns <= 0) return { needed: 0, fullRows: 1, remMm: 0, donorPanels: 0, stripsPerPanel: 0 };
+  const h = heightMm > 0 ? heightMm : PANEL_H_MM;
+  // Every column always needs at least one base panel; donor-strip
+  // optimization applies only to the remainder ABOVE full panel rows.
+  const fullRows = Math.max(1, Math.floor(h / PANEL_H_MM));
+  let remMm = h - fullRows * PANEL_H_MM;
+  if (remMm < 1) remMm = 0; // exact multiple (or height ≤ one panel)
+  let donorPanels = 0, stripsPerPanel = 0;
+  if (remMm > 0) {
+    stripsPerPanel = Math.max(1, Math.floor(PANEL_H_MM / remMm));
+    donorPanels = Math.ceil(columns / stripsPerPanel);
+  }
+  return { needed: columns * fullRows + donorPanels, fullRows, remMm, donorPanels, stripsPerPanel };
+};
+
 const MOLDING_INFO: Record<string, { article: string; name: string; price: number }> = {
   gold:     { article: 'PR-GOLD',  name: 'Профиль золото',        price: 990 },
   black:    { article: 'PR-BLACK', name: 'Профиль чёрный',        price: 890 },
@@ -411,7 +430,6 @@ const BambooStudio = () => {
   const [columnShape, setColumnShape] = useState<ColumnShape>('rect');
   const [columnSides, setColumnSides] = useState<number[]>([0, 0, 0, 0]); // mm
   const [columnHeightMm, setColumnHeightMm] = useState(0);
-  const [columnUnfold, setColumnUnfold] = useState(false); // развёртка (только прямоугольная)
   const [savedPng, setSavedPng] = useState<string | null>(null);
   const [activeSurface, setActiveSurface] = useState(0);
   const activeSurfaceRef = useRef(0);
@@ -1625,8 +1643,8 @@ const BambooStudio = () => {
     const colPerMm = isColumn ? columnPerimeterMm(columnShape, columnSides) : 0;
     const columnCalc = (isColumn && colPerMm > 0) ? (() => {
       const perRow = Math.ceil(colPerMm / PANEL_W_MM);
-      const rows = columnHeightMm > 0 ? Math.max(1, Math.ceil(columnHeightMm / PANEL_H_MM)) : 1;
-      const needed = perRow * rows;
+      const opt = optimizedPanelCalc(perRow, columnHeightMm);
+      const needed = opt.needed;
       const areaM2 = columnHeightMm > 0 ? (colPerMm / 1000) * (columnHeightMm / 1000) : 0;
       // Average price of panels used in the project (visible faces) → price for full perimeter
       let projCost = 0, projCount = 0;
@@ -1646,7 +1664,7 @@ const BambooStudio = () => {
       const wrappedCorners = wrapJunctionsRef.current
         .slice(0, Math.max(0, nQuads - 1))
         .filter((w, j) => w && (cornerTypesRef.current[j] ?? 'external') === 'external').length;
-      return { perRow, rows, needed, areaM2, projCost, calcCost, wrappedCorners };
+      return { perRow, opt, needed, areaM2, projCost, calcCost, wrappedCorners };
     })() : null;
 
     // Wall dimension calculations: if dimensions are set, the calculated
@@ -1656,8 +1674,8 @@ const BambooStudio = () => {
       .filter(w => w.cfg.wallWidthMm > 0 && w.cfg.wallHeightMm > 0)
       .map(({ cfg, q }) => {
         const cols = Math.ceil(cfg.wallWidthMm / PANEL_W_MM);
-        const rows = Math.ceil(cfg.wallHeightMm / PANEL_H_MM);
-        const needed = cols * rows;
+        const opt = optimizedPanelCalc(cols, cfg.wallHeightMm);
+        const needed = opt.needed;
         // Match the items aggregation: sector 0 after a wrapped junction is
         // a continuation of the previous wall's panel, not billed separately
         const wrapL = q > 0 && (wrapJunctionsRef.current[q - 1] ?? false)
@@ -1671,7 +1689,7 @@ const BambooStudio = () => {
         const billedCount = cfg.panelCount - (wrapL ? 1 : 0);
         const avgPrice = billedCount > 0 ? projCost / billedCount : getPanelPrice(BAMBOO_PANELS[0].id);
         const calcCost = Math.round(needed * avgPrice);
-        return { cfg, q, cols, rows, needed, projCost, calcCost };
+        return { cfg, q, cols, opt, needed, projCost, calcCost };
       });
     const totalCalcCost = wallCalcs.reduce((sum, w) => sum + w.calcCost, 0);
     const totalProjCostDimWalls = wallCalcs.reduce((sum, w) => sum + w.projCost, 0);
@@ -1750,11 +1768,13 @@ const BambooStudio = () => {
       y += 34;
       c.font = '16px sans-serif';
       let totalWallArea = 0;
-      wallCalcs.forEach(({ cfg, q, rows, needed, calcCost }) => {
+      wallCalcs.forEach(({ cfg, q, opt, needed, calcCost }) => {
         const wM = cfg.wallWidthMm / 1000, hM = cfg.wallHeightMm / 1000;
         const area = wM * hM;
         totalWallArea += area;
-        const heightNote = rows > 1 ? ` · ${rows} ряда по высоте` : '';
+        const heightNote = opt.donorPanels > 0
+          ? ` · докрой по высоте: ${opt.donorPanels} панел${opt.donorPanels === 1 ? 'ь' : opt.donorPanels >= 2 && opt.donorPanels <= 4 ? 'и' : 'ей'} режется на полосы ${(opt.remMm / 10).toFixed(0)} см (${opt.stripsPerPanel} шт. из панели)`
+          : opt.fullRows > 1 ? ` · ${opt.fullRows} ряда по высоте` : '';
         c.fillStyle = '#333333';
         c.fillText(
           `Стена ${q + 1}: ${wM.toLocaleString('ru-RU')} × ${hM.toLocaleString('ru-RU')} м · ${area.toFixed(2).replace('.', ',')} м² · панелей в проекте: ${cfg.panelCount}, расчётно: ${needed}${heightNote} · расчётная стоимость: ${fmt(calcCost)}`,
@@ -1785,9 +1805,15 @@ const BambooStudio = () => {
         60, y + 8);
       y += 28;
       c.fillText(
-        `Периметр: ${(colPerMm / 1000).toFixed(2).replace('.', ',')} м${columnCalc.areaM2 > 0 ? ` · площадь: ${columnCalc.areaM2.toFixed(2).replace('.', ',')} м²` : ''} · панелей: ${columnCalc.perRow}${columnCalc.rows > 1 ? ` × ${columnCalc.rows} ряда = ${columnCalc.needed}` : ''} (периметр ÷ 1,22 м, вкл. заднюю грань)`,
+        `Периметр: ${(colPerMm / 1000).toFixed(2).replace('.', ',')} м${columnCalc.areaM2 > 0 ? ` · площадь: ${columnCalc.areaM2.toFixed(2).replace('.', ',')} м²` : ''} · панелей: ${columnCalc.needed} (по периметру ${columnCalc.perRow}, вкл. заднюю грань)`,
         60, y + 8);
       y += 28;
+      if (columnCalc.opt.donorPanels > 0) {
+        c.fillText(
+          `Докрой по высоте: ${columnCalc.opt.donorPanels} панел${columnCalc.opt.donorPanels === 1 ? 'ь' : columnCalc.opt.donorPanels >= 2 && columnCalc.opt.donorPanels <= 4 ? 'и' : 'ей'} режется на полосы ${(columnCalc.opt.remMm / 10).toFixed(0)} см (${columnCalc.opt.stripsPerPanel} шт. из одной панели)`,
+          60, y + 8);
+        y += 28;
+      }
       if (columnCalc.wrappedCorners > 0) {
         c.fillText(
           `Загибы панелей на углах: ${columnCalc.wrappedCorners} — угловые профили в местах загиба не требуются`,
@@ -1850,7 +1876,6 @@ const BambooStudio = () => {
           setWrapJunctions(wallZone === 'column' ? [true, true] : [false, false]);
           setWallWidthMm(0);
           setWallHeightMm(0);
-          setColumnUnfold(false);
           setSavedPng(null);
           setImage(img);
           setStep('mark');
@@ -1985,7 +2010,7 @@ const BambooStudio = () => {
             )}
             {step !== 'zone' && (
               <button
-                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setColumnUnfold(false); setSavedPng(null); setStep('zone'); setWallZone(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
+                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setSavedPng(null); setStep('zone'); setWallZone(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
                 className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
               >
                 ← Назад
@@ -2357,7 +2382,7 @@ const BambooStudio = () => {
                 <div className="grid grid-cols-3 gap-1.5 mb-2.5">
                   {(['rect', 'round', 'triangle'] as ColumnShape[]).map(sh => (
                     <button key={sh}
-                      onClick={() => { pushHistory(); setColumnShape(sh); setColumnSides([0, 0, 0, 0]); setColumnUnfold(false); }}
+                      onClick={() => { pushHistory(); setColumnShape(sh); setColumnSides([0, 0, 0, 0]); }}
                       className={`py-2 rounded-xl text-[8px] font-bold uppercase tracking-wide transition-all active:scale-95 ${columnShape === sh ? 'bg-black text-white' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}>
                       {sh === 'rect' ? 'Прямоуг.' : sh === 'round' ? 'Круг/овал' : 'Треуг.'}
                     </button>
@@ -2394,29 +2419,14 @@ const BambooStudio = () => {
                   const perMm = columnPerimeterMm(columnShape, columnSides);
                   if (perMm <= 0) return null;
                   const perRow = Math.ceil(perMm / PANEL_W_MM);
-                  const rows = columnHeightMm > 0 ? Math.max(1, Math.ceil(columnHeightMm / PANEL_H_MM)) : 1;
-                  const needed = perRow * rows;
+                  const opt = optimizedPanelCalc(perRow, columnHeightMm);
                   const areaM2 = columnHeightMm > 0 ? (perMm / 1000) * (columnHeightMm / 1000) : 0;
                   return (
                     <div className="space-y-1">
                       <p className="text-[9px] font-bold text-gray-600">Периметр: {(perMm / 1000).toFixed(2).replace('.', ',')} м{areaM2 > 0 ? ` · площадь: ${areaM2.toFixed(2).replace('.', ',')} м²` : ''}</p>
-                      <p className="text-[9px] font-bold text-[#5a9c3e]">Панелей по периметру: {perRow}{rows > 1 ? ` × ${rows} ряда = ${needed}` : ''} (периметр ÷ 1,22 м, округление вверх)</p>
-                      {columnHeightMm > PANEL_H_MM && (
-                        <p className="text-[9px] font-bold text-amber-600">⚠ Высота больше 2,8 м — {rows} ряда по высоте, всего {needed} панелей (в расчёте КП учтено)</p>
-                      )}
-                      {columnShape === 'rect' && (
-                        <button
-                          onClick={() => {
-                            const next = !columnUnfold;
-                            setColumnUnfold(next);
-                            if (next) handleChangePanelCount(Math.min(15, perRow));
-                          }}
-                          className={`w-full py-1.5 text-[9px] font-bold rounded-lg transition-all active:scale-95 ${columnUnfold ? 'bg-black text-white' : 'bg-[#7ec662] text-white hover:bg-[#6db453]'}`}>
-                          {columnUnfold ? '✓ Развёртка включена — колонна раскрыта в длину' : `Развёртка: показать все ${perRow} панел${perRow === 1 ? 'ь' : perRow >= 2 && perRow <= 4 ? 'и' : 'ей'} по периметру`}
-                        </button>
-                      )}
-                      {columnShape === 'rect' && columnUnfold && (
-                        <p className="text-[8px] text-gray-400">Активная плоскость показывает полный периметр колонны как развёртку.</p>
+                      <p className="text-[9px] font-bold text-[#5a9c3e]">Панелей всего: {opt.needed} (по периметру {perRow}, периметр ÷ 1,22 м, округление вверх)</p>
+                      {opt.donorPanels > 0 && columnHeightMm > PANEL_H_MM && (
+                        <p className="text-[9px] font-bold text-amber-600">⚠ Высота больше 2,8 м — недостающие {(opt.remMm / 10).toFixed(0)} см докраиваются: {opt.donorPanels} панел{opt.donorPanels === 1 ? 'ь' : opt.donorPanels >= 2 && opt.donorPanels <= 4 ? 'и' : 'ей'} режется на полосы ({opt.stripsPerPanel} шт. из одной панели)</p>
                       )}
                     </div>
                   );
@@ -2451,8 +2461,7 @@ const BambooStudio = () => {
               {wallWidthMm > 0 && wallHeightMm > 0 && (() => {
                 const areaM2 = (wallWidthMm / 1000) * (wallHeightMm / 1000);
                 const cols = Math.ceil(wallWidthMm / PANEL_W_MM);
-                const rows = Math.ceil(wallHeightMm / PANEL_H_MM);
-                const needed = cols * rows;
+                const opt = optimizedPanelCalc(cols, wallHeightMm);
                 const enough = panelCount >= cols;
                 const tooTall = wallHeightMm > PANEL_H_MM;
                 return (
@@ -2470,7 +2479,11 @@ const BambooStudio = () => {
                       </button>
                     )}
                     {tooTall && (
-                      <p className="text-[9px] font-bold text-amber-600">⚠ Высота стены больше 2,8 м — потребуется {rows} ряда по высоте, всего {needed} панелей (в расчёте КП учтено)</p>
+                      <p className="text-[9px] font-bold text-amber-600">
+                        {opt.donorPanels > 0
+                          ? `⚠ Высота стены больше 2,8 м — недостающие ${(opt.remMm / 10).toFixed(0)} см докраиваются: ${opt.donorPanels} панел${opt.donorPanels === 1 ? 'ь' : opt.donorPanels >= 2 && opt.donorPanels <= 4 ? 'и' : 'ей'} режется на полосы (${opt.stripsPerPanel} шт. из одной), всего ${opt.needed} панелей (в расчёте КП учтено)`
+                          : `⚠ Высота стены больше 2,8 м — ${opt.fullRows} ряда по высоте, всего ${opt.needed} панелей (в расчёте КП учтено)`}
+                      </p>
                     )}
                     <p className="text-[8px] text-gray-400">Ширина панели в проекте: {(wallWidthMm / panelCount / 1000).toFixed(2).replace('.', ',')} м (макс. 1,22 м)</p>
                   </div>
