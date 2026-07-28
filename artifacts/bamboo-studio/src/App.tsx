@@ -1900,6 +1900,29 @@ const BambooStudio = () => {
     setDividerPositions(makeEqualDividers(panelCount));
   };
 
+  // Start fitting (примерка): place panels VERTICALLY — panel count per surface is
+  // derived from the marked quad's proportions so each sector matches a real
+  // upright 1,22 × 2,8 м panel (width : height = 1220 : 2800)
+  const handleStartFitting = () => {
+    const nQuads = Math.floor(points.length / 4);
+    const dist = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
+    for (let q = 0; q < nQuads; q++) {
+      const qp = points.slice(q * 4, q * 4 + 4);
+      const avgW = (dist(qp[0], qp[1]) + dist(qp[3], qp[2])) / 2;
+      const avgH = (dist(qp[0], qp[3]) + dist(qp[1], qp[2])) / 2;
+      const count = avgH > 0
+        ? Math.min(15, Math.max(1, Math.round(avgW / (avgH * PANEL_W_MM / PANEL_H_MM))))
+        : 5;
+      const cfg = surfacesRef.current[q] ?? defaultSurfaceConfig();
+      surfacesRef.current[q] = { ...cfg, panelCount: count, dividerPositions: makeEqualDividers(count) };
+      if (q === activeSurfaceRef.current) {
+        setPanelCount(count);
+        setDividerPositions(makeEqualDividers(count));
+      }
+    }
+    setStep('edit');
+  };
+
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -2230,7 +2253,7 @@ const BambooStudio = () => {
                   <Undo2 size={11}/> Отменить точку
                 </button>
               )}
-              <button disabled={points.length < 4} onClick={() => setStep('edit')}
+              <button disabled={points.length < 4} onClick={handleStartFitting}
                 className="w-full py-3 bg-black text-white rounded-xl text-xs font-bold shadow disabled:opacity-20 transition-all active:scale-95">
                 Начать примерку
               </button>
