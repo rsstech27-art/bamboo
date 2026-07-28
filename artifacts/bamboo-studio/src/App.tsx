@@ -341,6 +341,19 @@ const optimizedPanelCalc = (columns: number, heightMm: number) => {
   return { needed: columns * fullRows + donorPanels, fullRows, remMm, donorPanels, stripsPerPanel };
 };
 
+// Width-offcut reuse: narrow full-height strips (width < 1220 mm) from different
+// walls/rows are cut from SHARED donor panels instead of one panel per strip.
+// First-fit decreasing bin packing; returns how many 1220-wide panels are needed.
+const packWidthRemainders = (piecesMm: number[]) => {
+  const sorted = piecesMm.filter(p => p > 0).sort((a, b) => b - a);
+  const bins: number[] = []; // remaining usable width of each opened panel
+  for (const p of sorted) {
+    const i = bins.findIndex(b => b >= p);
+    if (i >= 0) bins[i] -= p; else bins.push(PANEL_W_MM - p);
+  }
+  return bins.length;
+};
+
 const MOLDING_INFO: Record<string, { article: string; name: string; price: number }> = {
   gold:     { article: 'PR-GOLD',  name: 'Профиль золото',        price: 990 },
   black:    { article: 'PR-BLACK', name: 'Профиль чёрный',        price: 890 },
@@ -1146,14 +1159,9 @@ const BambooStudio = () => {
         );
         const jExternal = (cornerTypesRef.current[q - 1] ?? 'external') === 'external';
         const jWrap = jExternal && (wrapJunctionsRef.current[q - 1] ?? false);
-        if (jWrap) {
-          // Single bent panel: soft light bend, texture continues, no joint seam
-          cGrad.addColorStop(0,    'rgba(0,0,0,0.18)');
-          cGrad.addColorStop(0.45, 'rgba(255,255,255,0.32)');
-          cGrad.addColorStop(0.5,  'rgba(255,255,255,0.42)');
-          cGrad.addColorStop(0.55, 'rgba(255,255,255,0.32)');
-          cGrad.addColorStop(1,    'rgba(0,0,0,0.18)');
-        } else if (jExternal) {
+        // Wrap (загиб): texture simply continues around the corner — no seam/highlight drawn
+        if (jWrap) continue;
+        if (jExternal) {
           cGrad.addColorStop(0,   'rgba(0,0,0,0.50)');
           cGrad.addColorStop(0.3, 'rgba(255,255,255,0.65)');
           cGrad.addColorStop(0.5, 'rgba(255,255,255,0.90)');
@@ -1168,7 +1176,7 @@ const BambooStudio = () => {
         }
         tCtx.save();
         tCtx.strokeStyle = cGrad;
-        tCtx.lineWidth = jWrap ? 7 : 12;
+        tCtx.lineWidth = 12;
         tCtx.lineCap = 'butt';
         tCtx.beginPath();
         tCtx.moveTo(cTopX, cTopY);
@@ -1644,7 +1652,12 @@ const BambooStudio = () => {
     const columnCalc = (isColumn && colPerMm > 0) ? (() => {
       const perRow = Math.ceil(colPerMm / PANEL_W_MM);
       const opt = optimizedPanelCalc(perRow, columnHeightMm);
-      const needed = opt.needed;
+      // Width-offcut reuse across rows: full panels per row + remainder strips
+      // of all rows packed into shared panels
+      const fullPerRow = Math.floor(colPerMm / PANEL_W_MM);
+      const remW = colPerMm - fullPerRow * PANEL_W_MM;
+      const sharedW = packWidthRemainders(Array(opt.fullRows).fill(remW));
+      const needed = Math.min(opt.needed, fullPerRow * opt.fullRows + opt.donorPanels + sharedW);
       const areaM2 = columnHeightMm > 0 ? (colPerMm / 1000) * (columnHeightMm / 1000) : 0;
       // Average price of panels used in the project (visible faces) → price for full perimeter
       let projCost = 0, projCount = 0;
@@ -1675,7 +1688,11 @@ const BambooStudio = () => {
       .map(({ cfg, q }) => {
         const cols = Math.ceil(cfg.wallWidthMm / PANEL_W_MM);
         const opt = optimizedPanelCalc(cols, cfg.wallHeightMm);
-        const needed = opt.needed;
+        // Width-offcut reuse: this wall's own full panels; the narrow remainder
+        // strip of each row goes into the shared cross-wall packing below
+        const fullPerRow = Math.floor(cfg.wallWidthMm / PANEL_W_MM);
+        const remW = cfg.wallWidthMm - fullPerRow * PANEL_W_MM;
+        const ownPanels = fullPerRow * opt.fullRows + opt.donorPanels;
         // Match the items aggregation: sector 0 after a wrapped junction is
         // a continuation of the previous wall's panel, not billed separately
         const wrapL = q > 0 && (wrapJunctionsRef.current[q - 1] ?? false)
@@ -1688,9 +1705,23 @@ const BambooStudio = () => {
         }
         const billedCount = cfg.panelCount - (wrapL ? 1 : 0);
         const avgPrice = billedCount > 0 ? projCost / billedCount : getPanelPrice(BAMBOO_PANELS[0].id);
-        const calcCost = Math.round(needed * avgPrice);
-        return { cfg, q, cols, opt, needed, projCost, calcCost };
+        return { cfg, q, cols, opt, fullPerRow, remW, ownPanels, projCost, avgPrice };
+      })
+      .map((w, _i, all) => {
+        // Cross-wall width packing: all walls' remainder strips share donor panels
+        const allPieces = all.flatMap(x => Array(x.opt.fullRows).fill(x.remW) as number[]);
+        const sharedPanels = packWidthRemainders(allPieces);
+        const naive = all.reduce((s, x) => s + x.opt.needed, 0);
+        const optimizedTotal = all.reduce((s, x) => s + x.ownPanels, 0) + sharedPanels;
+        // Attribute shared panels to walls proportionally to their strip demand
+        const totalRem = all.reduce((s, x) => s + x.remW * x.opt.fullRows, 0);
+        const share = totalRem > 0 ? (w.remW * w.opt.fullRows) / totalRem : 0;
+        const needed = w.ownPanels + share * sharedPanels;
+        const calcCost = Math.round(needed * w.avgPrice);
+        return { ...w, needed, calcCost, sharedPanels, savedPanels: Math.max(0, naive - optimizedTotal) };
       });
+    const sharedPanelsTotal = wallCalcs.length > 0 ? wallCalcs[0].sharedPanels : 0;
+    const savedPanelsTotal = wallCalcs.length > 0 ? wallCalcs[0].savedPanels : 0;
     const totalCalcCost = wallCalcs.reduce((sum, w) => sum + w.calcCost, 0);
     const totalProjCostDimWalls = wallCalcs.reduce((sum, w) => sum + w.projCost, 0);
     // Final total: replace project panel cost with calculated cost for walls that have dimensions
@@ -1768,19 +1799,30 @@ const BambooStudio = () => {
       y += 34;
       c.font = '16px sans-serif';
       let totalWallArea = 0;
-      wallCalcs.forEach(({ cfg, q, opt, needed, calcCost }) => {
+      wallCalcs.forEach(({ cfg, q, opt, fullPerRow, remW, ownPanels, calcCost }) => {
         const wM = cfg.wallWidthMm / 1000, hM = cfg.wallHeightMm / 1000;
         const area = wM * hM;
         totalWallArea += area;
         const heightNote = opt.donorPanels > 0
           ? ` · докрой по высоте: ${opt.donorPanels} панел${opt.donorPanels === 1 ? 'ь' : opt.donorPanels >= 2 && opt.donorPanels <= 4 ? 'и' : 'ей'} режется на полосы ${(opt.remMm / 10).toFixed(0)} см (${opt.stripsPerPanel} шт. из панели)`
           : opt.fullRows > 1 ? ` · ${opt.fullRows} ряда по высоте` : '';
+        const widthNote = remW > 0
+          ? ` · целых панелей: ${ownPanels} + полоса ${(remW / 10).toFixed(0)} см на ряд из общего докроя`
+          : ` · целых панелей: ${ownPanels}`;
         c.fillStyle = '#333333';
         c.fillText(
-          `Стена ${q + 1}: ${wM.toLocaleString('ru-RU')} × ${hM.toLocaleString('ru-RU')} м · ${area.toFixed(2).replace('.', ',')} м² · панелей в проекте: ${cfg.panelCount}, расчётно: ${needed}${heightNote} · расчётная стоимость: ${fmt(calcCost)}`,
+          `Стена ${q + 1}: ${wM.toLocaleString('ru-RU')} × ${hM.toLocaleString('ru-RU')} м · ${area.toFixed(2).replace('.', ',')} м² · панелей в проекте: ${cfg.panelCount}${widthNote}${heightNote} · расчётная стоимость: ${fmt(calcCost)}`,
           60, y + 8);
         y += 28;
       });
+      if (sharedPanelsTotal > 0) {
+        c.fillStyle = '#5a9c3e'; c.font = 'bold 16px sans-serif';
+        c.fillText(
+          `Докрой по ширине: узкие полосы всех стен кроятся из общих панелей — ${sharedPanelsTotal} панел${sharedPanelsTotal === 1 ? 'ь' : sharedPanelsTotal >= 2 && sharedPanelsTotal <= 4 ? 'и' : 'ей'}${savedPanelsTotal > 0 ? ` (экономия ${savedPanelsTotal} панел${savedPanelsTotal === 1 ? 'ь' : savedPanelsTotal >= 2 && savedPanelsTotal <= 4 ? 'и' : 'ей'} — остатки идут в работу)` : ''}`,
+          60, y + 8);
+        y += 26;
+        c.font = '16px sans-serif';
+      }
       c.fillStyle = '#555555'; c.font = 'bold 16px sans-serif';
       c.fillText(
         `Панель 2,8 × 1,22 м (${PANEL_AREA_M2.toFixed(2).replace('.', ',')} м²) · общая площадь стен: ${totalWallArea.toFixed(2).replace('.', ',')} м²`,
