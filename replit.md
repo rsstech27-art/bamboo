@@ -72,6 +72,9 @@ Textures for Рейки: tex-443..tex-469 range (light blonde to near-black ebon
 - Column invisible faces: checkbox list in the column sidebar offers panels already used on the visualization; checked panels price the hidden portion of the perimeter in КП (otherwise average of visible), PDF shows a «Невидимые стороны» line
 - Mandatory corner profiles in КП: external corner WITHOUT загиб always gets a vertical profile at the shared edge (default metallic) if neither adjacent wall has its own vertical molding; skipped for round/oval column
 - Wrap (загиб) junction is drawn with NO seam/highlight — texture simply continues around the corner (realistic bend visual removed by user request)
+- Загиб is NEVER auto-enabled (also not for columns) — the client checks it manually
+- Dimension inputs (walls + column sides/height) use `MeterInput`: local text state, comma decimals, values like «0,5» type correctly; syncs from prop only when it disagrees with parsed text
+- КП shows «Расчётное количество материалов»: panels (calc by dimensions, else project count) + profile pieces (3 m)
 - Width-offcut reuse (`packWidthRemainders`, FFD bin packing): narrow full-height strips (width remainder < 1220mm) of all rows/walls are cut from shared donor panels; КП wall lines show «целых панелей N + полоса X см из общего докроя», plus a green «Докрой по ширине» summary line with saved-panel count; column calc packs its own rows' remainders the same way; per-wall calcCost = ownPanels + proportional share of shared panels, × wall avg price
 - Divider drag clamp: when active surface's `wallWidthMm` is set, a sector cannot be dragged wider than one physical panel (`maxSectorRatio = 1220/wallWidthMm` applied to both adjacent sectors)
 - КП «Итого» prioritises calculated cost: for walls with dimensions, project panel cost is replaced by расчётная стоимость (`finalTotal = total − projCostDimWalls + calcCost`); project-visualisation total shown below as reference when it differs

@@ -327,6 +327,37 @@ const MOLDING_INFO: Record<string, { article: string; name: string; price: numbe
   brass:    { article: 'PR-BRASS', name: 'Профиль латунь',        price: 990 },
 };
 
+// Meter input that keeps its own text while typing — a controlled type="number"
+// bound to parseFloat eats the leading «0» of values like «0,5» mid-typing
+const MeterInput = ({ valueMm, onChangeMm, placeholder }: {
+  valueMm: number; onChangeMm: (mm: number) => void; placeholder?: string;
+}) => {
+  const [text, setText] = useState(valueMm > 0 ? String(valueMm / 1000).replace('.', ',') : '');
+  useEffect(() => {
+    // Sync from the prop whenever it disagrees with what the current text means —
+    // covers external resets/surface switches without clobbering in-progress typing
+    // (partial input like «0,» still parses to the same mm value, so it is kept)
+    const parsed = parseFloat(text.replace(',', '.'));
+    const textMm = Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed * 1000) : 0;
+    if (valueMm !== textMm) {
+      setText(valueMm > 0 ? String(valueMm / 1000).replace('.', ',') : '');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [valueMm]);
+  return (
+    <input type="text" inputMode="decimal" placeholder={placeholder}
+      value={text}
+      onChange={(e) => {
+        const t = e.target.value;
+        setText(t);
+        const v = parseFloat(t.replace(',', '.'));
+        const mm = Number.isFinite(v) && v > 0 ? Math.round(v * 1000) : 0;
+        onChangeMm(mm);
+      }}
+      className="w-full mt-0.5 px-2 py-1.5 text-[11px] font-bold border border-gray-200 rounded-lg focus:outline-none focus:border-[#7ec662]" />
+  );
+};
+
 const CornerTypeCheckboxes = ({ nJunctions, cornerTypes, setCornerTypes, wrapJunctions, setWrapJunctions }: {
   nJunctions: number;
   cornerTypes: ('external' | 'internal')[];
@@ -1601,6 +1632,7 @@ const BambooStudio = () => {
           }
         : (surfacesRef.current[q] ?? defaultSurfaceConfig()));
     }
+    let projectPanelCount = 0;
     for (let q = 0; q < nQuads; q++) {
       const cfg = kpCfgs[q];
       const wrapLeft = q > 0 && (wrapJunctionsRef.current[q - 1] ?? false)
@@ -1613,6 +1645,7 @@ const BambooStudio = () => {
         const mat = cfg.sectorMaterials[i] || BAMBOO_PANELS[0];
         const isBent = i === cfg.panelCount - 1 && wrapRight;
         addItem(mat.article, `Панель «${mat.name}»${isBent ? ' (с загибом на угол)' : ''}`, 1, getPanelPrice(mat.id));
+        projectPanelCount++;
       }
     }
     // ── Profiles counted in 3 m pieces, like panels: collect required RUN LENGTHS
@@ -1661,8 +1694,10 @@ const BambooStudio = () => {
       }
     }
     // Pack each style's runs into 3 m pieces (offcuts reused project-wide)
+    let profilePiecesTotal = 0;
     for (const style of Object.keys(profileRuns) as Array<Exclude<MoldingStyle, 'none'>>) {
       const pieces = packProfileRuns(profileRuns[style]!);
+      profilePiecesTotal += pieces;
       if (pieces > 0) {
         const info = MOLDING_INFO[style];
         addItem(info.article + '-3M', `${info.name} (3 м, раскрой оптимизирован)`, pieces, info.price);
@@ -1915,6 +1950,20 @@ const BambooStudio = () => {
       y += 30;
     }
 
+    // Calculated material quantities: panels (calc if dimensions given, else project) + 3 m profile pieces
+    {
+      const calcPanelsTotal = columnCalc
+        ? columnCalc.needed
+        : wallCalcs.length > 0
+          ? wallCalcs.reduce((s, w) => s + w.ownPanels, 0) + sharedPanelsTotal
+          : projectPanelCount;
+      c.fillStyle = '#111111'; c.font = 'bold 16px sans-serif';
+      c.fillText(
+        `Расчётное количество материалов: панели — ${calcPanelsTotal} ${panelsWord(calcPanelsTotal)} · профили — ${profilePiecesTotal} шт. (хлысты по 3 м)`,
+        60, y + 8);
+      y += 32;
+    }
+
     // Total
     c.strokeStyle = '#111111'; c.lineWidth = 2;
     c.beginPath(); c.moveTo(60, y + 4); c.lineTo(W - 60, y + 4); c.stroke();
@@ -1986,7 +2035,7 @@ const BambooStudio = () => {
           activeSurfaceRef.current = 0;
           setActiveSurface(0);
           setCornerTypes(['external', 'external']);
-          setWrapJunctions(wallZone === 'column' ? [true, true] : [false, false]);
+          setWrapJunctions([false, false]);
           setWallWidthMm(0);
           setWallHeightMm(0);
           setSavedPng(null);
@@ -2154,7 +2203,7 @@ const BambooStudio = () => {
                 ] as const).map(zone => (
                   <button
                     key={zone.id}
-                    onClick={() => { setWallZone(zone.id); if (zone.id === 'column') { setCornerTypes(['external', 'external']); setWrapJunctions([true, true]); } setStep('upload'); }}
+                    onClick={() => { setWallZone(zone.id); if (zone.id === 'column') { setCornerTypes(['external', 'external']); } setStep('upload'); }}
                     className="flex flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-gray-50 hover:border-black hover:shadow-lg transition-all active:scale-95 group text-left"
                   >
                     <div className="w-full h-36 bg-gray-200 overflow-hidden relative">
@@ -2510,21 +2559,14 @@ const BambooStudio = () => {
                   ).map((label, idx) => (
                     <label key={label} className="block">
                       <span className="text-[8px] font-bold text-gray-400 uppercase">{label}</span>
-                      <input type="number" min="0" step="0.01" placeholder="0.40"
-                        value={columnSides[idx] > 0 ? columnSides[idx] / 1000 : ''}
-                        onChange={(e) => {
-                          const v = Math.max(0, Math.round((parseFloat(e.target.value) || 0) * 1000));
-                          setColumnSides(prev => { const next = [...prev]; next[idx] = v; return next; });
-                        }}
-                        className="w-full mt-0.5 px-2 py-1.5 text-[11px] font-bold border border-gray-200 rounded-lg focus:outline-none focus:border-[#7ec662]" />
+                      <MeterInput placeholder="0,40"
+                        valueMm={columnSides[idx]}
+                        onChangeMm={(v) => setColumnSides(prev => { const next = [...prev]; next[idx] = v; return next; })} />
                     </label>
                   ))}
                   <label className="block">
                     <span className="text-[8px] font-bold text-gray-400 uppercase">Высота, м</span>
-                    <input type="number" min="0" step="0.01" placeholder="напр. 2.7"
-                      value={columnHeightMm > 0 ? columnHeightMm / 1000 : ''}
-                      onChange={(e) => setColumnHeightMm(Math.max(0, Math.round((parseFloat(e.target.value) || 0) * 1000)))}
-                      className="w-full mt-0.5 px-2 py-1.5 text-[11px] font-bold border border-gray-200 rounded-lg focus:outline-none focus:border-[#7ec662]" />
+                    <MeterInput placeholder="напр. 2,7" valueMm={columnHeightMm} onChangeMm={setColumnHeightMm} />
                   </label>
                 </div>
                 <p className="text-[8px] text-gray-400 mb-1.5">Панель загибается вокруг колонны — расчёт по полному периметру (включая заднюю грань). Панель: 2,80 × 1,22 м.</p>
@@ -2580,17 +2622,11 @@ const BambooStudio = () => {
               <div className="grid grid-cols-2 gap-2 mb-2">
                 <label className="block">
                   <span className="text-[8px] font-bold text-gray-400 uppercase">Ширина, м</span>
-                  <input type="number" min="0" step="0.01" placeholder="напр. 3.6"
-                    value={wallWidthMm > 0 ? wallWidthMm / 1000 : ''}
-                    onChange={(e) => { pushHistory(); setWallWidthMm(Math.max(0, Math.round((parseFloat(e.target.value) || 0) * 1000))); }}
-                    className="w-full mt-0.5 px-2 py-1.5 text-[11px] font-bold border border-gray-200 rounded-lg focus:outline-none focus:border-[#7ec662]" />
+                  <MeterInput placeholder="напр. 3,6" valueMm={wallWidthMm} onChangeMm={(v) => { pushHistory(); setWallWidthMm(v); }} />
                 </label>
                 <label className="block">
                   <span className="text-[8px] font-bold text-gray-400 uppercase">Высота, м</span>
-                  <input type="number" min="0" step="0.01" placeholder="напр. 2.7"
-                    value={wallHeightMm > 0 ? wallHeightMm / 1000 : ''}
-                    onChange={(e) => { pushHistory(); setWallHeightMm(Math.max(0, Math.round((parseFloat(e.target.value) || 0) * 1000))); }}
-                    className="w-full mt-0.5 px-2 py-1.5 text-[11px] font-bold border border-gray-200 rounded-lg focus:outline-none focus:border-[#7ec662]" />
+                  <MeterInput placeholder="напр. 2,7" valueMm={wallHeightMm} onChangeMm={(v) => { pushHistory(); setWallHeightMm(v); }} />
                 </label>
               </div>
               <p className="text-[8px] text-gray-400 mb-1.5">Панель: 2,80 × 1,22 м ({PANEL_AREA_M2.toFixed(2).replace('.', ',')} м²)</p>
