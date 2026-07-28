@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Upload, Layout, Eraser, RotateCcw, Download, Check, Columns, Undo2, Sun, Moon, FileText } from 'lucide-react';
+import { PANEL_H_MM, PANEL_W_MM, PANEL_AREA_M2, optimizedPanelCalc, packWidthRemainders, panelsWord, rowsWord } from './lib/panelCalc';
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -317,42 +318,7 @@ PANEL_SERIES.forEach(sr => sr.panels.forEach(pl => { PANEL_TO_SERIES[pl.id] = sr
 const getPanelPrice = (panelId: string) => SERIES_PRICES[PANEL_TO_SERIES[panelId] ?? ''] ?? 4900;
 
 // Profile (molding) catalogue info for the commercial proposal
-// Physical panel dimensions: 2800 mm (H) x 1220 mm (W)
-const PANEL_H_MM = 2800;
-const PANEL_W_MM = 1220;
-const PANEL_AREA_M2 = (PANEL_H_MM / 1000) * (PANEL_W_MM / 1000); // 3.416 m²
-
-// Optimized panel count for a grid of `columns` × height:
-// full rows use whole panels; the remaining strip height is CUT from as few
-// donor panels as possible (one 2800 mm panel yields floor(2800/rem) strips).
-const optimizedPanelCalc = (columns: number, heightMm: number) => {
-  if (columns <= 0) return { needed: 0, fullRows: 1, remMm: 0, donorPanels: 0, stripsPerPanel: 0 };
-  const h = heightMm > 0 ? heightMm : PANEL_H_MM;
-  // Every column always needs at least one base panel; donor-strip
-  // optimization applies only to the remainder ABOVE full panel rows.
-  const fullRows = Math.max(1, Math.floor(h / PANEL_H_MM));
-  let remMm = h - fullRows * PANEL_H_MM;
-  if (remMm < 1) remMm = 0; // exact multiple (or height ≤ one panel)
-  let donorPanels = 0, stripsPerPanel = 0;
-  if (remMm > 0) {
-    stripsPerPanel = Math.max(1, Math.floor(PANEL_H_MM / remMm));
-    donorPanels = Math.ceil(columns / stripsPerPanel);
-  }
-  return { needed: columns * fullRows + donorPanels, fullRows, remMm, donorPanels, stripsPerPanel };
-};
-
-// Width-offcut reuse: narrow full-height strips (width < 1220 mm) from different
-// walls/rows are cut from SHARED donor panels instead of one panel per strip.
-// First-fit decreasing bin packing; returns how many 1220-wide panels are needed.
-const packWidthRemainders = (piecesMm: number[]) => {
-  const sorted = piecesMm.filter(p => p > 0).sort((a, b) => b - a);
-  const bins: number[] = []; // remaining usable width of each opened panel
-  for (const p of sorted) {
-    const i = bins.findIndex(b => b >= p);
-    if (i >= 0) bins[i] -= p; else bins.push(PANEL_W_MM - p);
-  }
-  return bins.length;
-};
+// Panel cut-optimization math lives in lib/panelCalc.ts (unit-tested).
 
 const MOLDING_INFO: Record<string, { article: string; name: string; price: number }> = {
   gold:     { article: 'PR-GOLD',  name: 'Профиль золото',        price: 990 },
@@ -1836,8 +1802,8 @@ const BambooStudio = () => {
         const area = wM * hM;
         totalWallArea += area;
         const heightNote = opt.donorPanels > 0
-          ? ` · докрой по высоте: ${opt.donorPanels} панел${opt.donorPanels === 1 ? 'ь' : opt.donorPanels >= 2 && opt.donorPanels <= 4 ? 'и' : 'ей'} режется на полосы ${(opt.remMm / 10).toFixed(0)} см (${opt.stripsPerPanel} шт. из панели)`
-          : opt.fullRows > 1 ? ` · ${opt.fullRows} ряда по высоте` : '';
+          ? ` · докрой по высоте: ${opt.donorPanels} ${panelsWord(opt.donorPanels)} режется на полосы ${(opt.remMm / 10).toFixed(0)} см (${opt.stripsPerPanel} шт. из панели)`
+          : opt.fullRows > 1 ? ` · ${opt.fullRows} ${rowsWord(opt.fullRows)} по высоте` : '';
         const widthNote = remW > 0
           ? ` · целых панелей: ${ownPanels} + полоса ${(remW / 10).toFixed(0)} см на ряд из общего докроя`
           : ` · целых панелей: ${ownPanels}`;
@@ -1850,7 +1816,7 @@ const BambooStudio = () => {
       if (sharedPanelsTotal > 0) {
         c.fillStyle = '#5a9c3e'; c.font = 'bold 16px sans-serif';
         c.fillText(
-          `Докрой по ширине: узкие полосы всех стен кроятся из общих панелей — ${sharedPanelsTotal} панел${sharedPanelsTotal === 1 ? 'ь' : sharedPanelsTotal >= 2 && sharedPanelsTotal <= 4 ? 'и' : 'ей'}${savedPanelsTotal > 0 ? ` (экономия ${savedPanelsTotal} панел${savedPanelsTotal === 1 ? 'ь' : savedPanelsTotal >= 2 && savedPanelsTotal <= 4 ? 'и' : 'ей'} — остатки идут в работу)` : ''}`,
+          `Докрой по ширине: узкие полосы всех стен кроятся из общих панелей — ${sharedPanelsTotal} ${panelsWord(sharedPanelsTotal)}${savedPanelsTotal > 0 ? ` (экономия ${savedPanelsTotal} ${panelsWord(savedPanelsTotal)} — остатки идут в работу)` : ''}`,
           60, y + 8);
         y += 26;
         c.font = '16px sans-serif';
@@ -1884,7 +1850,7 @@ const BambooStudio = () => {
       y += 28;
       if (columnCalc.opt.donorPanels > 0) {
         c.fillText(
-          `Докрой по высоте: ${columnCalc.opt.donorPanels} панел${columnCalc.opt.donorPanels === 1 ? 'ь' : columnCalc.opt.donorPanels >= 2 && columnCalc.opt.donorPanels <= 4 ? 'и' : 'ей'} режется на полосы ${(columnCalc.opt.remMm / 10).toFixed(0)} см (${columnCalc.opt.stripsPerPanel} шт. из одной панели)`,
+          `Докрой по высоте: ${columnCalc.opt.donorPanels} ${panelsWord(columnCalc.opt.donorPanels)} режется на полосы ${(columnCalc.opt.remMm / 10).toFixed(0)} см (${columnCalc.opt.stripsPerPanel} шт. из одной панели)`,
           60, y + 8);
         y += 28;
       }
@@ -2500,7 +2466,7 @@ const BambooStudio = () => {
                       <p className="text-[9px] font-bold text-gray-600">Периметр: {(perMm / 1000).toFixed(2).replace('.', ',')} м{areaM2 > 0 ? ` · площадь: ${areaM2.toFixed(2).replace('.', ',')} м²` : ''}</p>
                       <p className="text-[9px] font-bold text-[#5a9c3e]">Панелей всего: {opt.needed} (по периметру {perRow}, периметр ÷ 1,22 м, округление вверх)</p>
                       {opt.donorPanels > 0 && columnHeightMm > PANEL_H_MM && (
-                        <p className="text-[9px] font-bold text-amber-600">⚠ Высота больше 2,8 м — недостающие {(opt.remMm / 10).toFixed(0)} см докраиваются: {opt.donorPanels} панел{opt.donorPanels === 1 ? 'ь' : opt.donorPanels >= 2 && opt.donorPanels <= 4 ? 'и' : 'ей'} режется на полосы ({opt.stripsPerPanel} шт. из одной панели)</p>
+                        <p className="text-[9px] font-bold text-amber-600">⚠ Высота больше 2,8 м — недостающие {(opt.remMm / 10).toFixed(0)} см докраиваются: {opt.donorPanels} {panelsWord(opt.donorPanels)} режется на полосы ({opt.stripsPerPanel} шт. из одной панели)</p>
                       )}
                     </div>
                   );
@@ -2544,19 +2510,19 @@ const BambooStudio = () => {
                     <p className={`text-[9px] font-bold ${enough ? 'text-[#5a9c3e]' : 'text-amber-600'}`}>
                       {enough
                         ? `✓ Панелей в ряду достаточно: ${panelCount} (по ширине ${cols})`
-                        : `⚠ По ширине нужно ${cols} панел${cols === 1 ? 'ь' : cols % 10 >= 2 && cols % 10 <= 4 && (cols < 10 || cols > 20) ? 'и' : 'ей'} в ряду — в проекте ${panelCount}`}
+                        : `⚠ По ширине нужно ${cols} ${panelsWord(cols)} в ряду — в проекте ${panelCount}`}
                     </p>
                     {!enough && (
                       <button onClick={() => handleChangePanelCount(cols)}
                         className="w-full py-1.5 text-[9px] font-bold rounded-lg bg-[#7ec662] text-white hover:bg-[#6db453] transition-all active:scale-95">
-                        Установить {cols} панел{cols === 1 ? 'ь' : cols % 10 >= 2 && cols % 10 <= 4 && (cols < 10 || cols > 20) ? 'и' : 'ей'} в ряд
+                        Установить {cols} {panelsWord(cols)} в ряд
                       </button>
                     )}
                     {tooTall && (
                       <p className="text-[9px] font-bold text-amber-600">
                         {opt.donorPanels > 0
-                          ? `⚠ Высота стены больше 2,8 м — недостающие ${(opt.remMm / 10).toFixed(0)} см докраиваются: ${opt.donorPanels} панел${opt.donorPanels === 1 ? 'ь' : opt.donorPanels >= 2 && opt.donorPanels <= 4 ? 'и' : 'ей'} режется на полосы (${opt.stripsPerPanel} шт. из одной), всего ${opt.needed} панелей (в расчёте КП учтено)`
-                          : `⚠ Высота стены больше 2,8 м — ${opt.fullRows} ряда по высоте, всего ${opt.needed} панелей (в расчёте КП учтено)`}
+                          ? `⚠ Высота стены больше 2,8 м — недостающие ${(opt.remMm / 10).toFixed(0)} см докраиваются: ${opt.donorPanels} ${panelsWord(opt.donorPanels)} режется на полосы (${opt.stripsPerPanel} шт. из одной), всего ${opt.needed} ${panelsWord(opt.needed)} (в расчёте КП учтено)`
+                          : `⚠ Высота стены больше 2,8 м — ${opt.fullRows} ${rowsWord(opt.fullRows)} по высоте, всего ${opt.needed} ${panelsWord(opt.needed)} (в расчёте КП учтено)`}
                       </p>
                     )}
                     <p className="text-[8px] text-gray-400">Ширина панели в проекте: {(wallWidthMm / panelCount / 1000).toFixed(2).replace('.', ',')} м (макс. 1,22 м)</p>
