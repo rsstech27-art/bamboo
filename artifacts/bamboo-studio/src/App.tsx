@@ -1633,6 +1633,7 @@ const BambooStudio = () => {
         : (surfacesRef.current[q] ?? defaultSurfaceConfig()));
     }
     let projectPanelCount = 0;
+    const panelArticles = new Set<string>();
     for (let q = 0; q < nQuads; q++) {
       const cfg = kpCfgs[q];
       const wrapLeft = q > 0 && (wrapJunctionsRef.current[q - 1] ?? false)
@@ -1645,6 +1646,7 @@ const BambooStudio = () => {
         const mat = cfg.sectorMaterials[i] || BAMBOO_PANELS[0];
         const isBent = i === cfg.panelCount - 1 && wrapRight;
         addItem(mat.article, `Панель «${mat.name}»${isBent ? ' (с загибом на угол)' : ''}`, 1, getPanelPrice(mat.id));
+        panelArticles.add(mat.article);
         projectPanelCount++;
       }
     }
@@ -1745,13 +1747,16 @@ const BambooStudio = () => {
       const hiddenAvg = hiddenSel.length > 0
         ? hiddenSel.reduce((s, p) => s + getPanelPrice(p.id), 0) / hiddenSel.length
         : avgPrice;
-      const hiddenCount = Math.max(0, needed - projCount);
+      // Hidden faces are counted by PERIMETER FACES, not by optimized purchases:
+      // a 4-panel perimeter with 2 panels visible on the visualization ⇒ 2 hidden panels
+      const hiddenCount = Math.max(0, perRow - projCount);
+      const neededTotal = Math.max(needed, projCount + hiddenCount);
       const calcCost = Math.round(projCost + hiddenCount * hiddenAvg);
       // Corners wrapped by bent panels — profiles are NOT tied to the number of faces
       const wrappedCorners = wrapJunctionsRef.current
         .slice(0, Math.max(0, nQuads - 1))
         .filter((w, j) => w && (cornerTypesRef.current[j] ?? 'external') === 'external').length;
-      return { perRow, opt, needed, areaM2, projCost, calcCost, wrappedCorners, hiddenCount, hiddenNames: hiddenSel.map(p => p.name) };
+      return { perRow, opt, needed: neededTotal, areaM2, projCost, projCount, calcCost, wrappedCorners, hiddenCount, hiddenSel, hiddenNames: hiddenSel.map(p => p.name) };
     })() : null;
 
     // Wall dimension calculations: if dimensions are set, the calculated
@@ -1779,7 +1784,7 @@ const BambooStudio = () => {
         }
         const billedCount = cfg.panelCount - (wrapL ? 1 : 0);
         const avgPrice = billedCount > 0 ? projCost / billedCount : getPanelPrice(BAMBOO_PANELS[0].id);
-        return { cfg, q, cols, opt, fullPerRow, remW, ownPanels, projCost, avgPrice };
+        return { cfg, q, cols, opt, fullPerRow, remW, ownPanels, projCost, avgPrice, billedCount };
       })
       .map((w, _i, all) => {
         // Cross-wall width packing: all walls' remainder strips share donor panels
@@ -1798,11 +1803,54 @@ const BambooStudio = () => {
     const savedPanelsTotal = wallCalcs.length > 0 ? wallCalcs[0].savedPanels : 0;
     const totalCalcCost = wallCalcs.reduce((sum, w) => sum + w.calcCost, 0);
     const totalProjCostDimWalls = wallCalcs.reduce((sum, w) => sum + w.projCost, 0);
-    // Final total: replace project panel cost with calculated cost for walls that have dimensions
-    // (for a column — the calculated full-perimeter cost takes priority, like for walls)
-    const finalTotal = columnCalc
-      ? total - columnCalc.projCost + columnCalc.calcCost
-      : wallCalcs.length > 0 ? total - totalProjCostDimWalls + totalCalcCost : total;
+    // ── Table rows show CALCULATED quantities: rewrite panel item qtys ──
+    // (profiles are already calculated — 3 m pieces packed above)
+    // Largest-remainder scaling keeps the article mix proportional to the project
+    const scaleQtys = (its: KPItem[], target: number) => {
+      const cur = its.reduce((s, it) => s + it.qty, 0);
+      if (cur <= 0 || target === cur) return;
+      const scaled = its.map(it => (it.qty * target) / cur);
+      const floors = scaled.map(Math.floor);
+      let rem = target - floors.reduce((s, f) => s + f, 0);
+      scaled
+        .map((v, i) => ({ i, frac: v - Math.floor(v) }))
+        .sort((a, b) => b.frac - a.frac)
+        .forEach(({ i }) => { if (rem > 0) { floors[i]++; rem--; } });
+      its.forEach((it, i) => { it.qty = Math.max(0, floors[i]); });
+    };
+    let panelsTableTotal = projectPanelCount;
+    if (columnCalc) {
+      // Hidden column faces: separate lines for client-selected panels,
+      // otherwise spread over the visible panel mix
+      if (columnCalc.hiddenCount > 0 && columnCalc.hiddenSel.length > 0) {
+        const per = Math.floor(columnCalc.hiddenCount / columnCalc.hiddenSel.length);
+        let extra = columnCalc.hiddenCount - per * columnCalc.hiddenSel.length;
+        columnCalc.hiddenSel.forEach(p => {
+          const qty = per + (extra > 0 ? 1 : 0);
+          if (extra > 0) extra--;
+          if (qty > 0) {
+            addItem(p.article, `Панель «${p.name}» (невидимая сторона)`, qty, getPanelPrice(p.id));
+            panelArticles.add(p.article);
+          }
+        });
+      }
+      // The table must land on the FULL calculated need (faces + height donor panels):
+      // scale all panel lines (visible + hidden) up to columnCalc.needed
+      panelsTableTotal = columnCalc.needed;
+      scaleQtys(items.filter(it => panelArticles.has(it.article)), panelsTableTotal);
+    } else if (wallCalcs.length > 0) {
+      // Walls with dimensions: their project panels are replaced by the calculated
+      // count (own full panels + shared width-offcut panels); other walls keep project counts
+      const dimProj = wallCalcs.reduce((s, w) => s + w.billedCount, 0);
+      const calcDim = wallCalcs.reduce((s, w) => s + w.ownPanels, 0) + sharedPanelsTotal;
+      panelsTableTotal = Math.max(0, projectPanelCount - dimProj) + calcDim;
+      scaleQtys(items.filter(it => panelArticles.has(it.article)), panelsTableTotal);
+    }
+    const panelsTableCost = items.filter(it => panelArticles.has(it.article))
+      .reduce((s, it) => s + it.qty * it.price, 0);
+    // Final total = the table itself (calculated panel quantities + 3 m profile pieces)
+    const finalTotal = items.reduce((sum, it) => sum + it.qty * it.price, 0);
+    void totalCalcCost; void totalProjCostDimWalls;
 
     // Render КП onto an A4 canvas (Cyrillic-safe), then embed into PDF
     const W = 1240, H = 1754; // A4 @ 150dpi
@@ -1904,7 +1952,7 @@ const BambooStudio = () => {
       y += 26;
       c.fillStyle = '#111111';
       c.fillText(
-        `Расчётная стоимость панелей по размерам стен: ${fmt(Math.round(totalCalcCost))}`,
+        `Расчётная стоимость панелей по размерам стен: ${fmt(Math.round(panelsTableCost))}`,
         60, y + 8);
       y += 30;
     }
@@ -1946,20 +1994,15 @@ const BambooStudio = () => {
         y += 28;
       }
       c.fillStyle = '#111111'; c.font = 'bold 16px sans-serif';
-      c.fillText(`Расчётная стоимость панелей колонны: ${fmt(columnCalc.calcCost)}`, 60, y + 8);
+      c.fillText(`Расчётная стоимость панелей колонны: ${fmt(Math.round(panelsTableCost))}`, 60, y + 8);
       y += 30;
     }
 
     // Calculated material quantities: panels (calc if dimensions given, else project) + 3 m profile pieces
     {
-      const calcPanelsTotal = columnCalc
-        ? columnCalc.needed
-        : wallCalcs.length > 0
-          ? wallCalcs.reduce((s, w) => s + w.ownPanels, 0) + sharedPanelsTotal
-          : projectPanelCount;
       c.fillStyle = '#111111'; c.font = 'bold 16px sans-serif';
       c.fillText(
-        `Расчётное количество материалов: панели — ${calcPanelsTotal} ${panelsWord(calcPanelsTotal)} · профили — ${profilePiecesTotal} шт. (хлысты по 3 м)`,
+        `Расчётное количество материалов: панели — ${panelsTableTotal} ${panelsWord(panelsTableTotal)} · профили — ${profilePiecesTotal} шт. (хлысты по 3 м)`,
         60, y + 8);
       y += 32;
     }

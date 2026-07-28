@@ -75,6 +75,8 @@ Textures for Рейки: tex-443..tex-469 range (light blonde to near-black ebon
 - Загиб is NEVER auto-enabled (also not for columns) — the client checks it manually
 - Dimension inputs (walls + column sides/height) use `MeterInput`: local text state, comma decimals, values like «0,5» type correctly; syncs from prop only when it disagrees with parsed text
 - КП shows «Расчётное количество материалов»: panels (calc by dimensions, else project count) + profile pieces (3 m)
+- КП TABLE rows show CALCULATED quantities: panel item qtys rescaled (largest remainder) to the calc total (walls: ownPanels+shared; column: columnCalc.needed); Итого = table sum
+- Column hidden faces counted by perimeter FACES (perRow − visible), not optimized purchases; client-selected hidden panels appear as separate table lines «(невидимая сторона)»
 - Width-offcut reuse (`packWidthRemainders`, FFD bin packing): narrow full-height strips (width remainder < 1220mm) of all rows/walls are cut from shared donor panels; КП wall lines show «целых панелей N + полоса X см из общего докроя», plus a green «Докрой по ширине» summary line with saved-panel count; column calc packs its own rows' remainders the same way; per-wall calcCost = ownPanels + proportional share of shared panels, × wall avg price
 - Divider drag clamp: when active surface's `wallWidthMm` is set, a sector cannot be dragged wider than one physical panel (`maxSectorRatio = 1220/wallWidthMm` applied to both adjacent sectors)
 - КП «Итого» prioritises calculated cost: for walls with dimensions, project panel cost is replaced by расчётная стоимость (`finalTotal = total − projCostDimWalls + calcCost`); project-visualisation total shown below as reference when it differs
