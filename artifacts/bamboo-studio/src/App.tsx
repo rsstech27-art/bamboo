@@ -283,7 +283,8 @@ const defaultSurfaceConfig = (): SurfaceConfig => ({
 
 const SURFACE_LABELS = ['Стена 1 · Основная', 'Стена 2', 'Стена 3'];
 const COLUMN_SURFACE_LABELS = ['Грань 1 · Основная', 'Грань 2', 'Грань 3'];
-const WINDOW_SURFACE_LABELS = ['Откос', 'Подоконник', '—'];
+const WINDOW_STD_LABELS = ['Откос', 'Подоконник', '—'];
+const WINDOW_PAN_LABELS = ['Откос', 'Горизонтальная плоскость', '—'];
 
 // ── Column (колонна) shapes & perimeter helpers ──
 type ColumnShape = 'rect' | 'round' | 'triangle';
@@ -1567,7 +1568,7 @@ const BambooStudio = () => {
     // Don't trigger sector selection if click was near a divider or h-molding handle
     if (step === 'edit' && (findNearDivider(x, y) !== -1 || findNearHMolding(x, y) !== -1)) return;
 
-    if (step === 'mark' && points.length < (wallZone === 'wall-niche' ? 12 : wallZone === 'column' || (wallZone === 'window' && windowType === 'standard') ? 8 : 4)) {
+    if (step === 'mark' && points.length < (wallZone === 'wall-niche' ? 12 : wallZone === 'column' || wallZone === 'window' ? 8 : 4)) {
       setPoints([...points, { x, y }]);
     } else if (step === 'edit') {
       const pts = pointsRef.current;
@@ -2556,7 +2557,7 @@ const BambooStudio = () => {
                     : wallZone === 'window' && windowType === 'standard'
                     ? (points.length < 4 ? `Откос: точка ${points.length + 1}/4` : points.length < 8 ? `Подоконник: точка ${points.length - 3}/4 или «Начать»` : 'Нажмите «Начать примерку»')
                     : wallZone === 'window' && windowType === 'panoramic'
-                    ? (points.length < 4 ? `Откос: точка ${points.length + 1}/4` : 'Нажмите «Начать примерку»')
+                    ? (points.length < 4 ? `Откос: точка ${points.length + 1}/4` : points.length < 8 ? `Гориз. плоскость: точка ${points.length - 3}/4 или «Начать»` : 'Нажмите «Начать примерку»')
                     : (points.length < 4 ? `Кликните на угол стены (${points.length}/4)` : 'Нажмите «Начать примерку»')}
                 </div>
               )}
@@ -2586,7 +2587,7 @@ const BambooStudio = () => {
                   : wallZone === 'window' && windowType === 'standard'
                   ? (points.length < 4 ? `Откос: точка ${points.length + 1}/4` : points.length < 8 ? `Подоконник: точка ${points.length - 3}/4 или «Начать»` : 'Нажмите «Начать примерку»')
                   : wallZone === 'window' && windowType === 'panoramic'
-                  ? (points.length < 4 ? `Откос: точка ${points.length + 1}/4` : 'Нажмите «Начать примерку»')
+                  ? (points.length < 4 ? `Откос: точка ${points.length + 1}/4` : points.length < 8 ? `Гориз. плоскость: точка ${points.length - 3}/4 или «Начать»` : 'Нажмите «Начать примерку»')
                   : (points.length < 4 ? `Кликните на угол стены (${points.length}/4)` : 'Нажмите «Начать примерку»')}
               </div>
             )}
@@ -2640,15 +2641,15 @@ const BambooStudio = () => {
                 </p>
               ) : wallZone === 'window' && windowType === 'panoramic' ? (
                 <p className="text-[9px] text-gray-400 mb-2 leading-relaxed">
-                  Отметьте <span className="font-bold text-gray-600">видимый откос</span> панорамного окна — 4 угла по часовой стрелке.<br/>
+                  Отметьте <span className="font-bold text-gray-600">до 2 плоскостей</span> панорамного окна — каждая отдельно, 4 угла по часовой стрелке.<br/>
                   <span className="font-bold text-[#007aff]">Откос</span> — боковая/верхняя плоскость (обязательно).<br/>
-                  В расчёте: <span className="font-bold text-gray-600">3 откоса</span> (2 вертикальных + верхний). Подоконник у панорамного окна отсутствует.
+                  <span className="font-bold text-[#7ec662]">Горизонтальная плоскость</span> — нижняя горизонтальная поверхность (по желанию).
                 </p>
               ) : (
                 <p className="text-[9px] text-gray-400 mb-4 leading-relaxed">Кликайте по 4 углам стены по часовой стрелке.</p>
               )}
               <div className="flex flex-wrap gap-1.5 mb-5">
-                {Array.from({ length: wallZone === 'wall-niche' ? 12 : wallZone === 'column' || (wallZone === 'window' && windowType === 'standard') ? 8 : 4 }, (_, i) => i + 1).map(i => (
+                {Array.from({ length: wallZone === 'wall-niche' ? 12 : wallZone === 'column' || wallZone === 'window' ? 8 : 4 }, (_, i) => i + 1).map(i => (
                   <div key={i} className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-all ${
                     points.length >= i
                       ? (i <= 4 ? 'bg-[#007aff] text-white border-[#007aff]' : i <= 8 ? 'bg-[#7ec662] text-white border-[#7ec662]' : 'bg-[#ff9500] text-white border-[#ff9500]')
@@ -2830,7 +2831,7 @@ const BambooStudio = () => {
                   {Array.from({ length: Math.min(3, Math.floor(points.length / 4)) }, (_, i) => i).map(i => (
                     <button key={i} onClick={() => switchSurface(i)}
                       className={`w-full py-2 px-3 text-left text-[10px] font-bold rounded-xl border transition-all active:scale-95 ${activeSurface === i ? 'bg-[#7ec662] text-white border-[#7ec662]' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
-                      {(wallZone === 'column' ? COLUMN_SURFACE_LABELS : wallZone === 'window' ? WINDOW_SURFACE_LABELS : SURFACE_LABELS)[i]}
+                      {(wallZone === 'column' ? COLUMN_SURFACE_LABELS : wallZone === 'window' ? (windowType === 'panoramic' ? WINDOW_PAN_LABELS : WINDOW_STD_LABELS) : SURFACE_LABELS)[i]}
                     </button>
                   ))}
                 </div>
