@@ -408,8 +408,6 @@ const BambooStudio = () => {
   const [winSlopeDepthMm, setWinSlopeDepthMm] = useState(0);
   const [winWidthMm, setWinWidthMm] = useState(0);
   const [winHeightMm, setWinHeightMm] = useState(0);
-  const [winSillDepthMm, setWinSillDepthMm] = useState(0);
-  const [winSillWidthMm, setWinSillWidthMm] = useState(0);
   const [winJoint, setWinJoint] = useState<'profile' | 'bend'>('profile');
   const [points, setPoints] = useState<Point[]>([]);
   const [panelCount, setPanelCount] = useState(5);
@@ -1705,8 +1703,8 @@ const BambooStudio = () => {
       ? (() => {
           const pieces = windowStdPieces(
             winSlopeDepthMm, winWidthMm, winHeightMm,
-            isWindowStd ? winSillDepthMm : 0,
-            isWindowStd ? winSillWidthMm : 0,
+            0,
+            0,
           );
           return pieces.length > 0 ? packWindowPieces(pieces) : null;
         })()
@@ -2185,11 +2183,11 @@ const BambooStudio = () => {
       y += 34;
       c.font = '16px sans-serif'; c.fillStyle = '#333333';
       c.fillText(
-        `${isWindowPan ? 'Панорамное окно' : 'Окно'}: ${(winWidthMm / 1000).toLocaleString('ru-RU')} × ${(winHeightMm / 1000).toLocaleString('ru-RU')} м · откос ${(winSlopeDepthMm / 1000).toLocaleString('ru-RU')} м${isWindowStd && winSillDepthMm > 0 ? ` · подоконник ${(winSillDepthMm / 1000).toLocaleString('ru-RU')} × ${((winSillWidthMm > 0 ? winSillWidthMm : winWidthMm) / 1000).toLocaleString('ru-RU')} м` : isWindowPan ? ' (подоконник отсутствует)' : ''}`,
+        `${isWindowPan ? 'Панорамное окно' : 'Окно'}: ${(winWidthMm / 1000).toLocaleString('ru-RU')} × ${(winHeightMm / 1000).toLocaleString('ru-RU')} м · откос ${(winSlopeDepthMm / 1000).toLocaleString('ru-RU')} м${isWindowPan ? ' (подоконник отсутствует)' : ''}`,
         60, y + 8);
       y += 28;
       c.fillText(
-        `Деталей: ${windowCut.pieces.length}${winSlopeDepthMm > 0 ? ' — откосы: 2 вертикальных + 1 верхний' : ''}${isWindowStd && winSillDepthMm > 0 ? ' + подоконник' : ''} · панелей: ${windowCut.panels} (обрезки полос используются повторно)`,
+        `Деталей: ${windowCut.pieces.length}${winSlopeDepthMm > 0 ? ' — откосы: 2 вертикальных + 1 верхний' : ''} · панелей: ${windowCut.panels} (обрезки полос используются повторно)`,
         60, y + 8);
       y += 28;
       c.fillText(
@@ -2423,7 +2421,7 @@ const BambooStudio = () => {
             )}
             {step !== 'zone' && (
               <button
-                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setHistoryLen(0); surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setSavedPng(null); setWinSlopeDepthMm(0); setWinWidthMm(0); setWinHeightMm(0); setWinSillDepthMm(0); setWinSillWidthMm(0); setWinJoint('profile'); setStep('zone'); setWallZone(null); setWindowType(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
+                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setHistoryLen(0); surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setSavedPng(null); setWinSlopeDepthMm(0); setWinWidthMm(0); setWinHeightMm(0); setWinJoint('profile'); setStep('zone'); setWallZone(null); setWindowType(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
                 className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
               >
                 ← Назад
@@ -2948,14 +2946,7 @@ const BambooStudio = () => {
                     <span className="text-[8px] font-bold text-gray-400 uppercase">Глубина откоса, м</span>
                     <MeterInput placeholder="напр. 0,25" valueMm={winSlopeDepthMm} onChangeMm={(v) => { pushHistory(); setWinSlopeDepthMm(v); }} />
                   </label>
-                  <label className="block">
-                    <span className="text-[8px] font-bold text-gray-400 uppercase">Глубина подоконника, м</span>
-                    <MeterInput placeholder="напр. 0,30" valueMm={winSillDepthMm} onChangeMm={(v) => { pushHistory(); setWinSillDepthMm(v); }} />
-                  </label>
-                  <label className="block col-span-2">
-                    <span className="text-[8px] font-bold text-gray-400 uppercase">Ширина подоконника, м (пусто = ширина окна)</span>
-                    <MeterInput placeholder="напр. 1,5" valueMm={winSillWidthMm} onChangeMm={(v) => { pushHistory(); setWinSillWidthMm(v); }} />
-                  </label>
+                  
                 </div>
                 <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Соединение на углах откосов</p>
                 <div className="grid grid-cols-2 gap-1.5 mb-2">
@@ -2971,16 +2962,14 @@ const BambooStudio = () => {
                   ? 'На наружных углах откосов ставится профиль: 2 вертикальных (высота окна) + 1 горизонтальный (ширина окна). Хлысты 3 м, раскрой оптимизирован.'
                   : 'Панель загибается на углах — профили не требуются.'}</p>
                 {(() => {
-                  const sillD = windowType === 'standard' ? winSillDepthMm : 0;
-                  const sillW = windowType === 'standard' ? winSillWidthMm : 0;
-                  const pieces = windowStdPieces(winSlopeDepthMm, winWidthMm, winHeightMm, sillD, sillW);
+                  const pieces = windowStdPieces(winSlopeDepthMm, winWidthMm, winHeightMm, 0, 0);
                   if (pieces.length === 0) return (
                     <p className="text-[8px] text-gray-400">В расчёте: 3 откоса (2 вертикальных по высоте окна + верхний по ширине) и 1 подоконник. Обрезки панелей используются повторно.</p>
                   );
                   const cut = packWindowPieces(pieces);
                   return (
                     <div className="space-y-1">
-                      <p className="text-[9px] font-bold text-gray-600">Деталей: {cut.pieces.length} ({winSlopeDepthMm > 0 ? '3 откоса' : 'откосы не заданы'}{sillD > 0 ? ' + подоконник' : ''})</p>
+                      <p className="text-[9px] font-bold text-gray-600">Деталей: {cut.pieces.length} ({winSlopeDepthMm > 0 ? '3 откоса' : 'откосы не заданы'})</p>
                       <p className="text-[9px] font-bold text-[#5a9c3e]">Панелей: {cut.panels} — обрезки полос используются повторно</p>
                     </div>
                   );
