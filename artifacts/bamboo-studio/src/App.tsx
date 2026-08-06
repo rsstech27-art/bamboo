@@ -1699,9 +1699,15 @@ const BambooStudio = () => {
     const isColumn = wallZone === 'column';
     // Standard window: panels come from the piece-cutting calc, profiles from the joint preference
     const isWindowStd = wallZone === 'window' && windowType === 'standard';
-    const windowCut = isWindowStd
+    const isWindowPan = wallZone === 'window' && windowType === 'panoramic';
+    const isWindowAny = isWindowStd || isWindowPan;
+    const windowCut = isWindowAny
       ? (() => {
-          const pieces = windowStdPieces(winSlopeDepthMm, winWidthMm, winHeightMm, winSillDepthMm, winSillWidthMm);
+          const pieces = windowStdPieces(
+            winSlopeDepthMm, winWidthMm, winHeightMm,
+            isWindowStd ? winSillDepthMm : 0,
+            isWindowStd ? winSillWidthMm : 0,
+          );
           return pieces.length > 0 ? packWindowPieces(pieces) : null;
         })()
       : null;
@@ -1718,7 +1724,7 @@ const BambooStudio = () => {
       const wMm = cfg.wallWidthMm > 0 ? cfg.wallWidthMm : cfg.panelCount * PANEL_W_MM;
       // Standard window: profiles are driven by the corner-joint preference below,
       // not by per-surface molding/joint rules
-      if (isWindowStd) continue;
+      if (isWindowAny) continue;
       if (cfg.moldingStyle !== 'none') {
         // A wrapped (загиб) junction has NO profile at the shared edge — deduct it
         const vQty = Math.max(0, cfg.panelCount + 1 - (wrapLeft ? 1 : 0) - (wrapRight ? 1 : 0));
@@ -1745,7 +1751,7 @@ const BambooStudio = () => {
     // vertical profile at the shared edge — even if the walls have no molding style.
     // Exception: round/oval column (panel bends smoothly, no corner edges).
     const isRoundColumn = wallZone === 'column' && columnShape === 'round';
-    if (!isRoundColumn && !isWindowStd) {
+    if (!isRoundColumn && !isWindowAny) {
       for (let j = 0; j < nQuads - 1; j++) {
         const external = (cornerTypesRef.current[j] ?? 'external') === 'external';
         const wrapped = external && (wrapJunctionsRef.current[j] ?? false);
@@ -1787,7 +1793,7 @@ const BambooStudio = () => {
     }
     // Standard window with «через профиль»: outer slope corners get profiles —
     // 2 vertical (window height) + 1 horizontal (window width). «Загиб» ⇒ none.
-    if (isWindowStd && winJoint === 'profile') {
+    if (isWindowAny && winJoint === 'profile') {
       const winStyle = kpCfgs.find(cfg => cfg.moldingStyle !== 'none')?.moldingStyle;
       const style = winStyle && winStyle !== 'none' ? winStyle : 'metallic';
       if (winHeightMm > 0) addRuns(style, winHeightMm, 2);
@@ -1857,7 +1863,7 @@ const BambooStudio = () => {
 
     // Wall dimension calculations: if dimensions are set, the calculated
     // (расчётная) panel cost takes priority over the project panel cost in Итого
-    const wallCalcs = (isColumn || isWindowStd) ? [] : kpCfgs
+    const wallCalcs = (isColumn || isWindowAny) ? [] : kpCfgs
       .map((cfg, q) => ({ cfg, q }))
       .filter(w => w.cfg.wallWidthMm > 0 && w.cfg.wallHeightMm > 0)
       .map(({ cfg, q }) => {
@@ -2179,11 +2185,11 @@ const BambooStudio = () => {
       y += 34;
       c.font = '16px sans-serif'; c.fillStyle = '#333333';
       c.fillText(
-        `Окно: ${(winWidthMm / 1000).toLocaleString('ru-RU')} × ${(winHeightMm / 1000).toLocaleString('ru-RU')} м · откос ${(winSlopeDepthMm / 1000).toLocaleString('ru-RU')} м${winSillDepthMm > 0 ? ` · подоконник ${(winSillDepthMm / 1000).toLocaleString('ru-RU')} × ${((winSillWidthMm > 0 ? winSillWidthMm : winWidthMm) / 1000).toLocaleString('ru-RU')} м` : ''}`,
+        `${isWindowPan ? 'Панорамное окно' : 'Окно'}: ${(winWidthMm / 1000).toLocaleString('ru-RU')} × ${(winHeightMm / 1000).toLocaleString('ru-RU')} м · откос ${(winSlopeDepthMm / 1000).toLocaleString('ru-RU')} м${isWindowStd && winSillDepthMm > 0 ? ` · подоконник ${(winSillDepthMm / 1000).toLocaleString('ru-RU')} × ${((winSillWidthMm > 0 ? winSillWidthMm : winWidthMm) / 1000).toLocaleString('ru-RU')} м` : isWindowPan ? ' (подоконник отсутствует)' : ''}`,
         60, y + 8);
       y += 28;
       c.fillText(
-        `Деталей: ${windowCut.pieces.length}${winSlopeDepthMm > 0 ? ' — откосы: 2 вертикальных + 1 верхний' : ''}${winSillDepthMm > 0 ? ' + подоконник' : ''} · панелей: ${windowCut.panels} (обрезки полос используются повторно)`,
+        `Деталей: ${windowCut.pieces.length}${winSlopeDepthMm > 0 ? ' — откосы: 2 вертикальных + 1 верхний' : ''}${isWindowStd && winSillDepthMm > 0 ? ' + подоконник' : ''} · панелей: ${windowCut.panels} (обрезки полос используются повторно)`,
         60, y + 8);
       y += 28;
       c.fillText(
@@ -2551,6 +2557,8 @@ const BambooStudio = () => {
                     ? (points.length < 4 ? `Грань 1: точка ${points.length + 1}/4` : points.length < 8 ? `Грань 2 (опц.): точка ${points.length - 3}/4 или «Начать»` : 'Нажмите «Начать примерку»')
                     : wallZone === 'window' && windowType === 'standard'
                     ? (points.length < 4 ? `Откос: точка ${points.length + 1}/4` : points.length < 8 ? `Подоконник: точка ${points.length - 3}/4 или «Начать»` : 'Нажмите «Начать примерку»')
+                    : wallZone === 'window' && windowType === 'panoramic'
+                    ? (points.length < 4 ? `Откос: точка ${points.length + 1}/4` : 'Нажмите «Начать примерку»')
                     : (points.length < 4 ? `Кликните на угол стены (${points.length}/4)` : 'Нажмите «Начать примерку»')}
                 </div>
               )}
@@ -2579,6 +2587,8 @@ const BambooStudio = () => {
                   ? (points.length < 4 ? `Грань 1: точка ${points.length + 1}/4` : points.length < 8 ? `Грань 2 (опц.): точка ${points.length - 3}/4 или «Начать»` : 'Нажмите «Начать примерку»')
                   : wallZone === 'window' && windowType === 'standard'
                   ? (points.length < 4 ? `Откос: точка ${points.length + 1}/4` : points.length < 8 ? `Подоконник: точка ${points.length - 3}/4 или «Начать»` : 'Нажмите «Начать примерку»')
+                  : wallZone === 'window' && windowType === 'panoramic'
+                  ? (points.length < 4 ? `Откос: точка ${points.length + 1}/4` : 'Нажмите «Начать примерку»')
                   : (points.length < 4 ? `Кликните на угол стены (${points.length}/4)` : 'Нажмите «Начать примерку»')}
               </div>
             )}
@@ -2629,6 +2639,12 @@ const BambooStudio = () => {
                   <span className="font-bold text-[#007aff]">Откос</span> — видимая боковая/верхняя плоскость (обязательно).<br/>
                   <span className="font-bold text-[#7ec662]">Подоконник</span> — по желанию.<br/>
                   В расчёте: <span className="font-bold text-gray-600">3 откоса</span> (2 вертикальных + верхний) и <span className="font-bold text-gray-600">1 подоконник</span>.
+                </p>
+              ) : wallZone === 'window' && windowType === 'panoramic' ? (
+                <p className="text-[9px] text-gray-400 mb-2 leading-relaxed">
+                  Отметьте <span className="font-bold text-gray-600">видимый откос</span> панорамного окна — 4 угла по часовой стрелке.<br/>
+                  <span className="font-bold text-[#007aff]">Откос</span> — боковая/верхняя плоскость (обязательно).<br/>
+                  В расчёте: <span className="font-bold text-gray-600">3 откоса</span> (2 вертикальных + верхний). Подоконник у панорамного окна отсутствует.
                 </p>
               ) : (
                 <p className="text-[9px] text-gray-400 mb-4 leading-relaxed">Кликайте по 4 углам стены по часовой стрелке.</p>
@@ -2816,7 +2832,7 @@ const BambooStudio = () => {
                   {Array.from({ length: Math.min(3, Math.floor(points.length / 4)) }, (_, i) => i).map(i => (
                     <button key={i} onClick={() => switchSurface(i)}
                       className={`w-full py-2 px-3 text-left text-[10px] font-bold rounded-xl border transition-all active:scale-95 ${activeSurface === i ? 'bg-[#7ec662] text-white border-[#7ec662]' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
-                      {(wallZone === 'column' ? COLUMN_SURFACE_LABELS : wallZone === 'window' && windowType === 'standard' ? WINDOW_SURFACE_LABELS : SURFACE_LABELS)[i]}
+                      {(wallZone === 'column' ? COLUMN_SURFACE_LABELS : wallZone === 'window' ? WINDOW_SURFACE_LABELS : SURFACE_LABELS)[i]}
                     </button>
                   ))}
                 </div>
@@ -2913,7 +2929,7 @@ const BambooStudio = () => {
             )}
 
             {/* Standard window: dimensions + joint preference */}
-            {wallZone === 'window' && windowType === 'standard' && (
+            {wallZone === 'window' && (windowType === 'standard' || windowType === 'panoramic') && (
               <div className="bg-white rounded-2xl p-3.5 shadow-sm">
                 <div className="flex items-center gap-1.5 mb-2.5">
                   <Columns size={12} className="text-gray-400"/>
@@ -2955,14 +2971,16 @@ const BambooStudio = () => {
                   ? 'На наружных углах откосов ставится профиль: 2 вертикальных (высота окна) + 1 горизонтальный (ширина окна). Хлысты 3 м, раскрой оптимизирован.'
                   : 'Панель загибается на углах — профили не требуются.'}</p>
                 {(() => {
-                  const pieces = windowStdPieces(winSlopeDepthMm, winWidthMm, winHeightMm, winSillDepthMm, winSillWidthMm);
+                  const sillD = windowType === 'standard' ? winSillDepthMm : 0;
+                  const sillW = windowType === 'standard' ? winSillWidthMm : 0;
+                  const pieces = windowStdPieces(winSlopeDepthMm, winWidthMm, winHeightMm, sillD, sillW);
                   if (pieces.length === 0) return (
                     <p className="text-[8px] text-gray-400">В расчёте: 3 откоса (2 вертикальных по высоте окна + верхний по ширине) и 1 подоконник. Обрезки панелей используются повторно.</p>
                   );
                   const cut = packWindowPieces(pieces);
                   return (
                     <div className="space-y-1">
-                      <p className="text-[9px] font-bold text-gray-600">Деталей: {cut.pieces.length} ({winSlopeDepthMm > 0 ? '3 откоса' : 'откосы не заданы'}{winSillDepthMm > 0 ? ' + подоконник' : ''})</p>
+                      <p className="text-[9px] font-bold text-gray-600">Деталей: {cut.pieces.length} ({winSlopeDepthMm > 0 ? '3 откоса' : 'откосы не заданы'}{sillD > 0 ? ' + подоконник' : ''})</p>
                       <p className="text-[9px] font-bold text-[#5a9c3e]">Панелей: {cut.panels} — обрезки полос используются повторно</p>
                     </div>
                   );
@@ -2971,7 +2989,7 @@ const BambooStudio = () => {
             )}
 
             {/* Wall dimensions & area check */}
-            {wallZone !== 'column' && !(wallZone === 'window' && windowType === 'standard') && (
+            {wallZone !== 'column' && wallZone !== 'window' && (
             <div className="bg-white rounded-2xl p-3.5 shadow-sm">
               <div className="flex items-center gap-1.5 mb-2.5">
                 <Columns size={12} className="text-gray-400"/>
