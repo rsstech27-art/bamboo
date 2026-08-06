@@ -2643,7 +2643,7 @@ const BambooStudio = () => {
                 <p className="text-[9px] text-gray-400 mb-2 leading-relaxed">
                   Отметьте <span className="font-bold text-gray-600">до 2 плоскостей</span> панорамного окна — каждая отдельно, 4 угла по часовой стрелке.<br/>
                   <span className="font-bold text-[#007aff]">Откос</span> — боковая/верхняя плоскость (обязательно).<br/>
-                  <span className="font-bold text-[#7ec662]">Горизонтальная плоскость</span> — нижняя горизонтальная поверхность (по желанию).
+                  <span className="font-bold text-[#7ec662]">Горизонтальная плоскость</span> — верхняя горизонтальная поверхность (по желанию).
                 </p>
               ) : (
                 <p className="text-[9px] text-gray-400 mb-4 leading-relaxed">Кликайте по 4 углам стены по часовой стрелке.</p>
