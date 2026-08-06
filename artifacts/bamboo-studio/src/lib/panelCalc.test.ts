@@ -1,7 +1,7 @@
 // Edge-case unit tests for the докрой (donor-strip) calculation.
 // Run: pnpm --filter @workspace/bamboo-studio run test:calc
 import { strict as assert } from 'node:assert';
-import { optimizedPanelCalc, packWidthRemainders, columnHiddenJoints, panelsWord, rowsWord, PANEL_H_MM } from './panelCalc.ts';
+import { optimizedPanelCalc, packWidthRemainders, columnHiddenJoints, packWindowPieces, windowStdPieces, panelsWord, rowsWord, PANEL_H_MM } from './panelCalc.ts';
 
 let passed = 0;
 const check = (name: string, fn: () => void) => {
@@ -132,6 +132,50 @@ check('columnHiddenJoints: граничные случаи', () => {
   assert.equal(columnHiddenJoints(0, 0, 0), 0);
   assert.equal(columnHiddenJoints(3, 5, 0), 0);  // видимых учтено больше — ничего не добавляем
   assert.equal(columnHiddenJoints(4, 0, 9), 0);  // загибов больше, чем стыков
+});
+
+check('окно: типовые откосы 250 мм + подоконник — всё из одной панели', () => {
+  // Окно 1,4×1,5 м, откос 250 мм, подоконник 300×1500: полосы 250+250+250+300=1050 ≤ 1220,
+  // каждая деталь короче 2800 — одна панель на всё
+  const pieces = windowStdPieces(250, 1400, 1500, 300, 1500);
+  assert.equal(pieces.length, 4); // 2 боковых + верхний + подоконник
+  assert.equal(packWindowPieces(pieces).panels, 1);
+});
+
+check('окно: обрезки полос используются повторно по длине', () => {
+  // Полоса 600 мм: 2 куска по 1400 помещаются в ОДНУ полосу (2800) — 1 полоса, 1 панель
+  assert.equal(packWindowPieces([{ wMm: 600, lMm: 1400 }, { wMm: 600, lMm: 1400 }]).panels, 1);
+  // 3 куска по 1500: по ширине в панель помещаются 2 полосы (600+600 ≤ 1220),
+  // в каждой полосе остаётся 1300 < 1500 — третий кусок открывает вторую панель
+  assert.equal(packWindowPieces([
+    { wMm: 600, lMm: 1500 }, { wMm: 600, lMm: 1500 }, { wMm: 600, lMm: 1500 },
+  ]).panels, 2);
+});
+
+check('окно: широкий подоконник открывает вторую панель', () => {
+  // 700+700 > 1220 и длины не помещаются в одну полосу — нужна вторая панель
+  assert.equal(packWindowPieces([{ wMm: 700, lMm: 2000 }, { wMm: 700, lMm: 2000 }]).panels, 2);
+});
+
+check('окно: кусок длиннее панели режется на сегменты', () => {
+  // 4000 мм → 2800 + 1200 в той же полосе-ширине: полоса 1 (2800) + полоса 2 (1200) из одной панели при ширине ≤ 610
+  assert.equal(packWindowPieces([{ wMm: 500, lMm: 4000 }]).panels, 1);
+});
+
+check('окно: деталь шире панели режется по ширине без потери материала', () => {
+  // 1500×1000: сегменты 1220×1000 + 280×1000; узкий сегмент уходит в остаток
+  // длины широкой полосы (2800−1000 ≥ 1000) — одна панель, но обе части учтены
+  const r = packWindowPieces([{ wMm: 1500, lMm: 1000 }]);
+  assert.equal(r.pieces.length, 2);
+  assert.equal(r.pieces.reduce((s, p) => s + p.wMm * p.lMm, 0), 1500 * 1000);
+  assert.equal(r.panels, 1);
+  // 1500×2000 дважды: суммарная площадь требует больше одной панели
+  assert.ok(packWindowPieces([{ wMm: 1500, lMm: 2000 }, { wMm: 1500, lMm: 2000 }]).panels >= 2);
+});
+
+check('окно: нулевые размеры не создают деталей', () => {
+  assert.equal(windowStdPieces(0, 1400, 1500, 0, 0).length, 0);
+  assert.equal(packWindowPieces([]).panels, 0);
 });
 
 console.log(`\n${passed} tests passed`);

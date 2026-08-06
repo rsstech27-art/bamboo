@@ -72,6 +72,64 @@ export const packProfileRuns = (runsMm: number[]): number => {
   return fullPieces + bins.length;
 };
 
+// ── Standard window (откосы + подоконник) cutting ──
+// Pieces are strips cut from 2800×1220 panels. Packing reuses offcuts:
+// a panel is first split into vertical strips (by width), then each strip's
+// remaining LENGTH takes further pieces of the same-or-smaller width.
+export type WindowPiece = { wMm: number; lMm: number };
+export type WindowCutResult = { panels: number; pieces: WindowPiece[] };
+export const packWindowPieces = (piecesIn: WindowPiece[]): WindowCutResult => {
+  // Split oversized pieces into panel-sized segments — by WIDTH (>1220) and by LENGTH (>2800)
+  const pieces: WindowPiece[] = [];
+  for (const p of piecesIn) {
+    if (p.wMm <= 0 || p.lMm <= 0) continue;
+    let restW = p.wMm;
+    while (restW > 0) {
+      const w = Math.min(restW, PANEL_W_MM);
+      let restL = p.lMm;
+      while (restL > 0) {
+        pieces.push({ wMm: w, lMm: Math.min(restL, PANEL_H_MM) });
+        restL -= PANEL_H_MM;
+      }
+      restW -= PANEL_W_MM;
+    }
+  }
+  // Widest-first, then longest-first ⇒ narrow pieces reuse wide strips' leftovers
+  pieces.sort((a, b) => b.wMm - a.wMm || b.lMm - a.lMm);
+  type Strip = { wMm: number; remLen: number };
+  type Panel = { remW: number; strips: Strip[] };
+  const panels: Panel[] = [];
+  for (const p of pieces) {
+    // 1) reuse an existing strip's leftover length (strip must be wide enough)
+    let placed = false;
+    for (const pan of panels) {
+      const s = pan.strips.find(st => st.wMm >= p.wMm && st.remLen >= p.lMm);
+      if (s) { s.remLen -= p.lMm; placed = true; break; }
+    }
+    if (placed) continue;
+    // 2) open a new strip on a panel with enough remaining width
+    let pan = panels.find(x => x.remW >= p.wMm);
+    if (!pan) { pan = { remW: PANEL_W_MM, strips: [] }; panels.push(pan); }
+    pan.remW -= p.wMm;
+    pan.strips.push({ wMm: p.wMm, remLen: PANEL_H_MM - p.lMm });
+  }
+  return { panels: panels.length, pieces };
+};
+
+// Standard window: 3 slope (откос) surfaces — 2 vertical (H×depth) + 1 top
+// (W×depth) — and 1 sill (подоконник). Returns the pieces and panel count.
+export const windowStdPieces = (slopeDepthMm: number, winWidthMm: number, winHeightMm: number,
+  sillDepthMm: number, sillWidthMm: number): WindowPiece[] => {
+  const out: WindowPiece[] = [];
+  if (slopeDepthMm > 0) {
+    if (winHeightMm > 0) { out.push({ wMm: slopeDepthMm, lMm: winHeightMm }, { wMm: slopeDepthMm, lMm: winHeightMm }); }
+    if (winWidthMm > 0) out.push({ wMm: slopeDepthMm, lMm: winWidthMm });
+  }
+  const sw = sillWidthMm > 0 ? sillWidthMm : winWidthMm;
+  if (sillDepthMm > 0 && sw > 0) out.push({ wMm: sillDepthMm, lMm: sw });
+  return out;
+};
+
 // Joints on a CLOSED column contour: panels wrap the full perimeter, so a
 // contour of N panels has N vertical joints; each загиб (wrapped corner)
 // removes one joint. `visibleJoints` — joints already counted on the visible
