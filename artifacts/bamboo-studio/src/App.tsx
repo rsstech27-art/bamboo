@@ -427,6 +427,7 @@ const BambooStudio = () => {
   const [tvCutoutJoint, setTvCutoutJoint] = useState<'bend' | 'profile'>('profile');
   const [tvCutoutInputMode, setTvCutoutInputMode] = useState<'size' | 'inches'>('size');
   const [tvCutoutPresetInches, setTvCutoutPresetInches] = useState<50 | 55 | 65 | null>(null);
+  const [tvCutoutOuterFaces, setTvCutoutOuterFaces] = useState(false);
 
   const TV_INCH_PRESETS: Record<50 | 55 | 65, { wMm: number; hMm: number }> = {
     50: { wMm: 1130, hMm: 660 },
@@ -1769,6 +1770,17 @@ const BambooStudio = () => {
           return packWindowPieces(pieces);
         })()
       : null;
+    // Built-in TV: outer visible faces of the box (same 4 pieces as inner загибы)
+    const tvBuiltinOuterCut = isTvBuiltin && tvCutoutOuterFaces && tvCutoutDepthMm > 0 && tvCutoutWidthMm > 0 && tvCutoutHeightMm > 0
+      ? (() => {
+          const pieces: import('./lib/panelCalc').WindowPiece[] = [];
+          pieces.push({ wMm: tvCutoutDepthMm, lMm: tvCutoutHeightMm }); // боковая левая
+          pieces.push({ wMm: tvCutoutDepthMm, lMm: tvCutoutHeightMm }); // боковая правая
+          pieces.push({ wMm: tvCutoutDepthMm, lMm: tvCutoutWidthMm });  // верхняя
+          pieces.push({ wMm: tvCutoutDepthMm, lMm: tvCutoutWidthMm });  // нижняя
+          return packWindowPieces(pieces);
+        })()
+      : null;
     const colPerMm = isColumn ? columnPerimeterMm(columnShape, columnSides) : 0;
     // Vertical joints already counted on the VISIBLE column faces (incl. corner profiles)
     let columnVisibleJoints = 0;
@@ -2127,6 +2139,13 @@ const BambooStudio = () => {
       addItem(mat.article, `Панель «${mat.name}» (загибы внутри выреза ТВ)`, tvBuiltinCut.panels, getPanelPrice(mat.id));
       panelArticles.add(mat.article);
     }
+    // Built-in TV: outer faces of the box
+    if (tvBuiltinOuterCut) {
+      panelsTableTotal += tvBuiltinOuterCut.panels;
+      const mat = kpCfgs[0]?.sectorMaterials[0] ?? BAMBOO_PANELS[0];
+      addItem(mat.article, `Панель «${mat.name}» (наружние грани короба ТВ)`, tvBuiltinOuterCut.panels, getPanelPrice(mat.id));
+      panelArticles.add(mat.article);
+    }
     const panelsTableCost = items.filter(it => panelArticles.has(it.article))
       .reduce((s, it) => s + it.qty * it.price, 0);
     // Final total = the table itself (calculated panel quantities + 3 m profile pieces)
@@ -2343,6 +2362,22 @@ const BambooStudio = () => {
         c.fillText('Стыки: загиб панели — профили не требуются', 60, y + 8);
       }
       y += 30;
+      // Outer faces block
+      if (tvBuiltinOuterCut) {
+        c.fillStyle = '#111111'; c.font = 'bold 16px sans-serif';
+        c.fillText('Наружные грани короба ТВ (видимые торцы)', 60, y + 10);
+        y += 28;
+        c.font = '16px sans-serif'; c.fillStyle = '#333333';
+        const cWo = tvCutoutWidthMm / 1000, cHo = tvCutoutHeightMm / 1000, cDo = tvCutoutDepthMm / 1000;
+        c.fillText(
+          `Бок. ×2: ${cDo.toLocaleString('ru-RU')} × ${cHo.toLocaleString('ru-RU')} м · верх/низ: ${cDo.toLocaleString('ru-RU')} × ${cWo.toLocaleString('ru-RU')} м`,
+          60, y + 8);
+        y += 28;
+        c.fillText(
+          `Деталей: ${tvBuiltinOuterCut.pieces.length} · панелей: ${tvBuiltinOuterCut.panels} (обрезки используются повторно)`,
+          60, y + 8);
+        y += 30;
+      }
     }
 
     // Surface-mounted TV block: face + sides + top + bottom, no cutout
@@ -2597,7 +2632,7 @@ const BambooStudio = () => {
             )}
             {step !== 'zone' && (
               <button
-                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setHistoryLen(0); surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setSavedPng(null); setWinSlopeDepthMm(0); setWinWidthMm(0); setWinHeightMm(0); setWinJoint('profile'); setTvCutoutWidthMm(0); setTvCutoutHeightMm(0); setTvCutoutDepthMm(0); setTvCutoutJoint('profile'); setTvCutoutInputMode('size'); setTvCutoutPresetInches(null); setTvType(null); setTvSurfaceSideDepthMm(0); setTvSurfaceTopDepthMm(0); setTvSurfaceBottomDepthMm(0); setStep('zone'); setWallZone(null); setWindowType(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
+                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setHistoryLen(0); surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setSavedPng(null); setWinSlopeDepthMm(0); setWinWidthMm(0); setWinHeightMm(0); setWinJoint('profile'); setTvCutoutWidthMm(0); setTvCutoutHeightMm(0); setTvCutoutDepthMm(0); setTvCutoutJoint('profile'); setTvCutoutInputMode('size'); setTvCutoutPresetInches(null); setTvCutoutOuterFaces(false); setTvType(null); setTvSurfaceSideDepthMm(0); setTvSurfaceTopDepthMm(0); setTvSurfaceBottomDepthMm(0); setStep('zone'); setWallZone(null); setWindowType(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
                 className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
               >
                 ← Назад
@@ -3384,6 +3419,14 @@ const BambooStudio = () => {
                       ))}
                     </div>
                   </div>
+                )}
+                {tvCutoutDepthMm > 0 && (
+                  <label className="flex items-center gap-2 mb-2 cursor-pointer">
+                    <input type="checkbox" checked={tvCutoutOuterFaces}
+                      onChange={(e) => { pushHistory(); setTvCutoutOuterFaces(e.target.checked); }}
+                      className="accent-[#7ec662] w-3.5 h-3.5"/>
+                    <span className="text-[9px] font-bold text-gray-600">Наружные грани короба (видимые торцы)</span>
+                  </label>
                 )}
                 {tvCutoutWidthMm > 0 && tvCutoutHeightMm > 0 && (() => {
                   const cW = tvCutoutWidthMm / 1000, cH = tvCutoutHeightMm / 1000, cD = tvCutoutDepthMm / 1000;
