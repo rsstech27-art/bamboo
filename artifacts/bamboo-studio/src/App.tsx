@@ -3022,17 +3022,19 @@ const BambooStudio = () => {
               <input type="range" min="1" max="15" value={panelCount}
                 onChange={(e) => handleChangePanelCount(parseInt(e.target.value))}
                 className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
-              <div className="mt-2">
-                <p className="text-[8px] font-bold text-gray-400 uppercase mb-1">Ориентация</p>
-                <div className="flex gap-1.5">
-                  {(['vertical', 'horizontal'] as const).map(ori => (
-                    <button key={ori} onClick={() => { pushHistory(); setPanelOrientation(ori); }}
-                      className={`flex-1 py-1.5 rounded-lg text-[9px] font-bold border transition-all active:scale-95 ${panelOrientation === ori ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
-                      {ori === 'vertical' ? 'Вертикально' : 'Горизонтально'}
-                    </button>
-                  ))}
+              {wallZone === 'tv' && (
+                <div className="mt-2">
+                  <p className="text-[8px] font-bold text-gray-400 uppercase mb-1">Ориентация</p>
+                  <div className="flex gap-1.5">
+                    {(['vertical', 'horizontal'] as const).map(ori => (
+                      <button key={ori} onClick={() => { pushHistory(); setPanelOrientation(ori); }}
+                        className={`flex-1 py-1.5 rounded-lg text-[9px] font-bold border transition-all active:scale-95 ${panelOrientation === ori ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
+                        {ori === 'vertical' ? 'Вертикально' : 'Горизонтально'}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* Eraser */}
