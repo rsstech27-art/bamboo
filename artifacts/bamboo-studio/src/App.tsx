@@ -196,6 +196,14 @@ type Panel = { id: string; article: string; name: string; color: string; texture
 type PanelSeries = { id: string; name: string; panels: Panel[] };
 
 const BAMBOO_PANELS: Panel[] = (PANEL_SERIES as PanelSeries[]).flatMap(s => s.panels);
+
+// Wood-family rule: metallic profiles are NOT needed between adjacent panels
+// from the 'wood' (Натуральное дерево) or 'reiki' (Рейки деревянные) series.
+const _PANEL_SERIES_MAP = new Map<string, string>();
+(PANEL_SERIES as PanelSeries[]).forEach(s => s.panels.forEach(p => _PANEL_SERIES_MAP.set(p.id, s.id)));
+const WOOD_FAMILY = new Set(['wood', 'reiki']);
+const isWoodFamilyId = (panelId: string) => WOOD_FAMILY.has(_PANEL_SERIES_MAP.get(panelId) ?? '');
+
 type Point = { x: number; y: number };
 
 const PanelThumb = ({ panel, selected, onClick }: { panel: Panel; selected: boolean; onClick: () => void }) => (
@@ -1776,9 +1784,22 @@ const BambooStudio = () => {
       // not by per-surface molding/joint rules
       if (isWindowAny) continue;
       if (cfg.moldingStyle !== 'none') {
-        // A wrapped (загиб) junction has NO profile at the shared edge — deduct it
-        const vQty = Math.max(0, cfg.panelCount + 1 - (wrapLeft ? 1 : 0) - (wrapRight ? 1 : 0));
-        addRuns(cfg.moldingStyle, hMm, vQty);
+        if (cfg.moldingStyle === 'metallic') {
+          // Metallic: outer wall-edge profiles count normally; internal joints between
+          // two adjacent wood-family panels (wood/reiki) are skipped — no profile needed.
+          const outerEdges = (wrapLeft ? 0 : 1) + (wrapRight ? 0 : 1);
+          let internalCount = 0;
+          for (let j = 0; j < cfg.panelCount - 1; j++) {
+            const left = cfg.sectorMaterials[j] ?? BAMBOO_PANELS[0];
+            const right = cfg.sectorMaterials[j + 1] ?? BAMBOO_PANELS[0];
+            if (!(isWoodFamilyId(left.id) && isWoodFamilyId(right.id))) internalCount++;
+          }
+          addRuns('metallic', hMm, outerEdges + internalCount);
+        } else {
+          // Non-metallic chosen style (gold, black, brass): wood-family rule does not apply
+          const vQty = Math.max(0, cfg.panelCount + 1 - (wrapLeft ? 1 : 0) - (wrapRight ? 1 : 0));
+          addRuns(cfg.moldingStyle, hMm, vQty);
+        }
         if (isColumn) {
           // UNIQUE contour joints covered by this face's molding: internal seams
           // + the OUTER edges bordering the hidden part (only first/last face).
@@ -1789,11 +1810,17 @@ const BambooStudio = () => {
         }
       } else {
         // MANDATORY joints: wall wider than one panel ⇒ panels in a row MUST be
-        // joined with vertical profiles between them, even with no molding chosen
+        // joined with vertical profiles — except between adjacent wood-family panels.
         const perRow = Math.ceil(wMm / PANEL_W_MM);
-        const joints = Math.max(0, perRow - 1);
-        addRuns('metallic', hMm, joints);
-        if (isColumn) columnVisibleJoints += joints;
+        const totalJoints = Math.max(0, perRow - 1);
+        let metalJoints = 0;
+        for (let j = 0; j < totalJoints; j++) {
+          const left = cfg.sectorMaterials[j] ?? BAMBOO_PANELS[0];
+          const right = cfg.sectorMaterials[j + 1] ?? BAMBOO_PANELS[0];
+          if (!(isWoodFamilyId(left.id) && isWoodFamilyId(right.id))) metalJoints++;
+        }
+        if (metalJoints > 0) addRuns('metallic', hMm, metalJoints);
+        if (isColumn) columnVisibleJoints += totalJoints; // column geometry uses all joints
       }
       if (cfg.hMoldingStyle !== 'none') addRuns(cfg.hMoldingStyle, wMm, cfg.hMoldingCount);
     }
@@ -2977,6 +3004,17 @@ const BambooStudio = () => {
                   <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Молдинг верт.</span>
                 </div>
                 <MoldingStyleRow value={moldingStyle} onChange={(v) => { pushHistory(); setMoldingStyle(v); if (v !== 'none') setMoldingWidth(1); }} vertical={true}/>
+                {panelCount >= 2 && (() => {
+                  const hasWoodAdj = Array.from({ length: panelCount - 1 }, (_, j) => j).some(j => {
+                    const l = sectorMaterials[j], r = sectorMaterials[j + 1];
+                    return l && r && isWoodFamilyId(l.id) && isWoodFamilyId(r.id);
+                  });
+                  return hasWoodAdj ? (
+                    <p className="text-[9px] text-amber-600 font-bold mt-1.5 leading-relaxed">
+                      Рядом панели «Дерево»/«Рейки» — металлический профиль между ними не нужен, в расчёте КП он исключён.
+                    </p>
+                  ) : null;
+                })()}
                 {moldingStyle !== 'none' && (
                   <div className="mt-2.5">
                     <div className="flex justify-between mb-1">
