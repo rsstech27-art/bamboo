@@ -2450,7 +2450,7 @@ const BambooStudio = () => {
               </div>
               <div className="grid grid-cols-2 gap-3 w-full max-w-lg">
                 {([
-                  { id: 'builtin',  label: 'Встроенный ТВ',  img: `${BASE}zones/tv-builtin.jpg` },
+                  { id: 'builtin',  label: 'Встроенный ТВ',  img: `${BASE}zones/tv-builtin.webp` },
                   { id: 'surface',  label: 'Накладной ТВ',   img: `${BASE}zones/tv-surface.jpg` },
                 ] as const).map(tt => (
                   <button
