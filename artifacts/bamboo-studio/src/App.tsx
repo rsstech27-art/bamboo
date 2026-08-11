@@ -1849,11 +1849,12 @@ const BambooStudio = () => {
       if (winHeightMm > 0) addRuns(style, winHeightMm, 2);
       if (winWidthMm > 0) addRuns(style, winWidthMm, 1);
     }
-    // Built-in TV: 4 inner cutout corner profiles (along depth direction)
-    if (isTvBuiltin && tvCutoutJoint === 'profile' && tvCutoutDepthMm > 0) {
+    // Built-in TV: profiles at the cutout perimeter joints (along width×2 + height×2)
+    if (isTvBuiltin && tvCutoutJoint === 'profile' && tvCutoutWidthMm > 0 && tvCutoutHeightMm > 0) {
       const visStyle = kpCfgs.find(cfg => cfg.moldingStyle !== 'none')?.moldingStyle;
       const style = visStyle && visStyle !== 'none' ? visStyle : 'metallic';
-      addRuns(style, tvCutoutDepthMm, 4);
+      addRuns(style, tvCutoutHeightMm, 2); // left + right vertical joints
+      addRuns(style, tvCutoutWidthMm, 2);  // top + bottom horizontal joints
     }
     // Pack each style's runs into 3 m pieces (offcuts reused project-wide)
     let profilePiecesTotal = 0;
@@ -2306,12 +2307,13 @@ const BambooStudio = () => {
         60, y + 8);
       y += 28;
       if (tvCutoutJoint === 'profile') {
-        const cutPieces = packProfileRuns([tvCutoutDepthMm, tvCutoutDepthMm, tvCutoutDepthMm, tvCutoutDepthMm]);
+        const cutPieces = packProfileRuns([tvCutoutHeightMm, tvCutoutHeightMm, tvCutoutWidthMm, tvCutoutWidthMm]);
+        const cWp = tvCutoutWidthMm / 1000, cHp = tvCutoutHeightMm / 1000;
         c.fillText(
-          `Соединение на углах: профиль — 4 угла по ${(tvCutoutDepthMm / 1000).toLocaleString('ru-RU')} м · хлыстов 3 м: ${cutPieces} (остатки используются повторно, если хватает на целый угол)`,
+          `Профили по периметру стыков: бок. 2×${cHp.toLocaleString('ru-RU')} м + гориз. 2×${cWp.toLocaleString('ru-RU')} м · хлыстов 3 м: ${cutPieces} (остатки используются повторно, если хватает на целый прогон)`,
           60, y + 8);
       } else {
-        c.fillText('Соединение на углах: загиб панели — профили не требуются', 60, y + 8);
+        c.fillText('Стыки: загиб панели — профили не требуются', 60, y + 8);
       }
       y += 30;
     }
@@ -3351,8 +3353,8 @@ const BambooStudio = () => {
                   const topArea = tvCutoutDepthMm > 0 ? cD * cW : 0;
                   const bottomArea = tvCutoutDepthMm > 0 ? cD * cW : 0;
                   const totalZagiby = sidesArea + topArea + bottomArea;
-                  const profilePieces = tvCutoutDepthMm > 0 && tvCutoutJoint === 'profile'
-                    ? packProfileRuns([tvCutoutDepthMm, tvCutoutDepthMm, tvCutoutDepthMm, tvCutoutDepthMm])
+                  const profilePieces = tvCutoutJoint === 'profile' && tvCutoutWidthMm > 0 && tvCutoutHeightMm > 0
+                    ? packProfileRuns([tvCutoutHeightMm, tvCutoutHeightMm, tvCutoutWidthMm, tvCutoutWidthMm])
                     : 0;
                   return (
                     <div className="space-y-1">
@@ -3365,9 +3367,9 @@ const BambooStudio = () => {
                           Грани внутри: боковые ×2 ({sidesArea.toFixed(2).replace('.', ',')} м²) + верхний ({topArea.toFixed(2).replace('.', ',')} м²) + нижний ({bottomArea.toFixed(2).replace('.', ',')} м²) = {totalZagiby.toFixed(2).replace('.', ',')} м²
                         </p>
                       )}
-                      {tvCutoutDepthMm > 0 && tvCutoutJoint === 'profile' && (
+                      {tvCutoutJoint === 'profile' && tvCutoutWidthMm > 0 && tvCutoutHeightMm > 0 && (
                         <p className="text-[9px] text-gray-500 leading-relaxed">
-                          Профили на 4 угла (по {cD.toLocaleString('ru-RU')} м): <span className="font-bold text-gray-700">{profilePieces} хл.</span> — остатки используются повторно, если хватает на целый угол.
+                          Профили по периметру стыков: бок. 2×{cH.toLocaleString('ru-RU')} + гориз. 2×{cW.toLocaleString('ru-RU')} м → <span className="font-bold text-gray-700">{profilePieces} хл. 3 м</span> (остатки используются, если хватает на целый прогон).
                         </p>
                       )}
                     </div>
