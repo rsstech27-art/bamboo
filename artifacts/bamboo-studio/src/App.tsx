@@ -414,6 +414,7 @@ const BambooStudio = () => {
   // TV zone: cutout for the TV panel
   const [tvCutoutWidthMm, setTvCutoutWidthMm] = useState(0);
   const [tvCutoutHeightMm, setTvCutoutHeightMm] = useState(0);
+  const [tvCutoutDepthMm, setTvCutoutDepthMm] = useState(0);
   const [points, setPoints] = useState<Point[]>([]);
   const [panelCount, setPanelCount] = useState(5);
   // dividerPositions: array of N-1 values in (0,1), sorted ascending
@@ -2426,7 +2427,7 @@ const BambooStudio = () => {
             )}
             {step !== 'zone' && (
               <button
-                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setHistoryLen(0); surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setSavedPng(null); setWinSlopeDepthMm(0); setWinWidthMm(0); setWinHeightMm(0); setWinJoint('profile'); setTvCutoutWidthMm(0); setTvCutoutHeightMm(0); setStep('zone'); setWallZone(null); setWindowType(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
+                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setHistoryLen(0); surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setSavedPng(null); setWinSlopeDepthMm(0); setWinWidthMm(0); setWinHeightMm(0); setWinJoint('profile'); setTvCutoutWidthMm(0); setTvCutoutHeightMm(0); setTvCutoutDepthMm(0); setStep('zone'); setWallZone(null); setWindowType(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
                 className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
               >
                 ← Назад
@@ -2886,10 +2887,16 @@ const BambooStudio = () => {
                     <span className="text-[8px] font-bold text-gray-400 uppercase">Высота выреза, м</span>
                     <MeterInput placeholder="напр. 0,7" valueMm={tvCutoutHeightMm} onChangeMm={(v) => { pushHistory(); setTvCutoutHeightMm(v); }} />
                   </label>
+                  <label className="block col-span-2">
+                    <span className="text-[8px] font-bold text-gray-400 uppercase">Глубина выреза, м</span>
+                    <MeterInput placeholder="напр. 0,15" valueMm={tvCutoutDepthMm} onChangeMm={(v) => { pushHistory(); setTvCutoutDepthMm(v); }} />
+                  </label>
                 </div>
                 {tvCutoutWidthMm > 0 && tvCutoutHeightMm > 0 && (
                   <p className="text-[9px] text-gray-500 leading-relaxed">
-                    Площадь выреза: <span className="font-bold text-gray-700">{((tvCutoutWidthMm / 1000) * (tvCutoutHeightMm / 1000)).toFixed(2).replace('.', ',')} м²</span> — учтено в КП (вырезается из панелей передней плоскости).
+                    Площадь выреза: <span className="font-bold text-gray-700">{((tvCutoutWidthMm / 1000) * (tvCutoutHeightMm / 1000)).toFixed(2).replace('.', ',')} м²</span>
+                    {tvCutoutDepthMm > 0 && <span> · глубина <span className="font-bold text-gray-700">{(tvCutoutDepthMm / 1000).toLocaleString('ru-RU')} м</span></span>}
+                    {' '}— учтено в КП (вырезается из панелей передней плоскости).
                   </p>
                 )}
               </div>
