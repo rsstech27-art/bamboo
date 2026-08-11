@@ -1737,6 +1737,21 @@ const BambooStudio = () => {
           return pieces.length > 0 ? packWindowPieces(pieces) : null;
         })()
       : null;
+    // Built-in TV: загибы inside the cutout — 2 sides + top + bottom
+    const isTvBuiltin = wallZone === 'tv' && tvType === 'builtin';
+    const tvBuiltinCut = isTvBuiltin && tvCutoutDepthMm > 0 && tvCutoutWidthMm > 0 && tvCutoutHeightMm > 0
+      ? (() => {
+          const pieces: import('./lib/panelCalc').WindowPiece[] = [];
+          // 2 боковых загиба: глубина × высота выреза
+          pieces.push({ wMm: tvCutoutDepthMm, lMm: tvCutoutHeightMm });
+          pieces.push({ wMm: tvCutoutDepthMm, lMm: tvCutoutHeightMm });
+          // верхний загиб: глубина × ширина выреза
+          pieces.push({ wMm: tvCutoutDepthMm, lMm: tvCutoutWidthMm });
+          // нижний загиб: глубина × ширина выреза
+          pieces.push({ wMm: tvCutoutDepthMm, lMm: tvCutoutWidthMm });
+          return packWindowPieces(pieces);
+        })()
+      : null;
     const colPerMm = isColumn ? columnPerimeterMm(columnShape, columnSides) : 0;
     // Vertical joints already counted on the VISIBLE column faces (incl. corner profiles)
     let columnVisibleJoints = 0;
@@ -2062,6 +2077,13 @@ const BambooStudio = () => {
         scaleQtys(rows, target);
       });
     }
+    // Built-in TV загибы: add on top of wallCalcs total as a separate labeled line
+    if (tvBuiltinCut) {
+      panelsTableTotal += tvBuiltinCut.panels;
+      const mat = kpCfgs[0]?.sectorMaterials[0] ?? BAMBOO_PANELS[0];
+      addItem(mat.article, `Панель «${mat.name}» (загибы внутри выреза ТВ)`, tvBuiltinCut.panels, getPanelPrice(mat.id));
+      panelArticles.add(mat.article);
+    }
     const panelsTableCost = items.filter(it => panelArticles.has(it.article))
       .reduce((s, it) => s + it.qty * it.price, 0);
     // Final total = the table itself (calculated panel quantities + 3 m profile pieces)
@@ -2237,6 +2259,36 @@ const BambooStudio = () => {
       y += 28;
       c.fillStyle = '#111111'; c.font = 'bold 16px sans-serif';
       c.fillText(`Расчётная стоимость панелей окна: ${fmt(Math.round(panelsTableCost))}`, 60, y + 8);
+      y += 30;
+    }
+
+    // Built-in TV: загибы inside the cutout
+    if (tvBuiltinCut) {
+      y += 18;
+      c.fillStyle = '#111111'; c.font = 'bold 18px sans-serif';
+      c.fillText('Встроенный ТВ — загибы внутри выреза', 60, y + 10);
+      y += 34;
+      c.font = '16px sans-serif'; c.fillStyle = '#333333';
+      const cW = tvCutoutWidthMm / 1000, cH = tvCutoutHeightMm / 1000, cD = tvCutoutDepthMm / 1000;
+      c.fillText(
+        `Вырез: ${cW.toLocaleString('ru-RU')} × ${cH.toLocaleString('ru-RU')} м · глубина ${cD.toLocaleString('ru-RU')} м`,
+        60, y + 8);
+      y += 28;
+      c.fillText(
+        `Боковые загибы (×2): ${cD.toLocaleString('ru-RU')} × ${cH.toLocaleString('ru-RU')} м · площадь: ${(2 * cD * cH).toFixed(2).replace('.', ',')} м²`,
+        60, y + 8);
+      y += 28;
+      c.fillText(
+        `Верхний загиб: ${cD.toLocaleString('ru-RU')} × ${cW.toLocaleString('ru-RU')} м · площадь: ${(cD * cW).toFixed(2).replace('.', ',')} м²`,
+        60, y + 8);
+      y += 28;
+      c.fillText(
+        `Нижний загиб: ${cD.toLocaleString('ru-RU')} × ${cW.toLocaleString('ru-RU')} м · площадь: ${(cD * cW).toFixed(2).replace('.', ',')} м²`,
+        60, y + 8);
+      y += 28;
+      c.fillText(
+        `Деталей загибов: ${tvBuiltinCut.pieces.length} · дополнительно панелей: ${tvBuiltinCut.panels} (обрезки используются повторно)`,
+        60, y + 8);
       y += 30;
     }
 
@@ -3040,13 +3092,26 @@ const BambooStudio = () => {
                     <MeterInput placeholder="напр. 0,15" valueMm={tvCutoutDepthMm} onChangeMm={(v) => { pushHistory(); setTvCutoutDepthMm(v); }} />
                   </label>
                 </div>
-                {tvCutoutWidthMm > 0 && tvCutoutHeightMm > 0 && (
-                  <p className="text-[9px] text-gray-500 leading-relaxed">
-                    Площадь выреза: <span className="font-bold text-gray-700">{((tvCutoutWidthMm / 1000) * (tvCutoutHeightMm / 1000)).toFixed(2).replace('.', ',')} м²</span>
-                    {tvCutoutDepthMm > 0 && <span> · глубина <span className="font-bold text-gray-700">{(tvCutoutDepthMm / 1000).toLocaleString('ru-RU')} м</span></span>}
-                    {' '}— учтено в КП (вырезается из панелей передней плоскости).
-                  </p>
-                )}
+                {tvCutoutWidthMm > 0 && tvCutoutHeightMm > 0 && (() => {
+                  const cW = tvCutoutWidthMm / 1000, cH = tvCutoutHeightMm / 1000, cD = tvCutoutDepthMm / 1000;
+                  const sidesArea = tvCutoutDepthMm > 0 ? 2 * cD * cH : 0;
+                  const topArea = tvCutoutDepthMm > 0 ? cD * cW : 0;
+                  const bottomArea = tvCutoutDepthMm > 0 ? cD * cW : 0;
+                  const totalZagiby = sidesArea + topArea + bottomArea;
+                  return (
+                    <div className="space-y-1">
+                      <p className="text-[9px] text-gray-500 leading-relaxed">
+                        Площадь выреза: <span className="font-bold text-gray-700">{(cW * cH).toFixed(2).replace('.', ',')} м²</span>
+                        {tvCutoutDepthMm > 0 && <span> · глубина <span className="font-bold text-gray-700">{cD.toLocaleString('ru-RU')} м</span></span>}
+                      </p>
+                      {tvCutoutDepthMm > 0 && (
+                        <p className="text-[9px] text-[#5a9c3e] font-bold leading-relaxed">
+                          Загибы внутри: боковые ×2 ({(sidesArea).toFixed(2).replace('.', ',')} м²) + верхний ({topArea.toFixed(2).replace('.', ',')} м²) + нижний ({bottomArea.toFixed(2).replace('.', ',')} м²) = {totalZagiby.toFixed(2).replace('.', ',')} м² — учтено в расчёте панелей.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             )}
 
