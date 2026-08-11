@@ -3087,50 +3087,6 @@ const BambooStudio = () => {
               </div>
             )}
 
-            {/* TV zone: cutout for TV — only for built-in */}
-            {wallZone === 'tv' && tvType === 'builtin' && (
-              <div className="bg-white rounded-2xl p-3.5 shadow-sm">
-                <div className="flex items-center gap-1.5 mb-2.5">
-                  <Columns size={12} className="text-gray-400"/>
-                  <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Вырез под телевизор</span>
-                </div>
-                <div className="grid grid-cols-2 gap-2 mb-2">
-                  <label className="block">
-                    <span className="text-[8px] font-bold text-gray-400 uppercase">Ширина выреза, м</span>
-                    <MeterInput placeholder="напр. 1,2" valueMm={tvCutoutWidthMm} onChangeMm={(v) => { pushHistory(); setTvCutoutWidthMm(v); }} />
-                  </label>
-                  <label className="block">
-                    <span className="text-[8px] font-bold text-gray-400 uppercase">Высота выреза, м</span>
-                    <MeterInput placeholder="напр. 0,7" valueMm={tvCutoutHeightMm} onChangeMm={(v) => { pushHistory(); setTvCutoutHeightMm(v); }} />
-                  </label>
-                  <label className="block col-span-2">
-                    <span className="text-[8px] font-bold text-gray-400 uppercase">Глубина выреза, м</span>
-                    <MeterInput placeholder="напр. 0,15" valueMm={tvCutoutDepthMm} onChangeMm={(v) => { pushHistory(); setTvCutoutDepthMm(v); }} />
-                  </label>
-                </div>
-                {tvCutoutWidthMm > 0 && tvCutoutHeightMm > 0 && (() => {
-                  const cW = tvCutoutWidthMm / 1000, cH = tvCutoutHeightMm / 1000, cD = tvCutoutDepthMm / 1000;
-                  const sidesArea = tvCutoutDepthMm > 0 ? 2 * cD * cH : 0;
-                  const topArea = tvCutoutDepthMm > 0 ? cD * cW : 0;
-                  const bottomArea = tvCutoutDepthMm > 0 ? cD * cW : 0;
-                  const totalZagiby = sidesArea + topArea + bottomArea;
-                  return (
-                    <div className="space-y-1">
-                      <p className="text-[9px] text-gray-500 leading-relaxed">
-                        Площадь выреза: <span className="font-bold text-gray-700">{(cW * cH).toFixed(2).replace('.', ',')} м²</span>
-                        {tvCutoutDepthMm > 0 && <span> · глубина <span className="font-bold text-gray-700">{cD.toLocaleString('ru-RU')} м</span></span>}
-                      </p>
-                      {tvCutoutDepthMm > 0 && (
-                        <p className="text-[9px] text-[#5a9c3e] font-bold leading-relaxed">
-                          Загибы внутри: боковые ×2 ({(sidesArea).toFixed(2).replace('.', ',')} м²) + верхний ({topArea.toFixed(2).replace('.', ',')} м²) + нижний ({bottomArea.toFixed(2).replace('.', ',')} м²) = {totalZagiby.toFixed(2).replace('.', ',')} м² — учтено в расчёте панелей.
-                        </p>
-                      )}
-                    </div>
-                  );
-                })()}
-              </div>
-            )}
-
             {/* Column shape & dimensions */}
             {wallZone === 'column' && (
               <div className="bg-white rounded-2xl p-3.5 shadow-sm">
@@ -3310,6 +3266,71 @@ const BambooStudio = () => {
                 );
               })()}
             </div>
+            )}
+
+            {/* TV zone: cutout for TV — only for built-in */}
+            {wallZone === 'tv' && tvType === 'builtin' && (
+              <div className="bg-white rounded-2xl p-3.5 shadow-sm">
+                <div className="flex items-center gap-1.5 mb-2.5">
+                  <Columns size={12} className="text-gray-400"/>
+                  <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Вырез под телевизор</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  <label className="block">
+                    <span className="text-[8px] font-bold text-gray-400 uppercase">Ширина выреза, м</span>
+                    <MeterInput placeholder="напр. 1,2" valueMm={tvCutoutWidthMm} onChangeMm={(v) => { pushHistory(); setTvCutoutWidthMm(v); }} />
+                  </label>
+                  <label className="block">
+                    <span className="text-[8px] font-bold text-gray-400 uppercase">Высота выреза, м</span>
+                    <MeterInput placeholder="напр. 0,7" valueMm={tvCutoutHeightMm} onChangeMm={(v) => { pushHistory(); setTvCutoutHeightMm(v); }} />
+                  </label>
+                  <label className="block col-span-2">
+                    <span className="text-[8px] font-bold text-gray-400 uppercase">Глубина выреза, м</span>
+                    <MeterInput placeholder="напр. 0,15" valueMm={tvCutoutDepthMm} onChangeMm={(v) => { pushHistory(); setTvCutoutDepthMm(v); }} />
+                  </label>
+                </div>
+                {tvCutoutDepthMm > 0 && (
+                  <div className="mb-2">
+                    <p className="text-[8px] font-bold text-gray-400 uppercase mb-1">Тип соединения на углах</p>
+                    <div className="flex gap-1.5">
+                      {(['profile', 'bend'] as const).map(jt => (
+                        <button key={jt} onClick={() => { pushHistory(); setTvCutoutJoint(jt); }}
+                          className={`flex-1 py-1.5 rounded-lg text-[9px] font-bold border transition-all active:scale-95 ${tvCutoutJoint === jt ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
+                          {jt === 'profile' ? 'Профиль' : 'Загиб панели'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {tvCutoutWidthMm > 0 && tvCutoutHeightMm > 0 && (() => {
+                  const cW = tvCutoutWidthMm / 1000, cH = tvCutoutHeightMm / 1000, cD = tvCutoutDepthMm / 1000;
+                  const sidesArea = tvCutoutDepthMm > 0 ? 2 * cD * cH : 0;
+                  const topArea = tvCutoutDepthMm > 0 ? cD * cW : 0;
+                  const bottomArea = tvCutoutDepthMm > 0 ? cD * cW : 0;
+                  const totalZagiby = sidesArea + topArea + bottomArea;
+                  const profilePieces = tvCutoutDepthMm > 0 && tvCutoutJoint === 'profile'
+                    ? packProfileRuns([tvCutoutDepthMm, tvCutoutDepthMm, tvCutoutDepthMm, tvCutoutDepthMm])
+                    : 0;
+                  return (
+                    <div className="space-y-1">
+                      <p className="text-[9px] text-gray-500 leading-relaxed">
+                        Площадь выреза: <span className="font-bold text-gray-700">{(cW * cH).toFixed(2).replace('.', ',')} м²</span>
+                        {tvCutoutDepthMm > 0 && <span> · глубина <span className="font-bold text-gray-700">{cD.toLocaleString('ru-RU')} м</span></span>}
+                      </p>
+                      {tvCutoutDepthMm > 0 && (
+                        <p className="text-[9px] text-[#5a9c3e] font-bold leading-relaxed">
+                          Грани внутри: боковые ×2 ({sidesArea.toFixed(2).replace('.', ',')} м²) + верхний ({topArea.toFixed(2).replace('.', ',')} м²) + нижний ({bottomArea.toFixed(2).replace('.', ',')} м²) = {totalZagiby.toFixed(2).replace('.', ',')} м²
+                        </p>
+                      )}
+                      {tvCutoutDepthMm > 0 && tvCutoutJoint === 'profile' && (
+                        <p className="text-[9px] text-gray-500 leading-relaxed">
+                          Профили на 4 угла (по {cD.toLocaleString('ru-RU')} м): <span className="font-bold text-gray-700">{profilePieces} хл.</span> — остатки используются повторно, если хватает на целый угол.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
             )}
 
             {/* Light mode */}
