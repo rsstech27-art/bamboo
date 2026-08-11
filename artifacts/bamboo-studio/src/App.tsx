@@ -417,6 +417,14 @@ const BambooStudio = () => {
   const [tvCutoutHeightMm, setTvCutoutHeightMm] = useState(0);
   const [tvCutoutDepthMm, setTvCutoutDepthMm] = useState(0);
   const [tvCutoutJoint, setTvCutoutJoint] = useState<'bend' | 'profile'>('profile');
+  const [tvCutoutInputMode, setTvCutoutInputMode] = useState<'size' | 'inches'>('size');
+  const [tvCutoutPresetInches, setTvCutoutPresetInches] = useState<50 | 55 | 65 | null>(null);
+
+  const TV_INCH_PRESETS: Record<50 | 55 | 65, { wMm: number; hMm: number }> = {
+    50: { wMm: 1130, hMm: 660 },
+    55: { wMm: 1250, hMm: 730 },
+    65: { wMm: 1470, hMm: 850 },
+  };
   // TV zone: surface type — strips around the main face
   const [tvSurfaceSideDepthMm, setTvSurfaceSideDepthMm] = useState(0);
   const [tvSurfaceTopDepthMm, setTvSurfaceTopDepthMm] = useState(0);
@@ -2560,7 +2568,7 @@ const BambooStudio = () => {
             )}
             {step !== 'zone' && (
               <button
-                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setHistoryLen(0); surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setSavedPng(null); setWinSlopeDepthMm(0); setWinWidthMm(0); setWinHeightMm(0); setWinJoint('profile'); setTvCutoutWidthMm(0); setTvCutoutHeightMm(0); setTvCutoutDepthMm(0); setTvCutoutJoint('profile'); setTvType(null); setTvSurfaceSideDepthMm(0); setTvSurfaceTopDepthMm(0); setTvSurfaceBottomDepthMm(0); setStep('zone'); setWallZone(null); setWindowType(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
+                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setHistoryLen(0); surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setSavedPng(null); setWinSlopeDepthMm(0); setWinWidthMm(0); setWinHeightMm(0); setWinJoint('profile'); setTvCutoutWidthMm(0); setTvCutoutHeightMm(0); setTvCutoutDepthMm(0); setTvCutoutJoint('profile'); setTvCutoutInputMode('size'); setTvCutoutPresetInches(null); setTvType(null); setTvSurfaceSideDepthMm(0); setTvSurfaceTopDepthMm(0); setTvSurfaceBottomDepthMm(0); setStep('zone'); setWallZone(null); setWindowType(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
                 className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
               >
                 ← Назад
@@ -3275,20 +3283,55 @@ const BambooStudio = () => {
                   <Columns size={12} className="text-gray-400"/>
                   <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Вырез под телевизор</span>
                 </div>
-                <div className="grid grid-cols-2 gap-2 mb-2">
+                {/* Mode toggle */}
+                <div className="flex gap-1.5 mb-3">
+                  {([['size', 'По размерам'], ['inches', 'По дюймам ТВ']] as const).map(([mode, label]) => (
+                    <button key={mode} onClick={() => { pushHistory(); setTvCutoutInputMode(mode); if (mode === 'size') setTvCutoutPresetInches(null); }}
+                      className={`flex-1 py-1.5 rounded-lg text-[9px] font-bold border transition-all active:scale-95 ${tvCutoutInputMode === mode ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Inches presets */}
+                {tvCutoutInputMode === 'inches' && (
+                  <div className="flex gap-1.5 mb-3">
+                    {([50, 55, 65] as const).map(inch => (
+                      <button key={inch} onClick={() => {
+                        pushHistory();
+                        setTvCutoutPresetInches(inch);
+                        setTvCutoutWidthMm(TV_INCH_PRESETS[inch].wMm);
+                        setTvCutoutHeightMm(TV_INCH_PRESETS[inch].hMm);
+                      }}
+                        className={`flex-1 py-2 rounded-xl text-[11px] font-bold transition-all active:scale-95 ${tvCutoutPresetInches === inch ? 'bg-black text-white' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}>
+                        {inch}"
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Manual size inputs */}
+                {tvCutoutInputMode === 'size' && (
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    <label className="block">
+                      <span className="text-[8px] font-bold text-gray-400 uppercase">Ширина выреза, м</span>
+                      <MeterInput placeholder="напр. 1,2" valueMm={tvCutoutWidthMm} onChangeMm={(v) => { pushHistory(); setTvCutoutWidthMm(v); }} />
+                    </label>
+                    <label className="block">
+                      <span className="text-[8px] font-bold text-gray-400 uppercase">Высота выреза, м</span>
+                      <MeterInput placeholder="напр. 0,7" valueMm={tvCutoutHeightMm} onChangeMm={(v) => { pushHistory(); setTvCutoutHeightMm(v); }} />
+                    </label>
+                  </div>
+                )}
+
+                {/* Depth — always */}
+                <div className="mb-2">
                   <label className="block">
-                    <span className="text-[8px] font-bold text-gray-400 uppercase">Ширина выреза, м</span>
-                    <MeterInput placeholder="напр. 1,2" valueMm={tvCutoutWidthMm} onChangeMm={(v) => { pushHistory(); setTvCutoutWidthMm(v); }} />
-                  </label>
-                  <label className="block">
-                    <span className="text-[8px] font-bold text-gray-400 uppercase">Высота выреза, м</span>
-                    <MeterInput placeholder="напр. 0,7" valueMm={tvCutoutHeightMm} onChangeMm={(v) => { pushHistory(); setTvCutoutHeightMm(v); }} />
-                  </label>
-                  <label className="block col-span-2">
                     <span className="text-[8px] font-bold text-gray-400 uppercase">Глубина выреза, м</span>
                     <MeterInput placeholder="напр. 0,15" valueMm={tvCutoutDepthMm} onChangeMm={(v) => { pushHistory(); setTvCutoutDepthMm(v); }} />
                   </label>
                 </div>
+
                 {tvCutoutDepthMm > 0 && (
                   <div className="mb-2">
                     <p className="text-[8px] font-bold text-gray-400 uppercase mb-1">Тип соединения на углах</p>
