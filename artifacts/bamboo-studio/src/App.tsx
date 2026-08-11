@@ -412,6 +412,7 @@ const BambooStudio = () => {
   const [winHeightMm, setWinHeightMm] = useState(0);
   const [winJoint, setWinJoint] = useState<'profile' | 'bend'>('profile');
   // TV zone: cutout for the TV panel
+  const [tvType, setTvType] = useState<'builtin' | 'surface' | null>(null);
   const [tvCutoutWidthMm, setTvCutoutWidthMm] = useState(0);
   const [tvCutoutHeightMm, setTvCutoutHeightMm] = useState(0);
   const [tvCutoutDepthMm, setTvCutoutDepthMm] = useState(0);
@@ -2427,7 +2428,7 @@ const BambooStudio = () => {
             )}
             {step !== 'zone' && (
               <button
-                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setHistoryLen(0); surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setSavedPng(null); setWinSlopeDepthMm(0); setWinWidthMm(0); setWinHeightMm(0); setWinJoint('profile'); setTvCutoutWidthMm(0); setTvCutoutHeightMm(0); setTvCutoutDepthMm(0); setStep('zone'); setWallZone(null); setWindowType(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
+                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setHistoryLen(0); surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setSavedPng(null); setWinSlopeDepthMm(0); setWinWidthMm(0); setWinHeightMm(0); setWinJoint('profile'); setTvCutoutWidthMm(0); setTvCutoutHeightMm(0); setTvCutoutDepthMm(0); setTvType(null); setStep('zone'); setWallZone(null); setWindowType(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
                 className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
               >
                 ← Назад
@@ -2441,7 +2442,44 @@ const BambooStudio = () => {
 
         {/* ── Canvas area ── */}
         <div className="flex-1 relative min-w-0 min-h-[55vw] md:min-h-0">
-          {step === 'zone' && wallZone === 'window' ? (
+          {step === 'zone' && wallZone === 'tv' ? (
+            <div className="flex flex-col items-center justify-center w-full h-full rounded-3xl bg-white border-2 border-dashed border-gray-200 p-5">
+              <div className="text-center mb-5">
+                <h3 className="text-base font-black text-gray-900 mb-1">Выберите тип ТВ-зоны</h3>
+                <p className="text-xs text-gray-400">Как будет установлен телевизор?</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3 w-full max-w-lg">
+                {([
+                  { id: 'builtin',  label: 'Встроенный ТВ',  img: `${BASE}zones/tv-builtin.jpg` },
+                  { id: 'surface',  label: 'Накладной ТВ',   img: `${BASE}zones/tv-surface.jpg` },
+                ] as const).map(tt => (
+                  <button
+                    key={tt.id}
+                    onClick={() => { setTvType(tt.id); setStep('upload'); }}
+                    className="flex flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-gray-50 hover:border-black hover:shadow-lg transition-all active:scale-95 group text-left"
+                  >
+                    <div className="w-full h-40 bg-gray-200 overflow-hidden relative">
+                      <img
+                        src={tt.img}
+                        alt={tt.label}
+                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                      />
+                    </div>
+                    <div className="px-3 py-2.5">
+                      <span className="text-[11px] font-black uppercase tracking-wide text-gray-800 group-hover:text-black">{tt.label}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => { setWallZone(null); setTvType(null); }}
+                className="mt-5 text-[11px] font-bold text-gray-400 hover:text-black transition-colors underline underline-offset-2"
+              >
+                ← Назад к выбору зоны
+              </button>
+            </div>
+          ) : step === 'zone' && wallZone === 'window' ? (
             <div className="flex flex-col items-center justify-center w-full h-full rounded-3xl bg-white border-2 border-dashed border-gray-200 p-5">
               <div className="text-center mb-5">
                 <h3 className="text-base font-black text-gray-900 mb-1">Выберите тип оконного проёма</h3>
@@ -2498,8 +2536,8 @@ const BambooStudio = () => {
                     onClick={() => {
                       setWallZone(zone.id);
                       if (zone.id === 'column') setCornerTypes(['external', 'external']);
-                      // Window: an extra screen to pick the window type first
-                      if (zone.id !== 'window') setStep('upload');
+                      // Window / TV: an extra screen to pick the type first
+                      if (zone.id !== 'window' && zone.id !== 'tv') setStep('upload');
                     }}
                     className="flex flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-gray-50 hover:border-black hover:shadow-lg transition-all active:scale-95 group text-left"
                   >
@@ -2871,8 +2909,8 @@ const BambooStudio = () => {
               </div>
             )}
 
-            {/* TV zone: cutout for TV */}
-            {wallZone === 'tv' && (
+            {/* TV zone: cutout for TV — only for built-in */}
+            {wallZone === 'tv' && tvType === 'builtin' && (
               <div className="bg-white rounded-2xl p-3.5 shadow-sm">
                 <div className="flex items-center gap-1.5 mb-2.5">
                   <Columns size={12} className="text-gray-400"/>
