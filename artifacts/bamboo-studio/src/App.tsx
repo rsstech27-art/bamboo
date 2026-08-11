@@ -274,6 +274,7 @@ type SurfaceConfig = {
   hMoldingPositions: number[];
   wallWidthMm: number;   // 0 = not specified
   wallHeightMm: number;  // 0 = not specified
+  panelOrientation: 'vertical' | 'horizontal';
 };
 const defaultSurfaceConfig = (): SurfaceConfig => ({
   panelCount: 5,
@@ -287,6 +288,7 @@ const defaultSurfaceConfig = (): SurfaceConfig => ({
   hMoldingPositions: [0.5],
   wallWidthMm: 0,
   wallHeightMm: 0,
+  panelOrientation: 'vertical',
 });
 
 const SURFACE_LABELS = ['Стена 1 · Основная', 'Стена 2', 'Стена 3'];
@@ -513,6 +515,8 @@ const BambooStudio = () => {
   const hMoldingWidthRef = useRef(1);
   const hMoldingPositionsRef = useRef<number[]>([0.5]);
   const draggingHMoldingIndexRef = useRef<number | null>(null);
+  const [panelOrientation, setPanelOrientation] = useState<'vertical' | 'horizontal'>('vertical');
+  const panelOrientationRef = useRef<'vertical' | 'horizontal'>('vertical');
   // Mask stored as strokes — never gets reset by canvas operations
   const maskStrokesRef = useRef<Array<{ x: number; y: number; r: number }>>([]);
   const maskUndoStackRef = useRef<number[]>([]); // stores stroke-array length before each erase drag
@@ -533,6 +537,7 @@ const BambooStudio = () => {
     hMoldingCount: number;
     hMoldingWidth: number;
     hMoldingPositions: number[];
+    panelOrientation: 'vertical' | 'horizontal';
   };
   const historyRef = useRef<HistorySnapshot[]>([]);
   // Mirrors historyRef.current.length so the «Отменить» button can show enabled/disabled state
@@ -554,6 +559,7 @@ const BambooStudio = () => {
       hMoldingCount: hMoldingCountRef.current,
       hMoldingWidth: hMoldingWidthRef.current,
       hMoldingPositions: [...hMoldingPositionsRef.current],
+      panelOrientation: panelOrientationRef.current,
     });
     if (historyRef.current.length > 50) historyRef.current.shift();
     setHistoryLen(historyRef.current.length);
@@ -579,6 +585,7 @@ const BambooStudio = () => {
       setHMoldingCount(prev.hMoldingCount);
       setHMoldingWidth(prev.hMoldingWidth);
       setHMoldingPositions(prev.hMoldingPositions);
+      setPanelOrientation(prev.panelOrientation);
     } else {
       // Snapshot belongs to another surface — restore its stored config directly
       const cfg = surfacesRef.current[prev.surfaceIndex] ?? defaultSurfaceConfig();
@@ -595,6 +602,7 @@ const BambooStudio = () => {
         hMoldingCount: prev.hMoldingCount,
         hMoldingWidth: prev.hMoldingWidth,
         hMoldingPositions: prev.hMoldingPositions,
+        panelOrientation: prev.panelOrientation,
       };
       // Force redraw (stored configs are read from refs during draw)
       setPoints(pv => [...pv]);
@@ -615,6 +623,7 @@ const BambooStudio = () => {
   useEffect(() => { hMoldingCountRef.current = hMoldingCount; }, [hMoldingCount]);
   useEffect(() => { hMoldingWidthRef.current = hMoldingWidth; }, [hMoldingWidth]);
   useEffect(() => { hMoldingPositionsRef.current = hMoldingPositions; }, [hMoldingPositions]);
+  useEffect(() => { panelOrientationRef.current = panelOrientation; }, [panelOrientation]);
   useEffect(() => { lightModeRef.current = lightMode; }, [lightMode]);
   useEffect(() => { cylHighlightPosRef.current = cylHighlightPos; }, [cylHighlightPos]);
   // Auto-shift cylinder highlight when the light mode changes:
@@ -636,8 +645,9 @@ const BambooStudio = () => {
       moldingStyle, moldingWidth,
       hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions,
       wallWidthMm, wallHeightMm,
+      panelOrientation,
     };
-  }, [activeSurface, panelCount, dividerPositions, sectorMaterials, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, wallWidthMm, wallHeightMm]);
+  }, [activeSurface, panelCount, dividerPositions, sectorMaterials, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, wallWidthMm, wallHeightMm, panelOrientation]);
 
   // Ctrl+Z global undo
   useEffect(() => {
@@ -666,6 +676,7 @@ const BambooStudio = () => {
       hMoldingPositions: [...hMoldingPositionsRef.current],
       wallWidthMm: wallWidthMmRef.current,
       wallHeightMm: wallHeightMmRef.current,
+      panelOrientation: panelOrientationRef.current,
     };
     const cfg = surfacesRef.current[idx] ?? defaultSurfaceConfig();
     surfacesRef.current[idx] = cfg;
@@ -682,6 +693,7 @@ const BambooStudio = () => {
     setHMoldingPositions(cfg.hMoldingPositions);
     setWallWidthMm(cfg.wallWidthMm);
     setWallHeightMm(cfg.wallHeightMm);
+    setPanelOrientation(cfg.panelOrientation ?? 'vertical');
     setActiveSector(null);
   }, []);
 
@@ -788,14 +800,25 @@ const BambooStudio = () => {
       // Helper: render one 4-point quad with panels, dividers, and moldings
       const renderQuad = (qp: Point[], cfg: SurfaceConfig, isActive: boolean, overrideFirstMaterial?: Panel) => {
         const bounds = getSectorBounds(cfg.dividerPositions, cfg.panelCount);
+        const isHoriz = cfg.panelOrientation === 'horizontal';
 
       for (let i = 0; i < cfg.panelCount; i++) {
         const { start: rStart, end: rEnd } = bounds[i];
 
-        const p1 = { x: qp[0].x + (qp[1].x - qp[0].x) * rStart, y: qp[0].y + (qp[1].y - qp[0].y) * rStart };
-        const p2 = { x: qp[0].x + (qp[1].x - qp[0].x) * rEnd, y: qp[0].y + (qp[1].y - qp[0].y) * rEnd };
-        const p3 = { x: qp[3].x + (qp[2].x - qp[3].x) * rEnd, y: qp[3].y + (qp[2].y - qp[3].y) * rEnd };
-        const p4 = { x: qp[3].x + (qp[2].x - qp[3].x) * rStart, y: qp[3].y + (qp[2].y - qp[3].y) * rStart };
+        // Vertical: divide along top (qp[0]→qp[1]) and bottom (qp[3]→qp[2]) edges
+        // Horizontal: divide along left (qp[0]→qp[3]) and right (qp[1]→qp[2]) edges
+        const p1 = isHoriz
+          ? { x: qp[0].x + (qp[3].x - qp[0].x) * rStart, y: qp[0].y + (qp[3].y - qp[0].y) * rStart }
+          : { x: qp[0].x + (qp[1].x - qp[0].x) * rStart, y: qp[0].y + (qp[1].y - qp[0].y) * rStart };
+        const p2 = isHoriz
+          ? { x: qp[1].x + (qp[2].x - qp[1].x) * rStart, y: qp[1].y + (qp[2].y - qp[1].y) * rStart }
+          : { x: qp[0].x + (qp[1].x - qp[0].x) * rEnd,   y: qp[0].y + (qp[1].y - qp[0].y) * rEnd };
+        const p3 = isHoriz
+          ? { x: qp[1].x + (qp[2].x - qp[1].x) * rEnd,   y: qp[1].y + (qp[2].y - qp[1].y) * rEnd }
+          : { x: qp[3].x + (qp[2].x - qp[3].x) * rEnd,   y: qp[3].y + (qp[2].y - qp[3].y) * rEnd };
+        const p4 = isHoriz
+          ? { x: qp[0].x + (qp[3].x - qp[0].x) * rEnd,   y: qp[0].y + (qp[3].y - qp[0].y) * rEnd }
+          : { x: qp[3].x + (qp[2].x - qp[3].x) * rStart, y: qp[3].y + (qp[2].y - qp[3].y) * rStart };
 
         const material = (i === 0 && overrideFirstMaterial) ? overrideFirstMaterial : (cfg.sectorMaterials[i] || BAMBOO_PANELS[0]);
 
@@ -813,36 +836,52 @@ const BambooStudio = () => {
         tCtx.closePath();
         tCtx.clip();
 
+        const panelW = maxX - minX;
+        const panelH = maxY - minY;
+        const cx = (minX + maxX) / 2;
+        const cy = (minY + maxY) / 2;
+        // Rotate drawing context -90° around panel center for horizontal orientation
+        // so texture grain and slat gaps appear rotated in screen space.
+        if (isHoriz) {
+          tCtx.translate(cx, cy);
+          tCtx.rotate(-Math.PI / 2);
+          tCtx.translate(-cx, -cy);
+        }
+        // Draw coordinates in (possibly rotated) context space
+        const dX = isHoriz ? cx - panelH / 2 : minX;
+        const dY = isHoriz ? cy - panelW / 2 : minY;
+        const dW = isHoriz ? panelH : panelW;
+        const dH = isHoriz ? panelW : panelH;
+
         const cachedTex = textureCacheRef.current[material.id];
         if (cachedTex) {
-          const panelW = maxX - minX;
-          const panelH = maxY - minY;
           if (material.textureStretch) {
             if (material.slatOverlay) {
               // Slat panels: stretch texture to fill the entire panel (no tiling)
-              tCtx.drawImage(cachedTex, minX, minY, panelW, panelH);
+              tCtx.drawImage(cachedTex, dX, dY, dW, dH);
               // Also draw to woodCanvas for extra opacity boost
               wCtx.save();
               wCtx.beginPath();
               wCtx.moveTo(p1.x, p1.y); wCtx.lineTo(p2.x, p2.y);
               wCtx.lineTo(p3.x, p3.y); wCtx.lineTo(p4.x, p4.y);
               wCtx.closePath(); wCtx.clip();
-              wCtx.drawImage(cachedTex, minX, minY, panelW, panelH);
+              if (isHoriz) { wCtx.translate(cx, cy); wCtx.rotate(-Math.PI / 2); wCtx.translate(-cx, -cy); }
+              wCtx.drawImage(cachedTex, dX, dY, dW, dH);
               wCtx.restore();
             } else {
               // Wood panels: tile at 80% panel size so grain appears 20% smaller
               const WOOD_SCALE = 0.8;
-              const tileW = Math.max(1, Math.ceil(panelW * WOOD_SCALE));
-              const tileH = Math.max(1, Math.ceil(panelH * WOOD_SCALE));
+              const tileW = Math.max(1, Math.ceil(dW * WOOD_SCALE));
+              const tileH = Math.max(1, Math.ceil(dH * WOOD_SCALE));
               const tileCanvas = document.createElement('canvas');
               tileCanvas.width = tileW; tileCanvas.height = tileH;
               const tileCtx = tileCanvas.getContext('2d')!;
               tileCtx.drawImage(cachedTex, 0, 0, tileW, tileH);
               const woodPattern = tCtx.createPattern(tileCanvas, 'repeat');
               if (woodPattern) {
-                woodPattern.setTransform(new DOMMatrix().translate(minX, minY));
+                woodPattern.setTransform(new DOMMatrix().translate(dX, dY));
                 tCtx.fillStyle = woodPattern;
-                tCtx.fillRect(minX - 1, minY - 1, panelW + 2, panelH + 2);
+                tCtx.fillRect(dX - 1, dY - 1, dW + 2, dH + 2);
               }
               // Also draw to woodCanvas for extra opacity boost
               wCtx.save();
@@ -850,11 +889,12 @@ const BambooStudio = () => {
               wCtx.moveTo(p1.x, p1.y); wCtx.lineTo(p2.x, p2.y);
               wCtx.lineTo(p3.x, p3.y); wCtx.lineTo(p4.x, p4.y);
               wCtx.closePath(); wCtx.clip();
+              if (isHoriz) { wCtx.translate(cx, cy); wCtx.rotate(-Math.PI / 2); wCtx.translate(-cx, -cy); }
               const woodPattern2 = wCtx.createPattern(tileCanvas, 'repeat');
               if (woodPattern2) {
-                woodPattern2.setTransform(new DOMMatrix().translate(minX, minY));
+                woodPattern2.setTransform(new DOMMatrix().translate(dX, dY));
                 wCtx.fillStyle = woodPattern2;
-                wCtx.fillRect(minX - 1, minY - 1, panelW + 2, panelH + 2);
+                wCtx.fillRect(dX - 1, dY - 1, dW + 2, dH + 2);
               }
               wCtx.restore();
             }
@@ -863,31 +903,31 @@ const BambooStudio = () => {
             // If textureScale set: shrink tile to 1/ts (realistic repeat), else auto-fit
             const scale = ts > 1
               ? 1 / ts
-              : Math.max(1, panelH / (cachedTex.height * 3));
+              : Math.max(1, dH / (cachedTex.height * 3));
             const pattern = tCtx.createPattern(cachedTex, 'repeat');
             if (pattern) {
               const m = new DOMMatrix();
               m.scaleSelf(scale, scale);
-              m.translateSelf(minX / scale, minY / scale);
+              m.translateSelf(dX / scale, dY / scale);
               pattern.setTransform(m);
               tCtx.fillStyle = pattern;
             } else {
               tCtx.fillStyle = material.color;
             }
-            tCtx.fillRect(minX - 1, minY - 1, panelW + 2, panelH + 2);
+            tCtx.fillRect(dX - 1, dY - 1, dW + 2, dH + 2);
           }
         } else {
           tCtx.fillStyle = material.color;
           tCtx.fillRect(0, 0, width, height);
         }
 
-        // Slat (рейки) gap overlay — fine vertical dark stripes simulating gaps between slats
+        // Slat (рейки) gap overlay — fine dark stripes simulating gaps between slats
         if (material.slatOverlay) {
           const SLAT_W = 4;
           const GAP_W = 1;
           const PERIOD = SLAT_W + GAP_W;
-          const startX = Math.floor(minX / PERIOD) * PERIOD;
-          for (let sx = startX; sx < maxX + PERIOD; sx += PERIOD) {
+          const startX = Math.floor(dX / PERIOD) * PERIOD;
+          for (let sx = startX; sx < dX + dW + PERIOD; sx += PERIOD) {
             const gx = sx + SLAT_W;
             const gapGrad = tCtx.createLinearGradient(gx - 0.5, 0, gx + GAP_W + 0.5, 0);
             gapGrad.addColorStop(0,   'rgba(0,0,0,0.00)');
@@ -896,7 +936,7 @@ const BambooStudio = () => {
             gapGrad.addColorStop(0.7, 'rgba(0,0,0,0.65)');
             gapGrad.addColorStop(1,   'rgba(0,0,0,0.00)');
             tCtx.fillStyle = gapGrad;
-            tCtx.fillRect(gx - 0.5, minY - 1, GAP_W + 1, maxY - minY + 2);
+            tCtx.fillRect(gx - 0.5, dY - 1, GAP_W + 1, dH + 2);
           }
         }
 
@@ -905,11 +945,11 @@ const BambooStudio = () => {
         if (curLight !== 'off') {
           let gx0: number, gy0: number, gx1: number, gy1: number, brightColor: string, fadeColor: string;
           if (curLight === 'morning') {
-            gx0 = maxX; gy0 = minY; gx1 = minX; gy1 = maxY;
+            gx0 = dX + dW; gy0 = dY; gx1 = dX; gy1 = dY + dH;
             brightColor = 'rgba(200,225,255,0.30)';
             fadeColor   = 'rgba(0,10,50,0.07)';
           } else {
-            gx0 = minX; gy0 = minY; gx1 = maxX; gy1 = maxY;
+            gx0 = dX; gy0 = dY; gx1 = dX + dW; gy1 = dY + dH;
             brightColor = 'rgba(255,195,100,0.32)';
             fadeColor   = 'rgba(60,15,0,0.08)';
           }
@@ -917,7 +957,7 @@ const BambooStudio = () => {
           lightGrad.addColorStop(0, brightColor);
           lightGrad.addColorStop(1, fadeColor);
           tCtx.fillStyle = lightGrad;
-          tCtx.fillRect(minX - 1, minY - 1, maxX - minX + 2, maxY - minY + 2);
+          tCtx.fillRect(dX - 1, dY - 1, dW + 2, dH + 2);
         }
         tCtx.restore();
 
@@ -943,26 +983,26 @@ const BambooStudio = () => {
       // Draw draggable dividers as visible handles (hidden during export)
       if (isActive && !curIsErasing && !forExportRef.current) {
         cfg.dividerPositions.forEach((ratio) => {
-          // Point on top edge
-          const topX = qp[0].x + (qp[1].x - qp[0].x) * ratio;
-          const topY = qp[0].y + (qp[1].y - qp[0].y) * ratio;
-          // Point on bottom edge
-          const botX = qp[3].x + (qp[2].x - qp[3].x) * ratio;
-          const botY = qp[3].y + (qp[2].y - qp[3].y) * ratio;
+          // Endpoints depend on orientation:
+          // Vertical → top-edge to bottom-edge; Horizontal → left-edge to right-edge
+          const aX = isHoriz ? qp[0].x + (qp[3].x - qp[0].x) * ratio : qp[0].x + (qp[1].x - qp[0].x) * ratio;
+          const aY = isHoriz ? qp[0].y + (qp[3].y - qp[0].y) * ratio : qp[0].y + (qp[1].y - qp[0].y) * ratio;
+          const bX = isHoriz ? qp[1].x + (qp[2].x - qp[1].x) * ratio : qp[3].x + (qp[2].x - qp[3].x) * ratio;
+          const bY = isHoriz ? qp[1].y + (qp[2].y - qp[1].y) * ratio : qp[3].y + (qp[2].y - qp[3].y) * ratio;
 
           tCtx.save();
           tCtx.strokeStyle = 'rgba(255,255,255,0.6)';
           tCtx.lineWidth = 2;
           tCtx.setLineDash([6, 4]);
           tCtx.beginPath();
-          tCtx.moveTo(topX, topY);
-          tCtx.lineTo(botX, botY);
+          tCtx.moveTo(aX, aY);
+          tCtx.lineTo(bX, bY);
           tCtx.stroke();
           tCtx.restore();
 
           // Handle circle at midpoint
-          const midX = (topX + botX) / 2;
-          const midY = (topY + botY) / 2;
+          const midX = (aX + bX) / 2;
+          const midY = (aY + bY) / 2;
           tCtx.save();
           tCtx.fillStyle = 'white';
           tCtx.strokeStyle = 'rgba(0,0,0,0.3)';
@@ -976,7 +1016,7 @@ const BambooStudio = () => {
           tCtx.font = 'bold 10px sans-serif';
           tCtx.textAlign = 'center';
           tCtx.textBaseline = 'middle';
-          tCtx.fillText('⇔', midX, midY);
+          tCtx.fillText(isHoriz ? '⇕' : '⇔', midX, midY);
           tCtx.restore();
         });
       }
@@ -986,10 +1026,12 @@ const BambooStudio = () => {
       const curMoldingWidth = cfg.moldingWidth;
       if (curMoldingStyle !== 'none' && cfg.dividerPositions.length > 0) {
         cfg.dividerPositions.forEach((ratio) => {
-          const topX = qp[0].x + (qp[1].x - qp[0].x) * ratio;
-          const topY = qp[0].y + (qp[1].y - qp[0].y) * ratio;
-          const botX = qp[3].x + (qp[2].x - qp[3].x) * ratio;
-          const botY = qp[3].y + (qp[2].y - qp[3].y) * ratio;
+          const aX = isHoriz ? qp[0].x + (qp[3].x - qp[0].x) * ratio : qp[0].x + (qp[1].x - qp[0].x) * ratio;
+          const aY = isHoriz ? qp[0].y + (qp[3].y - qp[0].y) * ratio : qp[0].y + (qp[1].y - qp[0].y) * ratio;
+          const bX = isHoriz ? qp[1].x + (qp[2].x - qp[1].x) * ratio : qp[3].x + (qp[2].x - qp[3].x) * ratio;
+          const bY = isHoriz ? qp[1].y + (qp[2].y - qp[1].y) * ratio : qp[3].y + (qp[2].y - qp[3].y) * ratio;
+          // Rename for molding gradient calculation below
+          const topX = aX, topY = aY, botX = bX, botY = bY;
 
           const dx = botX - topX;
           const dy = botY - topY;
@@ -1167,6 +1209,7 @@ const BambooStudio = () => {
         hMoldingPositions: hMoldingPositionsRef.current,
         wallWidthMm: wallWidthMmRef.current,
         wallHeightMm: wallHeightMmRef.current,
+        panelOrientation: panelOrientationRef.current,
       };
       const quadCfgs: SurfaceConfig[] = [];
       for (let q = 0; q < nQuads; q++) {
@@ -1371,6 +1414,7 @@ const BambooStudio = () => {
     const pts = pointsRef.current;
     const dividers = dividerPositionsRef.current;
     if (pts.length < 4) return -1;
+    const isHoriz = panelOrientationRef.current === 'horizontal';
 
     for (let d = 0; d < dividers.length; d++) {
       const ratio = dividers[d];
@@ -1382,12 +1426,22 @@ const BambooStudio = () => {
       const quadPts = [aq.length === 4 ? aq : pts.slice(0, 4)];
       let minDistFound = Infinity;
       for (const qp of quadPts) {
-        const topX = qp[0].x + (qp[1].x - qp[0].x) * ratio;
-        const topY = qp[0].y + (qp[1].y - qp[0].y) * ratio;
-        const botX = qp[3].x + (qp[2].x - qp[3].x) * ratio;
-        const botY = qp[3].y + (qp[2].y - qp[3].y) * ratio;
-        midX = (topX + botX) / 2;
-        midY = (topY + botY) / 2;
+        let aX: number, aY: number, bX: number, bY: number;
+        if (isHoriz) {
+          // Horizontal divider: line from left edge to right edge at vertical ratio
+          aX = qp[0].x + (qp[3].x - qp[0].x) * ratio;
+          aY = qp[0].y + (qp[3].y - qp[0].y) * ratio;
+          bX = qp[1].x + (qp[2].x - qp[1].x) * ratio;
+          bY = qp[1].y + (qp[2].y - qp[1].y) * ratio;
+        } else {
+          // Vertical divider: line from top edge to bottom edge at horizontal ratio
+          aX = qp[0].x + (qp[1].x - qp[0].x) * ratio;
+          aY = qp[0].y + (qp[1].y - qp[0].y) * ratio;
+          bX = qp[3].x + (qp[2].x - qp[3].x) * ratio;
+          bY = qp[3].y + (qp[2].y - qp[3].y) * ratio;
+        }
+        midX = (aX + bX) / 2;
+        midY = (aY + bY) / 2;
         const dQ = Math.sqrt((cx - midX) ** 2 + (cy - midY) ** 2);
         if (dQ < minDistFound) minDistFound = dQ;
       }
@@ -1472,7 +1526,7 @@ const BambooStudio = () => {
   useEffect(() => {
     if (!image) return;
     drawFullScene();
-  }, [points, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, lightMode, cylHighlightPos, activeSurface, cornerTypes, wrapJunctions, wallZone, columnShape, drawFullScene, image]);
+  }, [points, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, lightMode, cylHighlightPos, activeSurface, cornerTypes, wrapJunctions, wallZone, columnShape, drawFullScene, image, panelOrientation]);
 
   const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = mainCanvasRef.current;
@@ -1541,10 +1595,12 @@ const BambooStudio = () => {
       return;
     }
 
-    // Dragging a vertical divider
+    // Dragging a divider (vertical or horizontal depending on orientation)
     if (!isErasing && draggingDividerIndexRef.current !== null) {
       const idx = draggingDividerIndexRef.current;
-      const newRatio = canvasXToWallRatio(x, y);
+      const newRatio = panelOrientationRef.current === 'horizontal'
+        ? canvasYToWallRatio(x, y)
+        : canvasXToWallRatio(x, y);
       setDividerPositions(prev => {
         const updated = [...prev];
         const leftEdge = idx === 0 ? 0 : updated[idx - 1];
@@ -1581,7 +1637,7 @@ const BambooStudio = () => {
       if (findNearHMolding(x, y) !== -1) {
         mainCanvasRef.current.style.cursor = 'ns-resize';
       } else if (findNearDivider(x, y) !== -1) {
-        mainCanvasRef.current.style.cursor = 'ew-resize';
+        mainCanvasRef.current.style.cursor = panelOrientationRef.current === 'horizontal' ? 'ns-resize' : 'ew-resize';
       } else {
         mainCanvasRef.current.style.cursor = 'pointer';
       }
@@ -1618,7 +1674,9 @@ const BambooStudio = () => {
         return;
       }
       // Determine which sector was clicked using divider positions
-      const ratio = canvasXToWallRatio(x, y);
+      const ratio = panelOrientationRef.current === 'horizontal'
+        ? canvasYToWallRatio(x, y)
+        : canvasXToWallRatio(x, y);
       const bounds = getSectorBounds(dividerPositionsRef.current, panelCountRef.current);
       const idx = bounds.findIndex(b => ratio >= b.start && ratio <= b.end);
       if (idx !== -1) {
@@ -1693,6 +1751,7 @@ const BambooStudio = () => {
             hMoldingPositions: hMoldingPositionsRef.current,
             wallWidthMm: wallWidthMmRef.current,
             wallHeightMm: wallHeightMmRef.current,
+            panelOrientation: panelOrientationRef.current,
           }
         : (surfacesRef.current[q] ?? defaultSurfaceConfig()));
     }
@@ -2963,6 +3022,17 @@ const BambooStudio = () => {
               <input type="range" min="1" max="15" value={panelCount}
                 onChange={(e) => handleChangePanelCount(parseInt(e.target.value))}
                 className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
+              <div className="mt-2">
+                <p className="text-[8px] font-bold text-gray-400 uppercase mb-1">Ориентация</p>
+                <div className="flex gap-1.5">
+                  {(['vertical', 'horizontal'] as const).map(ori => (
+                    <button key={ori} onClick={() => { pushHistory(); setPanelOrientation(ori); }}
+                      className={`flex-1 py-1.5 rounded-lg text-[9px] font-bold border transition-all active:scale-95 ${panelOrientation === ori ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
+                      {ori === 'vertical' ? 'Вертикально' : 'Горизонтально'}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
             {/* Eraser */}
