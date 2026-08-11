@@ -411,6 +411,9 @@ const BambooStudio = () => {
   const [winWidthMm, setWinWidthMm] = useState(0);
   const [winHeightMm, setWinHeightMm] = useState(0);
   const [winJoint, setWinJoint] = useState<'profile' | 'bend'>('profile');
+  // TV zone: cutout for the TV panel
+  const [tvCutoutWidthMm, setTvCutoutWidthMm] = useState(0);
+  const [tvCutoutHeightMm, setTvCutoutHeightMm] = useState(0);
   const [points, setPoints] = useState<Point[]>([]);
   const [panelCount, setPanelCount] = useState(5);
   // dividerPositions: array of N-1 values in (0,1), sorted ascending
@@ -2096,7 +2099,7 @@ const BambooStudio = () => {
     if (wallCalcs.length > 0) {
       y += 18;
       c.fillStyle = '#111111'; c.font = 'bold 18px sans-serif';
-      c.fillText('Размеры стен и расход материала', 60, y + 10);
+      c.fillText(wallZone === 'tv' ? 'Размеры ТВ-зоны и расход материала' : 'Размеры стен и расход материала', 60, y + 10);
       y += 34;
       c.font = '16px sans-serif';
       let totalWallArea = 0;
@@ -2423,7 +2426,7 @@ const BambooStudio = () => {
             )}
             {step !== 'zone' && (
               <button
-                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setHistoryLen(0); surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setSavedPng(null); setWinSlopeDepthMm(0); setWinWidthMm(0); setWinHeightMm(0); setWinJoint('profile'); setStep('zone'); setWallZone(null); setWindowType(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
+                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setHistoryLen(0); surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setSavedPng(null); setWinSlopeDepthMm(0); setWinWidthMm(0); setWinHeightMm(0); setWinJoint('profile'); setTvCutoutWidthMm(0); setTvCutoutHeightMm(0); setStep('zone'); setWallZone(null); setWindowType(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
                 className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
               >
                 ← Назад
@@ -2864,6 +2867,31 @@ const BambooStudio = () => {
                   <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Тип углов</span>
                 </div>
                 <CornerTypeCheckboxes nJunctions={Math.min(2, Math.floor(points.length / 4) - 1)} cornerTypes={cornerTypes} setCornerTypes={(v) => { pushHistory(); setCornerTypes(v); }} wrapJunctions={wrapJunctions} setWrapJunctions={(v) => { pushHistory(); setWrapJunctions(v); }} />
+              </div>
+            )}
+
+            {/* TV zone: cutout for TV */}
+            {wallZone === 'tv' && (
+              <div className="bg-white rounded-2xl p-3.5 shadow-sm">
+                <div className="flex items-center gap-1.5 mb-2.5">
+                  <Columns size={12} className="text-gray-400"/>
+                  <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Вырез под телевизор</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  <label className="block">
+                    <span className="text-[8px] font-bold text-gray-400 uppercase">Ширина выреза, м</span>
+                    <MeterInput placeholder="напр. 1,2" valueMm={tvCutoutWidthMm} onChangeMm={(v) => { pushHistory(); setTvCutoutWidthMm(v); }} />
+                  </label>
+                  <label className="block">
+                    <span className="text-[8px] font-bold text-gray-400 uppercase">Высота выреза, м</span>
+                    <MeterInput placeholder="напр. 0,7" valueMm={tvCutoutHeightMm} onChangeMm={(v) => { pushHistory(); setTvCutoutHeightMm(v); }} />
+                  </label>
+                </div>
+                {tvCutoutWidthMm > 0 && tvCutoutHeightMm > 0 && (
+                  <p className="text-[9px] text-gray-500 leading-relaxed">
+                    Площадь выреза: <span className="font-bold text-gray-700">{((tvCutoutWidthMm / 1000) * (tvCutoutHeightMm / 1000)).toFixed(2).replace('.', ',')} м²</span> — учтено в КП (вырезается из панелей передней плоскости).
+                  </p>
+                )}
               </div>
             )}
 
