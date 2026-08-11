@@ -416,6 +416,7 @@ const BambooStudio = () => {
   const [tvCutoutWidthMm, setTvCutoutWidthMm] = useState(0);
   const [tvCutoutHeightMm, setTvCutoutHeightMm] = useState(0);
   const [tvCutoutDepthMm, setTvCutoutDepthMm] = useState(0);
+  const [tvCutoutJoint, setTvCutoutJoint] = useState<'bend' | 'profile'>('profile');
   // TV zone: surface type — strips around the main face
   const [tvSurfaceSideDepthMm, setTvSurfaceSideDepthMm] = useState(0);
   const [tvSurfaceTopDepthMm, setTvSurfaceTopDepthMm] = useState(0);
@@ -1840,6 +1841,12 @@ const BambooStudio = () => {
       if (winHeightMm > 0) addRuns(style, winHeightMm, 2);
       if (winWidthMm > 0) addRuns(style, winWidthMm, 1);
     }
+    // Built-in TV: 4 inner cutout corner profiles (along depth direction)
+    if (isTvBuiltin && tvCutoutJoint === 'profile' && tvCutoutDepthMm > 0) {
+      const visStyle = kpCfgs.find(cfg => cfg.moldingStyle !== 'none')?.moldingStyle;
+      const style = visStyle && visStyle !== 'none' ? visStyle : 'metallic';
+      addRuns(style, tvCutoutDepthMm, 4);
+    }
     // Pack each style's runs into 3 m pieces (offcuts reused project-wide)
     let profilePiecesTotal = 0;
     for (const style of Object.keys(profileRuns) as Array<Exclude<MoldingStyle, 'none'>>) {
@@ -2287,8 +2294,17 @@ const BambooStudio = () => {
         60, y + 8);
       y += 28;
       c.fillText(
-        `Деталей загибов: ${tvBuiltinCut.pieces.length} · дополнительно панелей: ${tvBuiltinCut.panels} (обрезки используются повторно)`,
+        `Деталей: ${tvBuiltinCut.pieces.length} · дополнительно панелей: ${tvBuiltinCut.panels} (обрезки полос используются повторно)`,
         60, y + 8);
+      y += 28;
+      if (tvCutoutJoint === 'profile') {
+        const cutPieces = packProfileRuns([tvCutoutDepthMm, tvCutoutDepthMm, tvCutoutDepthMm, tvCutoutDepthMm]);
+        c.fillText(
+          `Соединение на углах: профиль — 4 угла по ${(tvCutoutDepthMm / 1000).toLocaleString('ru-RU')} м · хлыстов 3 м: ${cutPieces} (остатки используются повторно, если хватает на целый угол)`,
+          60, y + 8);
+      } else {
+        c.fillText('Соединение на углах: загиб панели — профили не требуются', 60, y + 8);
+      }
       y += 30;
     }
 
@@ -2544,7 +2560,7 @@ const BambooStudio = () => {
             )}
             {step !== 'zone' && (
               <button
-                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setHistoryLen(0); surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setSavedPng(null); setWinSlopeDepthMm(0); setWinWidthMm(0); setWinHeightMm(0); setWinJoint('profile'); setTvCutoutWidthMm(0); setTvCutoutHeightMm(0); setTvCutoutDepthMm(0); setTvType(null); setTvSurfaceSideDepthMm(0); setTvSurfaceTopDepthMm(0); setTvSurfaceBottomDepthMm(0); setStep('zone'); setWallZone(null); setWindowType(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
+                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setHistoryLen(0); surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setSavedPng(null); setWinSlopeDepthMm(0); setWinWidthMm(0); setWinHeightMm(0); setWinJoint('profile'); setTvCutoutWidthMm(0); setTvCutoutHeightMm(0); setTvCutoutDepthMm(0); setTvCutoutJoint('profile'); setTvType(null); setTvSurfaceSideDepthMm(0); setTvSurfaceTopDepthMm(0); setTvSurfaceBottomDepthMm(0); setStep('zone'); setWallZone(null); setWindowType(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
                 className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
               >
                 ← Назад
