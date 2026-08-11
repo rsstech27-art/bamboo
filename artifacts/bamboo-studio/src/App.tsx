@@ -416,6 +416,10 @@ const BambooStudio = () => {
   const [tvCutoutWidthMm, setTvCutoutWidthMm] = useState(0);
   const [tvCutoutHeightMm, setTvCutoutHeightMm] = useState(0);
   const [tvCutoutDepthMm, setTvCutoutDepthMm] = useState(0);
+  // TV zone: surface type — strips around the main face
+  const [tvSurfaceSideDepthMm, setTvSurfaceSideDepthMm] = useState(0);
+  const [tvSurfaceTopDepthMm, setTvSurfaceTopDepthMm] = useState(0);
+  const [tvSurfaceBottomDepthMm, setTvSurfaceBottomDepthMm] = useState(0);
   const [points, setPoints] = useState<Point[]>([]);
   const [panelCount, setPanelCount] = useState(5);
   // dividerPositions: array of N-1 values in (0,1), sorted ascending
@@ -1574,7 +1578,7 @@ const BambooStudio = () => {
     // Don't trigger sector selection if click was near a divider or h-molding handle
     if (step === 'edit' && (findNearDivider(x, y) !== -1 || findNearHMolding(x, y) !== -1)) return;
 
-    if (step === 'mark' && points.length < (wallZone === 'wall-niche' || wallZone === 'tv' ? 12 : wallZone === 'column' || wallZone === 'window' ? 8 : 4)) {
+    if (step === 'mark' && points.length < (wallZone === 'wall-niche' || (wallZone === 'tv' && tvType !== 'surface') ? 12 : wallZone === 'column' || wallZone === 'window' ? 8 : 4)) {
       setPoints([...points, { x, y }]);
     } else if (step === 'edit') {
       const pts = pointsRef.current;
@@ -1713,6 +1717,23 @@ const BambooStudio = () => {
             0,
             0,
           );
+          return pieces.length > 0 ? packWindowPieces(pieces) : null;
+        })()
+      : null;
+    const isTvSurface = wallZone === 'tv' && tvType === 'surface';
+    const tvSurfaceCut = isTvSurface
+      ? (() => {
+          const faceW = kpCfgs[0]?.wallWidthMm ?? 0;
+          const faceH = kpCfgs[0]?.wallHeightMm ?? 0;
+          if (faceW <= 0 || faceH <= 0) return null;
+          const pieces: import('./lib/panelCalc').WindowPiece[] = [];
+          pieces.push({ wMm: faceW, lMm: faceH });
+          if (tvSurfaceSideDepthMm > 0) {
+            pieces.push({ wMm: tvSurfaceSideDepthMm, lMm: faceH });
+            pieces.push({ wMm: tvSurfaceSideDepthMm, lMm: faceH });
+          }
+          if (tvSurfaceTopDepthMm > 0) pieces.push({ wMm: faceW, lMm: tvSurfaceTopDepthMm });
+          if (tvSurfaceBottomDepthMm > 0) pieces.push({ wMm: faceW, lMm: tvSurfaceBottomDepthMm });
           return pieces.length > 0 ? packWindowPieces(pieces) : null;
         })()
       : null;
@@ -1868,7 +1889,7 @@ const BambooStudio = () => {
 
     // Wall dimension calculations: if dimensions are set, the calculated
     // (расчётная) panel cost takes priority over the project panel cost in Итого
-    const wallCalcs = (isColumn || isWindowAny) ? [] : kpCfgs
+    const wallCalcs = (isColumn || isWindowAny || isTvSurface) ? [] : kpCfgs
       .map((cfg, q) => ({ cfg, q }))
       .filter(w => w.cfg.wallWidthMm > 0 && w.cfg.wallHeightMm > 0)
       .map(({ cfg, q }) => {
@@ -1952,6 +1973,17 @@ const BambooStudio = () => {
       const panelRows = items.filter(it => panelArticles.has(it.article));
       if (panelRows.reduce((s, it) => s + it.qty, 0) <= 0 && panelsTableTotal > 0) {
         // No panel rows on the visualization (edge case) — bill by the default panel
+        const mat = BAMBOO_PANELS[0];
+        addItem(mat.article, `Панель «${mat.name}»`, panelsTableTotal, getPanelPrice(mat.id));
+        panelArticles.add(mat.article);
+      } else {
+        scaleQtys(panelRows, panelsTableTotal);
+      }
+    } else if (tvSurfaceCut) {
+      // Surface-mounted TV: cut-based panel count (like window)
+      panelsTableTotal = tvSurfaceCut.panels;
+      const panelRows = items.filter(it => panelArticles.has(it.article));
+      if (panelRows.reduce((s, it) => s + it.qty, 0) <= 0 && panelsTableTotal > 0) {
         const mat = BAMBOO_PANELS[0];
         addItem(mat.article, `Панель «${mat.name}»`, panelsTableTotal, getPanelPrice(mat.id));
         panelArticles.add(mat.article);
@@ -2208,6 +2240,38 @@ const BambooStudio = () => {
       y += 30;
     }
 
+    // Surface-mounted TV block: face + sides + top + bottom, no cutout
+    if (tvSurfaceCut) {
+      const faceW = kpCfgs[0]?.wallWidthMm ?? 0;
+      const faceH = kpCfgs[0]?.wallHeightMm ?? 0;
+      y += 18;
+      c.fillStyle = '#111111'; c.font = 'bold 18px sans-serif';
+      c.fillText('ТВ-зона накладная — расчёт материала', 60, y + 10);
+      y += 34;
+      c.font = '16px sans-serif'; c.fillStyle = '#333333';
+      c.fillText(
+        `Лицевая плоскость: ${(faceW / 1000).toLocaleString('ru-RU')} × ${(faceH / 1000).toLocaleString('ru-RU')} м · площадь: ${((faceW / 1000) * (faceH / 1000)).toFixed(2).replace('.', ',')} м²`,
+        60, y + 8);
+      y += 28;
+      if (tvSurfaceSideDepthMm > 0)  {
+        c.fillText(`Боковые (×2): ${(tvSurfaceSideDepthMm / 1000).toLocaleString('ru-RU')} × ${(faceH / 1000).toLocaleString('ru-RU')} м · площадь: ${(2 * (tvSurfaceSideDepthMm / 1000) * (faceH / 1000)).toFixed(2).replace('.', ',')} м²`, 60, y + 8);
+        y += 28;
+      }
+      if (tvSurfaceTopDepthMm > 0) {
+        c.fillText(`Верхняя: ${(faceW / 1000).toLocaleString('ru-RU')} × ${(tvSurfaceTopDepthMm / 1000).toLocaleString('ru-RU')} м · площадь: ${((faceW / 1000) * (tvSurfaceTopDepthMm / 1000)).toFixed(2).replace('.', ',')} м²`, 60, y + 8);
+        y += 28;
+      }
+      if (tvSurfaceBottomDepthMm > 0) {
+        c.fillText(`Нижняя: ${(faceW / 1000).toLocaleString('ru-RU')} × ${(tvSurfaceBottomDepthMm / 1000).toLocaleString('ru-RU')} м · площадь: ${((faceW / 1000) * (tvSurfaceBottomDepthMm / 1000)).toFixed(2).replace('.', ',')} м²`, 60, y + 8);
+        y += 28;
+      }
+      c.fillText(`Деталей: ${tvSurfaceCut.pieces.length} · панелей: ${tvSurfaceCut.panels} (обрезки полос используются повторно)`, 60, y + 8);
+      y += 28;
+      c.fillStyle = '#111111'; c.font = 'bold 16px sans-serif';
+      c.fillText(`Расчётная стоимость панелей ТВ-зоны: ${fmt(Math.round(panelsTableCost))}`, 60, y + 8);
+      y += 30;
+    }
+
     // Calculated material quantities: panels (calc if dimensions given, else project) + 3 m profile pieces
     {
       c.fillStyle = '#111111'; c.font = 'bold 16px sans-serif';
@@ -2222,9 +2286,9 @@ const BambooStudio = () => {
     c.beginPath(); c.moveTo(60, y + 4); c.lineTo(W - 60, y + 4); c.stroke();
     y += 30;
     c.fillStyle = '#111111'; c.font = 'bold 24px sans-serif'; c.textAlign = 'right';
-    c.fillText(`Итого${columnCalc ? ' (по периметру колонны)' : windowCut ? ' (по расчёту оконного проёма)' : wallCalcs.length > 0 ? (wallZone === 'tv' ? ' (по расчётным размерам ТВ-зоны)' : ' (по расчётным размерам стен)') : ''}: ${fmt(finalTotal)}`, W - 60, y + 12);
+    c.fillText(`Итого${columnCalc ? ' (по периметру колонны)' : windowCut ? ' (по расчёту оконного проёма)' : tvSurfaceCut ? ' (по расчётным размерам ТВ-зоны накладной)' : wallCalcs.length > 0 ? (wallZone === 'tv' ? ' (по расчётным размерам ТВ-зоны)' : ' (по расчётным размерам стен)') : ''}: ${fmt(finalTotal)}`, W - 60, y + 12);
     c.textAlign = 'left';
-    if ((wallCalcs.length > 0 || columnCalc || windowCut) && finalTotal !== total) {
+    if ((wallCalcs.length > 0 || columnCalc || windowCut || tvSurfaceCut) && finalTotal !== total) {
       y += 26;
       c.fillStyle = '#888888'; c.font = '15px sans-serif'; c.textAlign = 'right';
       c.fillText(`Стоимость по визуализации проекта: ${fmt(total)}`, W - 60, y + 12);
@@ -2428,7 +2492,7 @@ const BambooStudio = () => {
             )}
             {step !== 'zone' && (
               <button
-                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setHistoryLen(0); surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setSavedPng(null); setWinSlopeDepthMm(0); setWinWidthMm(0); setWinHeightMm(0); setWinJoint('profile'); setTvCutoutWidthMm(0); setTvCutoutHeightMm(0); setTvCutoutDepthMm(0); setTvType(null); setStep('zone'); setWallZone(null); setWindowType(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
+                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setHistoryLen(0); surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setSavedPng(null); setWinSlopeDepthMm(0); setWinWidthMm(0); setWinHeightMm(0); setWinJoint('profile'); setTvCutoutWidthMm(0); setTvCutoutHeightMm(0); setTvCutoutDepthMm(0); setTvType(null); setTvSurfaceSideDepthMm(0); setTvSurfaceTopDepthMm(0); setTvSurfaceBottomDepthMm(0); setStep('zone'); setWallZone(null); setWindowType(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
                 className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
               >
                 ← Назад
@@ -2595,8 +2659,10 @@ const BambooStudio = () => {
                 <div className="hidden md:flex absolute top-5 left-1/2 -translate-x-1/2 bg-white/90 text-black px-5 py-1.5 rounded-full text-[10px] font-bold shadow-lg backdrop-blur-md border border-gray-100 uppercase tracking-widest pointer-events-none">
                   {wallZone === 'wall-niche'
                     ? (points.length < 4 ? `Стена 1: точка ${points.length + 1}/4` : points.length < 8 ? `Стена 2 (опц.): точка ${points.length - 3}/4 или «Начать»` : points.length < 12 ? `Стена 3 (опц.): точка ${points.length - 7}/4 или «Начать»` : 'Нажмите «Начать примерку»')
-                    : wallZone === 'tv'
+                    : wallZone === 'tv' && tvType !== 'surface'
                     ? (points.length < 4 ? `Передняя: точка ${points.length + 1}/4` : points.length < 8 ? `Верхняя (опц.): точка ${points.length - 3}/4 или «Начать»` : points.length < 12 ? `Боковая (опц.): точка ${points.length - 7}/4 или «Начать»` : 'Нажмите «Начать примерку»')
+                    : wallZone === 'tv' && tvType === 'surface'
+                    ? (points.length < 4 ? `Основная плоскость: точка ${points.length + 1}/4` : 'Нажмите «Начать примерку»')
                     : wallZone === 'column'
                     ? (points.length < 4 ? `Грань 1: точка ${points.length + 1}/4` : points.length < 8 ? `Грань 2 (опц.): точка ${points.length - 3}/4 или «Начать»` : 'Нажмите «Начать примерку»')
                     : wallZone === 'window' && windowType === 'standard'
@@ -2627,8 +2693,10 @@ const BambooStudio = () => {
               <div className="bg-white/90 text-black px-5 py-1.5 rounded-full text-[10px] font-bold shadow-lg backdrop-blur-md border border-gray-100 uppercase tracking-widest">
                 {wallZone === 'wall-niche'
                   ? (points.length < 4 ? `Стена 1: точка ${points.length + 1}/4` : points.length < 8 ? `Стена 2 (опц.): точка ${points.length - 3}/4 или «Начать»` : points.length < 12 ? `Стена 3 (опц.): точка ${points.length - 7}/4 или «Начать»` : 'Нажмите «Начать примерку»')
-                  : wallZone === 'tv'
+                  : wallZone === 'tv' && tvType !== 'surface'
                   ? (points.length < 4 ? `Передняя: точка ${points.length + 1}/4` : points.length < 8 ? `Верхняя (опц.): точка ${points.length - 3}/4 или «Начать»` : points.length < 12 ? `Боковая (опц.): точка ${points.length - 7}/4 или «Начать»` : 'Нажмите «Начать примерку»')
+                  : wallZone === 'tv' && tvType === 'surface'
+                  ? (points.length < 4 ? `Основная плоскость: точка ${points.length + 1}/4` : 'Нажмите «Начать примерку»')
                   : wallZone === 'column'
                   ? (points.length < 4 ? `Грань 1: точка ${points.length + 1}/4` : points.length < 8 ? `Грань 2 (опц.): точка ${points.length - 3}/4 или «Начать»` : 'Нажмите «Начать примерку»')
                   : wallZone === 'window' && windowType === 'standard'
@@ -2673,7 +2741,7 @@ const BambooStudio = () => {
                     <CornerTypeCheckboxes nJunctions={Math.min(2, Math.floor(points.length / 4) - 1)} cornerTypes={cornerTypes} setCornerTypes={(v) => { pushHistory(); setCornerTypes(v); }} wrapJunctions={wrapJunctions} setWrapJunctions={(v) => { pushHistory(); setWrapJunctions(v); }} />
                   </div>
                 )}
-              </>) : wallZone === 'tv' ? (<>
+              </>) : wallZone === 'tv' && tvType !== 'surface' ? (<>
                 <p className="text-[9px] text-gray-400 mb-2 leading-relaxed">
                   Каждая плоскость короба отмечается <span className="font-bold text-gray-600">отдельно</span> — 4 угла по часовой стрелке.<br/>
                   <span className="font-bold text-[#007aff]">Передняя</span> — основная плоскость (обязательно).<br/>
@@ -2686,6 +2754,11 @@ const BambooStudio = () => {
                     <CornerTypeCheckboxes nJunctions={Math.min(2, Math.floor(points.length / 4) - 1)} cornerTypes={cornerTypes} setCornerTypes={(v) => { pushHistory(); setCornerTypes(v); }} wrapJunctions={wrapJunctions} setWrapJunctions={(v) => { pushHistory(); setWrapJunctions(v); }} />
                   </div>
                 )}
+              </>) : wallZone === 'tv' && tvType === 'surface' ? (<>
+                <p className="text-[9px] text-gray-400 mb-2 leading-relaxed">
+                  Отметьте <span className="font-bold text-gray-600">основную плоскость</span> — 4 угла по часовой стрелке.<br/>
+                  Боковые, верхняя и нижняя полосы задаются размерами в настройках — они учтутся в расчёте автоматически.
+                </p>
               </>) : wallZone === 'column' ? (
                 <p className="text-[9px] text-gray-400 mb-2 leading-relaxed">
                   Отметьте <span className="font-bold text-gray-600">видимые грани</span> колонны — каждая грань отдельно, 4 угла по часовой стрелке.<br/>
@@ -2709,7 +2782,7 @@ const BambooStudio = () => {
                 <p className="text-[9px] text-gray-400 mb-4 leading-relaxed">Кликайте по 4 углам стены по часовой стрелке.</p>
               )}
               <div className="flex flex-wrap gap-1.5 mb-5">
-                {Array.from({ length: wallZone === 'wall-niche' || wallZone === 'tv' ? 12 : wallZone === 'column' || wallZone === 'window' ? 8 : 4 }, (_, i) => i + 1).map(i => (
+                {Array.from({ length: wallZone === 'wall-niche' || (wallZone === 'tv' && tvType !== 'surface') ? 12 : wallZone === 'column' || wallZone === 'window' ? 8 : 4 }, (_, i) => i + 1).map(i => (
                   <div key={i} className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-all ${
                     points.length >= i
                       ? (i <= 4 ? 'bg-[#007aff] text-white border-[#007aff]' : i <= 8 ? 'bg-[#7ec662] text-white border-[#7ec662]' : 'bg-[#ff9500] text-white border-[#ff9500]')
@@ -2899,13 +2972,50 @@ const BambooStudio = () => {
               </div>
             )}
 
-            {/* Corner types — shown for wall-niche, tv-zone, column with 8+ points */}
-            {(wallZone === 'wall-niche' || wallZone === 'tv' || wallZone === 'column') && points.length >= 8 && (
+            {/* Corner types — shown for wall-niche, tv-zone (builtin), column with 8+ points */}
+            {(wallZone === 'wall-niche' || (wallZone === 'tv' && tvType !== 'surface') || wallZone === 'column') && points.length >= 8 && (
               <div className="bg-white rounded-2xl p-3.5 shadow-sm">
                 <div className="flex items-center gap-1.5 mb-2.5">
                   <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Тип углов</span>
                 </div>
                 <CornerTypeCheckboxes nJunctions={Math.min(2, Math.floor(points.length / 4) - 1)} cornerTypes={cornerTypes} setCornerTypes={(v) => { pushHistory(); setCornerTypes(v); }} wrapJunctions={wrapJunctions} setWrapJunctions={(v) => { pushHistory(); setWrapJunctions(v); }} />
+              </div>
+            )}
+
+            {/* TV zone: surface type — side/top/bottom depths */}
+            {wallZone === 'tv' && tvType === 'surface' && (
+              <div className="bg-white rounded-2xl p-3.5 shadow-sm">
+                <div className="flex items-center gap-1.5 mb-2.5">
+                  <Columns size={12} className="text-gray-400"/>
+                  <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Глубина полос вокруг ТВ</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  <label className="block">
+                    <span className="text-[8px] font-bold text-gray-400 uppercase">Боковая, м</span>
+                    <MeterInput placeholder="напр. 0,2" valueMm={tvSurfaceSideDepthMm} onChangeMm={(v) => { pushHistory(); setTvSurfaceSideDepthMm(v); }} />
+                  </label>
+                  <label className="block">
+                    <span className="text-[8px] font-bold text-gray-400 uppercase">Верхняя, м</span>
+                    <MeterInput placeholder="напр. 0,15" valueMm={tvSurfaceTopDepthMm} onChangeMm={(v) => { pushHistory(); setTvSurfaceTopDepthMm(v); }} />
+                  </label>
+                  <label className="block col-span-2">
+                    <span className="text-[8px] font-bold text-gray-400 uppercase">Нижняя, м</span>
+                    <MeterInput placeholder="напр. 0,1" valueMm={tvSurfaceBottomDepthMm} onChangeMm={(v) => { pushHistory(); setTvSurfaceBottomDepthMm(v); }} />
+                  </label>
+                </div>
+                {wallWidthMm > 0 && wallHeightMm > 0 && (() => {
+                  const totalArea =
+                    (wallWidthMm / 1000) * (wallHeightMm / 1000) +
+                    2 * (tvSurfaceSideDepthMm / 1000) * (wallHeightMm / 1000) +
+                    (wallWidthMm / 1000) * (tvSurfaceTopDepthMm / 1000) +
+                    (wallWidthMm / 1000) * (tvSurfaceBottomDepthMm / 1000);
+                  return (
+                    <p className="text-[9px] text-gray-500 leading-relaxed">
+                      Общая площадь: <span className="font-bold text-gray-700">{totalArea.toFixed(2).replace('.', ',')} м²</span>
+                      {' '}— лицевая + боковые + верхняя + нижняя.
+                    </p>
+                  );
+                })()}
               </div>
             )}
 
@@ -3074,7 +3184,7 @@ const BambooStudio = () => {
             <div className="bg-white rounded-2xl p-3.5 shadow-sm">
               <div className="flex items-center gap-1.5 mb-2.5">
                 <Columns size={12} className="text-gray-400"/>
-                <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">{wallZone === 'tv' ? `ТВ-зона — ${TV_ZONE_LABELS[activeSurface]}` : `Размеры стены ${activeSurface + 1}`}</span>
+                <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">{wallZone === 'tv' ? (tvType === 'surface' ? 'ТВ-зона накладная — Основная плоскость' : `ТВ-зона — ${TV_ZONE_LABELS[activeSurface]}`) : `Размеры стены ${activeSurface + 1}`}</span>
               </div>
               <div className="grid grid-cols-2 gap-2 mb-2">
                 <label className="block">
