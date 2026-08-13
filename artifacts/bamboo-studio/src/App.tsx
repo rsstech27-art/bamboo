@@ -303,6 +303,8 @@ const COLUMN_SURFACE_LABELS = ['Грань 1 · Основная', 'Грань 2
 const WINDOW_STD_LABELS = ['Откос', 'Подоконник', '—'];
 const TV_ZONE_LABELS = ['Передняя · Основная', 'Верхняя', 'Боковая'];
 const WINDOW_PAN_LABELS = ['Откос', 'Горизонтальная плоскость', '—'];
+// Door: standard=2 quads (left dobor, right dobor); with-transom=3 quads (left, transom, right)
+const DOOR_ZONE_LABELS = ['Левый добор', 'Правый добор / Фальшфрамуга', 'Правый добор'];
 
 // ── Column (колонна) shapes & perimeter helpers ──
 type ColumnShape = 'rect' | 'round' | 'triangle';
@@ -446,6 +448,13 @@ const BambooStudio = () => {
   const [tvSurfaceSideDepthMm, setTvSurfaceSideDepthMm] = useState(0);
   const [tvSurfaceTopBottomDepthMm, setTvSurfaceTopBottomDepthMm] = useState(0);
   const [tvSurfaceJoint, setTvSurfaceJoint] = useState<'bend' | 'profile'>('profile');
+  // Door zone
+  const [doorType, setDoorType] = useState<'standard' | 'with-transom' | null>(null);
+  const [doorWidthMm, setDoorWidthMm] = useState(0);
+  const [doorHeightMm, setDoorHeightMm] = useState(0);
+  const [doorRevealDepthMm, setDoorRevealDepthMm] = useState(0);
+  const [doorJoint, setDoorJoint] = useState<'profile' | 'bend'>('profile');
+  const [doorShowDoor, setDoorShowDoor] = useState(true);
   const [points, setPoints] = useState<Point[]>([]);
   const [panelCount, setPanelCount] = useState(5);
   // dividerPositions: array of N-1 values in (0,1), sorted ascending
@@ -482,6 +491,8 @@ const BambooStudio = () => {
   const wallWidthMmRef = useRef(0);
   const wallHeightMmRef = useRef(0);
   const wallZoneRef = useRef<string | null>(null);
+  const doorTypeRef = useRef<'standard' | 'with-transom' | null>(null);
+  const doorShowDoorRef = useRef(true);
   const columnShapeRef = useRef<ColumnShape>('rect');
   // Column (колонна) parameters
   const [columnShape, setColumnShape] = useState<ColumnShape>('rect');
@@ -644,6 +655,8 @@ const BambooStudio = () => {
   useEffect(() => { wallHeightMmRef.current = wallHeightMm; }, [wallHeightMm]);
   useEffect(() => { activeSurfaceRef.current = activeSurface; }, [activeSurface]);
   useEffect(() => { wallZoneRef.current = wallZone; }, [wallZone]);
+  useEffect(() => { doorTypeRef.current = doorType; }, [doorType]);
+  useEffect(() => { doorShowDoorRef.current = doorShowDoor; }, [doorShowDoor]);
   useEffect(() => { columnShapeRef.current = columnShape; }, [columnShape]);
   // Persist current edits into the active surface's config
   useEffect(() => {
@@ -1224,6 +1237,27 @@ const BambooStudio = () => {
       for (let q = 0; q < nQuads; q++) {
         quadCfgs.push(q === curActiveSurf ? liveCfg : (surfacesRef.current[q] ?? defaultSurfaceConfig()));
       }
+      // Door zone: draw a grey silhouette for the door opening BEFORE panel quads
+      // so panels always render on top. Opening = area between inner edges of side strips.
+      if (wallZoneRef.current === 'door' && doorShowDoorRef.current && pts.length >= 8) {
+        const rightQuadIdx = doorTypeRef.current === 'with-transom' && pts.length >= 12 ? 2 : 1;
+        const rPts = pts.slice(rightQuadIdx * 4, rightQuadIdx * 4 + 4);
+        if (rPts.length >= 4) {
+          // pts[1], pts[2] = top-right / bottom-right of left strip (inner edge)
+          // rPts[0], rPts[3] = top-left / bottom-left of right strip (inner edge)
+          tCtx.save();
+          tCtx.globalAlpha = 0.55;
+          tCtx.fillStyle = '#888888';
+          tCtx.beginPath();
+          tCtx.moveTo(pts[1].x, pts[1].y);
+          tCtx.lineTo(rPts[0].x, rPts[0].y);
+          tCtx.lineTo(rPts[3].x, rPts[3].y);
+          tCtx.lineTo(pts[2].x, pts[2].y);
+          tCtx.closePath();
+          tCtx.fill();
+          tCtx.restore();
+        }
+      }
       for (let q = 0; q < nQuads; q++) {
         // Wrap continuation: first sector of this wall reuses the LAST panel of the previous wall
         let overrideMat: Panel | undefined;
@@ -1660,7 +1694,7 @@ const BambooStudio = () => {
     // Don't trigger sector selection if click was near a divider or h-molding handle
     if (step === 'edit' && (findNearDivider(x, y) !== -1 || findNearHMolding(x, y) !== -1)) return;
 
-    if (step === 'mark' && points.length < (wallZone === 'wall-niche' || (wallZone === 'tv' && tvType !== 'surface') ? 12 : wallZone === 'column' || wallZone === 'window' ? 8 : 4)) {
+    if (step === 'mark' && points.length < (wallZone === 'wall-niche' || (wallZone === 'tv' && tvType !== 'surface') ? 12 : wallZone === 'column' || wallZone === 'window' || (wallZone === 'door' && doorType === 'standard') ? 8 : wallZone === 'door' && doorType === 'with-transom' ? 12 : 4)) {
       setPoints([...points, { x, y }]);
     } else if (step === 'edit') {
       const pts = pointsRef.current;
@@ -1850,6 +1884,17 @@ const BambooStudio = () => {
           return packWindowPieces(pieces);
         })()
       : null;
+    // Door zone: cuts for the reveals (2 side + 1 top)
+    const isDoor = wallZone === 'door';
+    const doorCut = isDoor && doorRevealDepthMm > 0 && doorWidthMm > 0 && doorHeightMm > 0
+      ? (() => {
+          const pieces: import('./lib/panelCalc').WindowPiece[] = [];
+          pieces.push({ wMm: doorRevealDepthMm, lMm: doorHeightMm }); // левый откос
+          pieces.push({ wMm: doorRevealDepthMm, lMm: doorHeightMm }); // правый откос
+          pieces.push({ wMm: doorRevealDepthMm, lMm: doorWidthMm });  // верхний откос
+          return packWindowPieces(pieces);
+        })()
+      : null;
     const colPerMm = isColumn ? columnPerimeterMm(columnShape, columnSides) : 0;
     // Vertical joints already counted on the VISIBLE column faces (incl. corner profiles)
     let columnVisibleJoints = 0;
@@ -1978,6 +2023,13 @@ const BambooStudio = () => {
       const style = visStyle && visStyle !== 'none' ? visStyle : 'metallic';
       if (faceH > 0) addRuns(style, faceH, 2); // 2 вертикальных: левый и правый угол
       if (faceW > 0) addRuns(style, faceW, 2); // 2 горизонтальных: верхний и нижний угол
+    }
+    // Door zone: profiles at reveal corners (2 vertical + 1 horizontal)
+    if (isDoor && doorJoint === 'profile' && doorHeightMm > 0 && doorWidthMm > 0) {
+      const visStyle = kpCfgs.find(cfg => cfg.moldingStyle !== 'none')?.moldingStyle;
+      const style = visStyle && visStyle !== 'none' ? visStyle : 'metallic';
+      addRuns(style, doorHeightMm, 2); // левый + правый вертикальный
+      addRuns(style, doorWidthMm, 1);  // верхний горизонтальный
     }
     // Pack each style's runs into 3 m pieces (offcuts reused project-wide)
     let profilePiecesTotal = 0;
@@ -2236,6 +2288,13 @@ const BambooStudio = () => {
       panelsTableTotal += tvBuiltinOuterCut.panels;
       const mat = kpCfgs[0]?.sectorMaterials[0] ?? BAMBOO_PANELS[0];
       addItem(mat.article, `Панель «${mat.name}» (наружние грани короба ТВ)`, tvBuiltinOuterCut.panels, getPanelPrice(mat.id));
+      panelArticles.add(mat.article);
+    }
+    // Door zone: add reveal panels on top of the wall panels
+    if (doorCut) {
+      panelsTableTotal += doorCut.panels;
+      const mat = kpCfgs[0]?.sectorMaterials[0] ?? BAMBOO_PANELS[0];
+      addItem(mat.article, `Панель «${mat.name}» (откосы дверного проёма)`, doorCut.panels, getPanelPrice(mat.id));
       panelArticles.add(mat.article);
     }
     const panelsTableCost = items.filter(it => panelArticles.has(it.article))
@@ -2502,6 +2561,38 @@ const BambooStudio = () => {
       y += 30;
     }
 
+    // Door zone: reveals block
+    if (isDoor && (doorRevealDepthMm > 0 || doorWidthMm > 0 || doorHeightMm > 0)) {
+      y += 18;
+      c.fillStyle = '#111111'; c.font = 'bold 18px sans-serif';
+      c.fillText('Дверной проём — откосы', 60, y + 10);
+      y += 34;
+      c.font = '16px sans-serif'; c.fillStyle = '#333333';
+      const dW = doorWidthMm / 1000, dH = doorHeightMm / 1000, dD = doorRevealDepthMm / 1000;
+      c.fillText(`Проём: ${dW.toLocaleString('ru-RU')} × ${dH.toLocaleString('ru-RU')} м · глубина откоса ${dD.toLocaleString('ru-RU')} м`, 60, y + 8);
+      y += 28;
+      if (doorRevealDepthMm > 0 && doorHeightMm > 0) {
+        c.fillText(`Боковые откосы (×2): ${dD.toLocaleString('ru-RU')} × ${dH.toLocaleString('ru-RU')} м · площадь: ${(2 * dD * dH).toFixed(2).replace('.', ',')} м²`, 60, y + 8);
+        y += 28;
+      }
+      if (doorRevealDepthMm > 0 && doorWidthMm > 0) {
+        c.fillText(`Верхний откос: ${dD.toLocaleString('ru-RU')} × ${dW.toLocaleString('ru-RU')} м · площадь: ${(dD * dW).toFixed(2).replace('.', ',')} м²`, 60, y + 8);
+        y += 28;
+      }
+      c.fillText(`Угловое соединение откосов: ${doorJoint === 'profile' ? 'через профиль' : 'загиб панелей'}`, 60, y + 8);
+      y += 28;
+      if (doorCut) {
+        c.fillText(`Деталей: ${doorCut.pieces.length} · доп. панелей: ${doorCut.panels} (обрезки полос используются повторно)`, 60, y + 8);
+        y += 28;
+        if (doorJoint === 'profile') {
+          c.fillText(
+            `Профили: бок. 2×${dH.toLocaleString('ru-RU')} м + горизонт. 1×${dW.toLocaleString('ru-RU')} м · хлыстов 3 м: ${packProfileRuns([doorHeightMm, doorHeightMm, doorWidthMm])}`,
+            60, y + 8);
+          y += 28;
+        }
+      }
+      y += 8;
+    }
     // Calculated material quantities: panels (calc if dimensions given, else project) + 3 m profile pieces
     {
       c.fillStyle = '#111111'; c.font = 'bold 16px sans-serif';
@@ -2516,7 +2607,7 @@ const BambooStudio = () => {
     c.beginPath(); c.moveTo(60, y + 4); c.lineTo(W - 60, y + 4); c.stroke();
     y += 30;
     c.fillStyle = '#111111'; c.font = 'bold 24px sans-serif'; c.textAlign = 'right';
-    c.fillText(`Итого${columnCalc ? ' (по периметру колонны)' : windowCut ? ' (по расчёту оконного проёма)' : tvSurfaceCut ? ' (по расчётным размерам ТВ-зоны накладной)' : wallCalcs.length > 0 ? (wallZone === 'tv' ? ' (по расчётным размерам ТВ-зоны)' : ' (по расчётным размерам стен)') : ''}: ${fmt(finalTotal)}`, W - 60, y + 12);
+    c.fillText(`Итого${columnCalc ? ' (по периметру колонны)' : windowCut ? ' (по расчёту оконного проёма)' : tvSurfaceCut ? ' (по расчётным размерам ТВ-зоны накладной)' : wallCalcs.length > 0 ? (wallZone === 'tv' ? ' (по расчётным размерам ТВ-зоны)' : wallZone === 'door' ? ' (по расчётным размерам дверной зоны)' : ' (по расчётным размерам стен)') : ''}: ${fmt(finalTotal)}`, W - 60, y + 12);
     c.textAlign = 'left';
     if ((wallCalcs.length > 0 || columnCalc || windowCut || tvSurfaceCut) && finalTotal !== total) {
       y += 26;
@@ -2722,7 +2813,7 @@ const BambooStudio = () => {
             )}
             {step !== 'zone' && (
               <button
-                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setHistoryLen(0); surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setSavedPng(null); setWinSlopeDepthMm(0); setWinWidthMm(0); setWinHeightMm(0); setWinJoint('profile'); setTvCutoutWidthMm(0); setTvCutoutHeightMm(0); setTvCutoutDepthMm(0); setTvCutoutJoint('profile'); setTvCutoutInputMode('size'); setTvCutoutPresetInches(null); setTvType(null); setTvSurfaceSideDepthMm(0); setTvSurfaceTopBottomDepthMm(0); setTvSurfaceJoint('profile'); setStep('zone'); setWallZone(null); setWindowType(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
+                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setHistoryLen(0); surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setSavedPng(null); setWinSlopeDepthMm(0); setWinWidthMm(0); setWinHeightMm(0); setWinJoint('profile'); setTvCutoutWidthMm(0); setTvCutoutHeightMm(0); setTvCutoutDepthMm(0); setTvCutoutJoint('profile'); setTvCutoutInputMode('size'); setTvCutoutPresetInches(null); setTvType(null); setTvSurfaceSideDepthMm(0); setTvSurfaceTopBottomDepthMm(0); setTvSurfaceJoint('profile'); setDoorType(null); setDoorWidthMm(0); setDoorHeightMm(0); setDoorRevealDepthMm(0); setDoorJoint('profile'); setDoorShowDoor(true); setStep('zone'); setWallZone(null); setWindowType(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
                 className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
               >
                 ← Назад
@@ -2810,6 +2901,46 @@ const BambooStudio = () => {
                 ← Назад к выбору зоны
               </button>
             </div>
+          ) : step === 'zone' && wallZone === 'door' ? (
+            <div className="flex flex-col items-center justify-center w-full h-full rounded-3xl bg-white border-2 border-dashed border-gray-200 p-5">
+              <div className="text-center mb-5">
+                <h3 className="text-base font-black text-gray-900 mb-1">Выберите тип дверного проёма</h3>
+                <p className="text-xs text-gray-400">Есть ли над дверью фальшфрамуга?</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3 w-full max-w-lg">
+                {([
+                  { id: 'standard',     label: 'Стандартная дверь',      desc: '2 добора · левый + правый', img: `${BASE}zones/door-standard.jpg` },
+                  { id: 'with-transom', label: 'Дверь с фальшфрамугой', desc: '2 добора + фальшфрамуга сверху', img: `${BASE}zones/door-transom.jpg` },
+                ] as const).map(dt => (
+                  <button
+                    key={dt.id}
+                    onClick={() => { setDoorType(dt.id); setStep('upload'); }}
+                    className="flex flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-gray-50 hover:border-black hover:shadow-lg transition-all active:scale-95 group text-left"
+                  >
+                    <div className="w-full h-40 bg-gray-200 overflow-hidden relative">
+                      <img
+                        src={dt.img}
+                        alt={dt.label}
+                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                      />
+                      <div className="absolute bottom-0 inset-x-0 p-2">
+                        <span className="text-[9px] text-white font-bold bg-black/50 px-2 py-1 rounded-lg leading-tight">{dt.desc}</span>
+                      </div>
+                    </div>
+                    <div className="px-3 py-2.5">
+                      <span className="text-[11px] font-black uppercase tracking-wide text-gray-800 group-hover:text-black">{dt.label}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => { setWallZone(null); setDoorType(null); }}
+                className="mt-5 text-[11px] font-bold text-gray-400 hover:text-black transition-colors underline underline-offset-2"
+              >
+                ← Назад к выбору зоны
+              </button>
+            </div>
           ) : step === 'zone' ? (
             <div className="flex flex-col items-center justify-center w-full h-full rounded-3xl bg-white border-2 border-dashed border-gray-200 p-5">
               <div className="text-center mb-5">
@@ -2830,8 +2961,8 @@ const BambooStudio = () => {
                     onClick={() => {
                       setWallZone(zone.id);
                       if (zone.id === 'column') setCornerTypes(['external', 'external']);
-                      // Window / TV: an extra screen to pick the type first
-                      if (zone.id !== 'window' && zone.id !== 'tv') setStep('upload');
+                      // Window / TV / Door: an extra screen to pick the type first
+                      if (zone.id !== 'window' && zone.id !== 'tv' && zone.id !== 'door') setStep('upload');
                     }}
                     className="flex flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-gray-50 hover:border-black hover:shadow-lg transition-all active:scale-95 group text-left"
                   >
@@ -3218,7 +3349,7 @@ const BambooStudio = () => {
                   {Array.from({ length: Math.min(3, Math.floor(points.length / 4)) }, (_, i) => i).map(i => (
                     <button key={i} onClick={() => switchSurface(i)}
                       className={`w-full py-2 px-3 text-left text-[10px] font-bold rounded-xl border transition-all active:scale-95 ${activeSurface === i ? 'bg-[#7ec662] text-white border-[#7ec662]' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
-                      {(wallZone === 'column' ? COLUMN_SURFACE_LABELS : wallZone === 'window' ? (windowType === 'panoramic' ? WINDOW_PAN_LABELS : WINDOW_STD_LABELS) : wallZone === 'tv' ? TV_ZONE_LABELS : SURFACE_LABELS)[i]}
+                      {(wallZone === 'column' ? COLUMN_SURFACE_LABELS : wallZone === 'window' ? (windowType === 'panoramic' ? WINDOW_PAN_LABELS : WINDOW_STD_LABELS) : wallZone === 'tv' ? TV_ZONE_LABELS : wallZone === 'door' ? DOOR_ZONE_LABELS : SURFACE_LABELS)[i]}
                     </button>
                   ))}
                 </div>
@@ -3406,12 +3537,71 @@ const BambooStudio = () => {
               </div>
             )}
 
+            {/* Door zone: opening dimensions + reveal depth + joint + show toggle */}
+            {wallZone === 'door' && points.length >= 8 && (
+              <div className="bg-white rounded-2xl p-3.5 shadow-sm">
+                <div className="flex items-center gap-1.5 mb-2.5">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Дверной проём · размеры и стыковка</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  <label className="block">
+                    <span className="text-[8px] font-bold text-gray-400 uppercase">Ширина двери, м</span>
+                    <MeterInput placeholder="напр. 0,9" valueMm={doorWidthMm} onChangeMm={(v) => { pushHistory(); setDoorWidthMm(v); }} />
+                  </label>
+                  <label className="block">
+                    <span className="text-[8px] font-bold text-gray-400 uppercase">Высота двери, м</span>
+                    <MeterInput placeholder="напр. 2,1" valueMm={doorHeightMm} onChangeMm={(v) => { pushHistory(); setDoorHeightMm(v); }} />
+                  </label>
+                  <label className="block col-span-2">
+                    <span className="text-[8px] font-bold text-gray-400 uppercase">Глубина откоса, м</span>
+                    <MeterInput placeholder="напр. 0,1" valueMm={doorRevealDepthMm} onChangeMm={(v) => { pushHistory(); setDoorRevealDepthMm(v); }} />
+                  </label>
+                </div>
+                <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Соединение на углах откосов</p>
+                <div className="grid grid-cols-2 gap-1.5 mb-2">
+                  {([['profile', 'Через профиль'], ['bend', 'Загиб панели']] as const).map(([id, label]) => (
+                    <button key={id}
+                      onClick={() => { pushHistory(); setDoorJoint(id); }}
+                      className={`py-2 rounded-xl text-[8px] font-bold uppercase tracking-wide transition-all active:scale-95 ${doorJoint === id ? 'bg-black text-white' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[8px] text-gray-400 mb-2">{doorJoint === 'profile'
+                  ? 'На углах откосов ставится профиль: 2 вертикальных (высота двери) + 1 горизонтальный (ширина двери). Хлысты 3 м, раскрой оптимизирован.'
+                  : 'Панель загибается на углах — профили не требуются.'}</p>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[8px] font-bold text-gray-400 uppercase">Показать дверь на фото</span>
+                  <button
+                    onClick={() => { pushHistory(); setDoorShowDoor(v => !v); }}
+                    className={`w-10 h-5 rounded-full transition-colors flex items-center px-0.5 ${doorShowDoor ? 'bg-[#7ec662]' : 'bg-gray-200'}`}
+                  >
+                    <span className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${doorShowDoor ? 'translate-x-5' : ''}`} />
+                  </button>
+                </div>
+                {(() => {
+                  if (doorRevealDepthMm <= 0 || doorWidthMm <= 0 || doorHeightMm <= 0) return null;
+                  const cut = packWindowPieces([
+                    { wMm: doorRevealDepthMm, lMm: doorHeightMm },
+                    { wMm: doorRevealDepthMm, lMm: doorHeightMm },
+                    { wMm: doorRevealDepthMm, lMm: doorWidthMm },
+                  ]);
+                  return (
+                    <div className="space-y-1 mt-1">
+                      <p className="text-[9px] font-bold text-gray-600">Деталей откосов: {cut.pieces.length}</p>
+                      <p className="text-[9px] font-bold text-[#5a9c3e]">Панелей (откос): {cut.panels} — обрезки используются повторно</p>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
             {/* Wall dimensions & area check */}
             {wallZone !== 'column' && wallZone !== 'window' && (
             <div className="bg-white rounded-2xl p-3.5 shadow-sm">
               <div className="flex items-center gap-1.5 mb-2.5">
                 <Columns size={12} className="text-gray-400"/>
-                <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">{wallZone === 'tv' ? (tvType === 'surface' ? 'ТВ-зона накладная — Основная плоскость' : `ТВ-зона — ${TV_ZONE_LABELS[activeSurface]}`) : `Размеры стены ${activeSurface + 1}`}</span>
+                <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">{wallZone === 'tv' ? (tvType === 'surface' ? 'ТВ-зона накладная — Основная плоскость' : `ТВ-зона — ${TV_ZONE_LABELS[activeSurface]}`) : wallZone === 'door' ? (DOOR_ZONE_LABELS[activeSurface] ?? `Добор ${activeSurface + 1}`) : `Размеры стены ${activeSurface + 1}`}</span>
               </div>
               <div className="grid grid-cols-2 gap-2 mb-2">
                 <label className="block">
