@@ -437,8 +437,8 @@ const BambooStudio = () => {
   };
   // TV zone: surface type — strips around the main face
   const [tvSurfaceSideDepthMm, setTvSurfaceSideDepthMm] = useState(0);
-  const [tvSurfaceTopDepthMm, setTvSurfaceTopDepthMm] = useState(0);
-  const [tvSurfaceBottomDepthMm, setTvSurfaceBottomDepthMm] = useState(0);
+  const [tvSurfaceTopBottomDepthMm, setTvSurfaceTopBottomDepthMm] = useState(0);
+  const [tvSurfaceJoint, setTvSurfaceJoint] = useState<'bend' | 'profile'>('profile');
   const [points, setPoints] = useState<Point[]>([]);
   const [panelCount, setPanelCount] = useState(5);
   // dividerPositions: array of N-1 values in (0,1), sorted ascending
@@ -1807,11 +1807,13 @@ const BambooStudio = () => {
           const pieces: import('./lib/panelCalc').WindowPiece[] = [];
           pieces.push({ wMm: faceW, lMm: faceH });
           if (tvSurfaceSideDepthMm > 0) {
-            pieces.push({ wMm: tvSurfaceSideDepthMm, lMm: faceH });
-            pieces.push({ wMm: tvSurfaceSideDepthMm, lMm: faceH });
+            pieces.push({ wMm: tvSurfaceSideDepthMm, lMm: faceH }); // левая
+            pieces.push({ wMm: tvSurfaceSideDepthMm, lMm: faceH }); // правая
           }
-          if (tvSurfaceTopDepthMm > 0) pieces.push({ wMm: faceW, lMm: tvSurfaceTopDepthMm });
-          if (tvSurfaceBottomDepthMm > 0) pieces.push({ wMm: faceW, lMm: tvSurfaceBottomDepthMm });
+          if (tvSurfaceTopBottomDepthMm > 0) {
+            pieces.push({ wMm: faceW, lMm: tvSurfaceTopBottomDepthMm }); // верхняя
+            pieces.push({ wMm: faceW, lMm: tvSurfaceTopBottomDepthMm }); // нижняя
+          }
           return pieces.length > 0 ? packWindowPieces(pieces) : null;
         })()
       : null;
@@ -1960,6 +1962,15 @@ const BambooStudio = () => {
       const style = visStyle && visStyle !== 'none' ? visStyle : 'metallic';
       addRuns(style, tvCutoutHeightMm, 2); // left + right vertical joints
       addRuns(style, tvCutoutWidthMm, 2);  // top + bottom horizontal joints
+    }
+    // Surface TV: corner profiles joining front face to sides / top / bottom
+    if (isTvSurface && tvSurfaceJoint === 'profile') {
+      const faceW = kpCfgs[0]?.wallWidthMm ?? 0;
+      const faceH = kpCfgs[0]?.wallHeightMm ?? 0;
+      const visStyle = kpCfgs.find(cfg => cfg.moldingStyle !== 'none')?.moldingStyle;
+      const style = visStyle && visStyle !== 'none' ? visStyle : 'metallic';
+      if (faceH > 0) addRuns(style, faceH, 2); // 2 вертикальных: левый и правый угол
+      if (faceW > 0) addRuns(style, faceW, 2); // 2 горизонтальных: верхний и нижний угол
     }
     // Pack each style's runs into 3 m pieces (offcuts reused project-wide)
     let profilePiecesTotal = 0;
@@ -2467,18 +2478,16 @@ const BambooStudio = () => {
         `Лицевая плоскость: ${(faceW / 1000).toLocaleString('ru-RU')} × ${(faceH / 1000).toLocaleString('ru-RU')} м · площадь: ${((faceW / 1000) * (faceH / 1000)).toFixed(2).replace('.', ',')} м²`,
         60, y + 8);
       y += 28;
-      if (tvSurfaceSideDepthMm > 0)  {
+      if (tvSurfaceSideDepthMm > 0) {
         c.fillText(`Боковые (×2): ${(tvSurfaceSideDepthMm / 1000).toLocaleString('ru-RU')} × ${(faceH / 1000).toLocaleString('ru-RU')} м · площадь: ${(2 * (tvSurfaceSideDepthMm / 1000) * (faceH / 1000)).toFixed(2).replace('.', ',')} м²`, 60, y + 8);
         y += 28;
       }
-      if (tvSurfaceTopDepthMm > 0) {
-        c.fillText(`Верхняя: ${(faceW / 1000).toLocaleString('ru-RU')} × ${(tvSurfaceTopDepthMm / 1000).toLocaleString('ru-RU')} м · площадь: ${((faceW / 1000) * (tvSurfaceTopDepthMm / 1000)).toFixed(2).replace('.', ',')} м²`, 60, y + 8);
+      if (tvSurfaceTopBottomDepthMm > 0) {
+        c.fillText(`Верх/Низ (×2): ${(faceW / 1000).toLocaleString('ru-RU')} × ${(tvSurfaceTopBottomDepthMm / 1000).toLocaleString('ru-RU')} м · площадь: ${(2 * (faceW / 1000) * (tvSurfaceTopBottomDepthMm / 1000)).toFixed(2).replace('.', ',')} м²`, 60, y + 8);
         y += 28;
       }
-      if (tvSurfaceBottomDepthMm > 0) {
-        c.fillText(`Нижняя: ${(faceW / 1000).toLocaleString('ru-RU')} × ${(tvSurfaceBottomDepthMm / 1000).toLocaleString('ru-RU')} м · площадь: ${((faceW / 1000) * (tvSurfaceBottomDepthMm / 1000)).toFixed(2).replace('.', ',')} м²`, 60, y + 8);
-        y += 28;
-      }
+      c.fillText(`Угловое соединение: ${tvSurfaceJoint === 'profile' ? 'через профиль' : 'загиб панелей'}`, 60, y + 8);
+      y += 28;
       c.fillText(`Деталей: ${tvSurfaceCut.pieces.length} · панелей: ${tvSurfaceCut.panels} (обрезки полос используются повторно)`, 60, y + 8);
       y += 28;
       c.fillStyle = '#111111'; c.font = 'bold 16px sans-serif';
@@ -2706,7 +2715,7 @@ const BambooStudio = () => {
             )}
             {step !== 'zone' && (
               <button
-                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setHistoryLen(0); surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setSavedPng(null); setWinSlopeDepthMm(0); setWinWidthMm(0); setWinHeightMm(0); setWinJoint('profile'); setTvCutoutWidthMm(0); setTvCutoutHeightMm(0); setTvCutoutDepthMm(0); setTvCutoutJoint('profile'); setTvCutoutInputMode('size'); setTvCutoutPresetInches(null); setTvType(null); setTvSurfaceSideDepthMm(0); setTvSurfaceTopDepthMm(0); setTvSurfaceBottomDepthMm(0); setStep('zone'); setWallZone(null); setWindowType(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
+                onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setHistoryLen(0); surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setSavedPng(null); setWinSlopeDepthMm(0); setWinWidthMm(0); setWinHeightMm(0); setWinJoint('profile'); setTvCutoutWidthMm(0); setTvCutoutHeightMm(0); setTvCutoutDepthMm(0); setTvCutoutJoint('profile'); setTvCutoutInputMode('size'); setTvCutoutPresetInches(null); setTvType(null); setTvSurfaceSideDepthMm(0); setTvSurfaceTopBottomDepthMm(0); setTvSurfaceJoint('profile'); setStep('zone'); setWallZone(null); setWindowType(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
                 className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
               >
                 ← Назад
@@ -3220,37 +3229,41 @@ const BambooStudio = () => {
               </div>
             )}
 
-            {/* TV zone: surface type — side/top/bottom depths */}
+            {/* TV zone: surface type — side/top-bottom depths + joint */}
             {wallZone === 'tv' && tvType === 'surface' && (
               <div className="bg-white rounded-2xl p-3.5 shadow-sm">
                 <div className="flex items-center gap-1.5 mb-2.5">
                   <Columns size={12} className="text-gray-400"/>
-                  <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Глубина полос вокруг ТВ</span>
+                  <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Глубина граней короба</span>
                 </div>
                 <div className="grid grid-cols-2 gap-2 mb-2">
                   <label className="block">
-                    <span className="text-[8px] font-bold text-gray-400 uppercase">Боковая, м</span>
+                    <span className="text-[8px] font-bold text-gray-400 uppercase">Боковые (×2), м</span>
                     <MeterInput placeholder="напр. 0,2" valueMm={tvSurfaceSideDepthMm} onChangeMm={(v) => { pushHistory(); setTvSurfaceSideDepthMm(v); }} />
                   </label>
                   <label className="block">
-                    <span className="text-[8px] font-bold text-gray-400 uppercase">Верхняя, м</span>
-                    <MeterInput placeholder="напр. 0,15" valueMm={tvSurfaceTopDepthMm} onChangeMm={(v) => { pushHistory(); setTvSurfaceTopDepthMm(v); }} />
+                    <span className="text-[8px] font-bold text-gray-400 uppercase">Верх/Низ (×2), м</span>
+                    <MeterInput placeholder="напр. 0,15" valueMm={tvSurfaceTopBottomDepthMm} onChangeMm={(v) => { pushHistory(); setTvSurfaceTopBottomDepthMm(v); }} />
                   </label>
-                  <label className="block col-span-2">
-                    <span className="text-[8px] font-bold text-gray-400 uppercase">Нижняя, м</span>
-                    <MeterInput placeholder="напр. 0,1" valueMm={tvSurfaceBottomDepthMm} onChangeMm={(v) => { pushHistory(); setTvSurfaceBottomDepthMm(v); }} />
-                  </label>
+                </div>
+                <p className="text-[8px] font-bold text-gray-400 uppercase mb-1">Угловое соединение</p>
+                <div className="flex gap-1.5 mb-2">
+                  {([{ id: 'profile', label: 'Профиль' }, { id: 'bend', label: 'Загиб' }] as const).map(({ id, label }) => (
+                    <button key={id} onClick={() => { pushHistory(); setTvSurfaceJoint(id); }}
+                      className={`flex-1 py-1.5 rounded-lg text-[9px] font-bold border transition-all active:scale-95 ${tvSurfaceJoint === id ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
+                      {label}
+                    </button>
+                  ))}
                 </div>
                 {wallWidthMm > 0 && wallHeightMm > 0 && (() => {
                   const totalArea =
                     (wallWidthMm / 1000) * (wallHeightMm / 1000) +
                     2 * (tvSurfaceSideDepthMm / 1000) * (wallHeightMm / 1000) +
-                    (wallWidthMm / 1000) * (tvSurfaceTopDepthMm / 1000) +
-                    (wallWidthMm / 1000) * (tvSurfaceBottomDepthMm / 1000);
+                    2 * (wallWidthMm / 1000) * (tvSurfaceTopBottomDepthMm / 1000);
                   return (
                     <p className="text-[9px] text-gray-500 leading-relaxed">
                       Общая площадь: <span className="font-bold text-gray-700">{totalArea.toFixed(2).replace('.', ',')} м²</span>
-                      {' '}— лицевая + боковые + верхняя + нижняя.
+                      {' '}— лицевая + боковые×2 + верх/низ×2.
                     </p>
                   );
                 })()}
