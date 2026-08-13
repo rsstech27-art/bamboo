@@ -1853,6 +1853,11 @@ const BambooStudio = () => {
       // Standard window: profiles are driven by the corner-joint preference below,
       // not by per-surface molding/joint rules
       if (isWindowAny) continue;
+      // Horizontal TV panels: joints between rows run across the wall WIDTH;
+      // profile run length = wMm (not hMm). Mandatory-joint count is also
+      // driven by height (how many 1220 mm rows fit) rather than wall width.
+      const isHorizTv = wallZone === 'tv' && cfg.panelOrientation === 'horizontal';
+      const profRunMm = isHorizTv ? wMm : hMm; // length of each profile piece
       if (cfg.moldingStyle !== 'none') {
         if (cfg.moldingStyle === 'metallic') {
           // Metallic: outer wall-edge profiles count normally; internal joints between
@@ -1864,11 +1869,11 @@ const BambooStudio = () => {
             const right = cfg.sectorMaterials[j + 1] ?? BAMBOO_PANELS[0];
             if (!(isWoodFamilyId(left.id) && isWoodFamilyId(right.id))) internalCount++;
           }
-          addRuns('metallic', hMm, outerEdges + internalCount);
+          addRuns('metallic', profRunMm, outerEdges + internalCount);
         } else {
           // Non-metallic chosen style (gold, black, brass): wood-family rule does not apply
           const vQty = Math.max(0, cfg.panelCount + 1 - (wrapLeft ? 1 : 0) - (wrapRight ? 1 : 0));
-          addRuns(cfg.moldingStyle, hMm, vQty);
+          addRuns(cfg.moldingStyle, profRunMm, vQty);
         }
         if (isColumn) {
           // UNIQUE contour joints covered by this face's molding: internal seams
@@ -1880,8 +1885,11 @@ const BambooStudio = () => {
         }
       } else {
         // MANDATORY joints: wall wider than one panel ⇒ panels in a row MUST be
-        // joined with vertical profiles — except between adjacent wood-family panels.
-        const perRow = Math.ceil(wMm / PANEL_W_MM);
+        // joined with profiles — except between adjacent wood-family panels.
+        // For horizontal TV panels joints run between rows (height direction).
+        const perRow = isHorizTv
+          ? Math.ceil(hMm / PANEL_W_MM) // rows by height, each 1220 mm tall
+          : Math.ceil(wMm / PANEL_W_MM); // columns by width, each 1220 mm wide
         const totalJoints = Math.max(0, perRow - 1);
         let metalJoints = 0;
         for (let j = 0; j < totalJoints; j++) {
@@ -1889,7 +1897,7 @@ const BambooStudio = () => {
           const right = cfg.sectorMaterials[j + 1] ?? BAMBOO_PANELS[0];
           if (!(isWoodFamilyId(left.id) && isWoodFamilyId(right.id))) metalJoints++;
         }
-        if (metalJoints > 0) addRuns('metallic', hMm, metalJoints);
+        if (metalJoints > 0) addRuns('metallic', profRunMm, metalJoints);
         if (isColumn) columnVisibleJoints += totalJoints; // column geometry uses all joints
       }
       if (cfg.hMoldingStyle !== 'none') addRuns(cfg.hMoldingStyle, wMm, cfg.hMoldingCount);
