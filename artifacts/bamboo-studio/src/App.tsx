@@ -2021,12 +2021,17 @@ const BambooStudio = () => {
       .map((cfg, q) => ({ cfg, q }))
       .filter(w => w.cfg.wallWidthMm > 0 && w.cfg.wallHeightMm > 0)
       .map(({ cfg, q }) => {
-        const cols = Math.ceil(cfg.wallWidthMm / PANEL_W_MM);
-        const opt = optimizedPanelCalc(cols, cfg.wallHeightMm);
+        // Horizontal TV panels: the long dimension (PANEL_H_MM = 2800) covers wall width,
+        // the short dimension (PANEL_W_MM = 1220) covers wall height — swap for calculations.
+        const isHorizTv = wallZone === 'tv' && cfg.panelOrientation === 'horizontal';
+        const colW = isHorizTv ? PANEL_H_MM : PANEL_W_MM; // how much width one panel covers
+        const rowH = isHorizTv ? PANEL_W_MM : PANEL_H_MM; // how much height one panel covers
+        const cols = Math.ceil(cfg.wallWidthMm / colW);
+        const opt = optimizedPanelCalc(cols, cfg.wallHeightMm, rowH);
         // Width-offcut reuse: this wall's own full panels; the narrow remainder
         // strip of each row goes into the shared cross-wall packing below
-        const fullPerRow = Math.floor(cfg.wallWidthMm / PANEL_W_MM);
-        const remW = cfg.wallWidthMm - fullPerRow * PANEL_W_MM;
+        const fullPerRow = Math.floor(cfg.wallWidthMm / colW);
+        const remW = cfg.wallWidthMm - fullPerRow * colW;
         const ownPanels = fullPerRow * opt.fullRows + opt.donorPanels;
         // Match the items aggregation: sector 0 after a wrapped junction is
         // a continuation of the previous wall's panel, not billed separately
@@ -2040,12 +2045,15 @@ const BambooStudio = () => {
         }
         const billedCount = cfg.panelCount - (wrapL ? 1 : 0);
         const avgPrice = billedCount > 0 ? projCost / billedCount : getPanelPrice(BAMBOO_PANELS[0].id);
-        return { cfg, q, cols, opt, fullPerRow, remW, ownPanels, projCost, avgPrice, billedCount };
+        return { cfg, q, cols, opt, fullPerRow, remW, ownPanels, projCost, avgPrice, billedCount, colW };
       })
       .map((w, _i, all) => {
         // Cross-wall width packing: all walls' remainder strips share donor panels
+        // Use the first wall's panel column-width as the bin size (all TV surfaces
+        // share the same orientation within a zone)
+        const binW = all[0]?.colW ?? PANEL_W_MM;
         const allPieces = all.flatMap(x => Array(x.opt.fullRows).fill(x.remW) as number[]);
-        const sharedPanels = packWidthRemainders(allPieces);
+        const sharedPanels = packWidthRemainders(allPieces, binW);
         const naive = all.reduce((s, x) => s + x.opt.needed, 0);
         const optimizedTotal = all.reduce((s, x) => s + x.ownPanels, 0) + sharedPanels;
         // Attribute shared panels to walls proportionally to their strip demand

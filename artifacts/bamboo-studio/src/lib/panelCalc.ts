@@ -22,31 +22,39 @@ export type OptimizedPanelResult = {
 //  - height ≤ 0 / not set → treated as exactly one panel height;
 //  - remMm > 0 ⇒ donorPanels ≥ 1 and stripsPerPanel ≥ 1 (never «0 панелей на 0 полос»);
 //  - remMm === 0 ⇒ donorPanels === 0 and stripsPerPanel === 0 (no докрой line shown).
-export const optimizedPanelCalc = (columns: number, heightMm: number): OptimizedPanelResult => {
+// panelH: physical height of one panel (default PANEL_H_MM = 2800).
+// For horizontal orientation pass PANEL_W_MM (1220) — panels are shorter per row.
+export const optimizedPanelCalc = (
+  columns: number,
+  heightMm: number,
+  panelH: number = PANEL_H_MM,
+): OptimizedPanelResult => {
   if (columns <= 0) return { needed: 0, fullRows: 1, remMm: 0, donorPanels: 0, stripsPerPanel: 0 };
-  const h = heightMm > 0 ? heightMm : PANEL_H_MM;
+  const h = heightMm > 0 ? heightMm : panelH;
   // Every column always needs at least one base panel; donor-strip
   // optimization applies only to the remainder ABOVE full panel rows.
-  const fullRows = Math.max(1, Math.floor(h / PANEL_H_MM));
-  let remMm = h - fullRows * PANEL_H_MM;
+  const fullRows = Math.max(1, Math.floor(h / panelH));
+  let remMm = h - fullRows * panelH;
   if (remMm < 1) remMm = 0; // exact multiple (or height ≤ one panel)
   let donorPanels = 0, stripsPerPanel = 0;
   if (remMm > 0) {
-    stripsPerPanel = Math.max(1, Math.floor(PANEL_H_MM / remMm));
+    stripsPerPanel = Math.max(1, Math.floor(panelH / remMm));
     donorPanels = Math.ceil(columns / stripsPerPanel);
   }
   return { needed: columns * fullRows + donorPanels, fullRows, remMm, donorPanels, stripsPerPanel };
 };
 
-// Width-offcut reuse: narrow full-height strips (width < 1220 mm) from different
-// walls/rows are cut from SHARED donor panels instead of one panel per strip.
-// First-fit decreasing bin packing; returns how many 1220-wide panels are needed.
-export const packWidthRemainders = (piecesMm: number[]): number => {
+// Width-offcut reuse: narrow full-height strips from different walls/rows are cut
+// from SHARED donor panels instead of one panel per strip.
+// panelW: physical width of one panel used as the bin size (default PANEL_W_MM = 1220).
+// For horizontal orientation pass PANEL_H_MM (2800) — panels are wider per column.
+// First-fit decreasing bin packing; returns how many panels are needed.
+export const packWidthRemainders = (piecesMm: number[], panelW: number = PANEL_W_MM): number => {
   const sorted = piecesMm.filter(p => p > 0).sort((a, b) => b - a);
   const bins: number[] = []; // remaining usable width of each opened panel
   for (const p of sorted) {
     const i = bins.findIndex(b => b >= p);
-    if (i >= 0) bins[i] -= p; else bins.push(PANEL_W_MM - p);
+    if (i >= 0) bins[i] -= p; else bins.push(panelW - p);
   }
   return bins.length;
 };
