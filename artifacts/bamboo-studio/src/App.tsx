@@ -197,12 +197,19 @@ type PanelSeries = { id: string; name: string; panels: Panel[] };
 
 const BAMBOO_PANELS: Panel[] = (PANEL_SERIES as PanelSeries[]).flatMap(s => s.panels);
 
-// Wood-family rule: metallic profiles are NOT needed between adjacent panels
-// from the 'wood' (Натуральное дерево) or 'reiki' (Рейки деревянные) series.
+// Joint rules for metallic profiles:
+//   1. Wood-family (wood ↔ wood, reiki ↔ reiki, wood ↔ reiki): no profile needed.
+//   2. Reiki ↔ any other type: no profile needed (reiki panels blend into any neighbour).
+//   noMetallicJoint() encodes both rules.
 const _PANEL_SERIES_MAP = new Map<string, string>();
 (PANEL_SERIES as PanelSeries[]).forEach(s => s.panels.forEach(p => _PANEL_SERIES_MAP.set(p.id, s.id)));
 const WOOD_FAMILY = new Set(['wood', 'reiki']);
 const isWoodFamilyId = (panelId: string) => WOOD_FAMILY.has(_PANEL_SERIES_MAP.get(panelId) ?? '');
+const isReikiId     = (panelId: string) => (_PANEL_SERIES_MAP.get(panelId) ?? '') === 'reiki';
+/** Returns true when no metallic profile is required at the joint between left and right. */
+const noMetallicJoint = (leftId: string, rightId: string) =>
+  isReikiId(leftId) || isReikiId(rightId) ||
+  (isWoodFamilyId(leftId) && isWoodFamilyId(rightId));
 
 type Point = { x: number; y: number };
 
@@ -1870,7 +1877,7 @@ const BambooStudio = () => {
           for (let j = 0; j < cfg.panelCount - 1; j++) {
             const left = cfg.sectorMaterials[j] ?? BAMBOO_PANELS[0];
             const right = cfg.sectorMaterials[j + 1] ?? BAMBOO_PANELS[0];
-            if (!(isWoodFamilyId(left.id) && isWoodFamilyId(right.id))) internalCount++;
+            if (!noMetallicJoint(left.id, right.id)) internalCount++;
           }
           addRuns('metallic', hMm, outerEdges + internalCount);
         } else {
@@ -1897,7 +1904,7 @@ const BambooStudio = () => {
         for (let j = 0; j < totalJoints; j++) {
           const left = cfg.sectorMaterials[j] ?? BAMBOO_PANELS[0];
           const right = cfg.sectorMaterials[j + 1] ?? BAMBOO_PANELS[0];
-          if (!(isWoodFamilyId(left.id) && isWoodFamilyId(right.id))) metalJoints++;
+          if (!noMetallicJoint(left.id, right.id)) metalJoints++;
         }
         if (metalJoints > 0) addRuns('metallic', hMm, metalJoints);
         if (isColumn) columnVisibleJoints += totalJoints; // column geometry uses all joints
@@ -3136,13 +3143,13 @@ const BambooStudio = () => {
                 </div>
                 <MoldingStyleRow value={moldingStyle} onChange={(v) => { pushHistory(); setMoldingStyle(v); if (v !== 'none') setMoldingWidth(1); }} vertical={true}/>
                 {panelCount >= 2 && (() => {
-                  const hasWoodAdj = Array.from({ length: panelCount - 1 }, (_, j) => j).some(j => {
+                  const hasNoMetalAdj = Array.from({ length: panelCount - 1 }, (_, j) => j).some(j => {
                     const l = sectorMaterials[j], r = sectorMaterials[j + 1];
-                    return l && r && isWoodFamilyId(l.id) && isWoodFamilyId(r.id);
+                    return l && r && noMetallicJoint(l.id, r.id);
                   });
-                  return hasWoodAdj ? (
+                  return hasNoMetalAdj ? (
                     <p className="text-[9px] text-amber-600 font-bold mt-1.5 leading-relaxed">
-                      Рядом панели «Дерево»/«Рейки» — металлический профиль между ними не нужен, в расчёте КП он исключён.
+                      Есть стыки без металлического профиля: «Дерево»↔«Дерево»/«Рейки», а также «Рейки» с любым типом — в расчёте КП исключены.
                     </p>
                   ) : null;
                 })()}
