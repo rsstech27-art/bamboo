@@ -546,6 +546,8 @@ const BambooStudio = () => {
   const hMoldingWidthRef = useRef(1);
   const hMoldingPositionsRef = useRef<number[]>([0.5]);
   const draggingHMoldingIndexRef = useRef<number | null>(null);
+  const rulerRef = useRef<HTMLDivElement>(null);
+  const rulerDraggingIdxRef = useRef<number | null>(null);
   const [panelOrientation, setPanelOrientation] = useState<'vertical' | 'horizontal'>('vertical');
   const panelOrientationRef = useRef<'vertical' | 'horizontal'>('vertical');
   // Mask stored as strokes — never gets reset by canvas operations
@@ -3142,8 +3144,62 @@ const BambooStudio = () => {
                     : (points.length < 4 ? `Кликните на угол стены (${points.length}/4)` : 'Нажмите «Начать примерку»')}
                 </div>
               )}
+              {/* ── Panel-boundary ruler: draggable thumbs at the top edge of the photo ── */}
+              {step === 'edit' && !isErasing && panelCount > 1 && (
+                <div
+                  ref={rulerRef}
+                  className="absolute top-0 left-0 right-0 z-20 select-none"
+                  style={{ height: 44, background: 'linear-gradient(to bottom, rgba(0,0,0,0.22) 0%, transparent 100%)', pointerEvents: 'none' }}
+                >
+                  {/* thin guide line */}
+                  <div className="absolute left-4 right-4 bg-white/30 rounded-full" style={{ top: 21, height: 2 }} />
+                  {dividerPositions.map((ratio, i) => (
+                    <div
+                      key={i}
+                      title={`Разделитель ${i + 1}: ${Math.round(ratio * 100)}%`}
+                      className="absolute flex flex-col items-center touch-none"
+                      style={{
+                        left: `calc(${ratio * 100}% - 14px)`,
+                        top: 8,
+                        pointerEvents: 'auto',
+                        cursor: 'ew-resize',
+                        userSelect: 'none',
+                      }}
+                      onPointerDown={e => {
+                        e.stopPropagation();
+                        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                        rulerDraggingIdxRef.current = i;
+                        pushHistory();
+                      }}
+                      onPointerMove={e => {
+                        if (rulerDraggingIdxRef.current !== i) return;
+                        e.stopPropagation();
+                        const ruler = rulerRef.current;
+                        if (!ruler) return;
+                        const rect = ruler.getBoundingClientRect();
+                        const newRatio = Math.max(0.03, Math.min(0.97, (e.clientX - rect.left) / rect.width));
+                        setDividerPositions(prev => {
+                          const next = [...prev];
+                          next[i] = newRatio;
+                          return next.slice().sort((a, b) => a - b);
+                        });
+                      }}
+                      onPointerUp={e => { e.stopPropagation(); rulerDraggingIdxRef.current = null; }}
+                      onPointerCancel={() => { rulerDraggingIdxRef.current = null; }}
+                    >
+                      {/* thumb circle */}
+                      <div className="w-7 h-7 rounded-full bg-white shadow-lg border border-gray-200/60 flex items-center justify-center"
+                           style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.28)' }}>
+                        <span className="text-[9px] font-black text-gray-500 leading-none select-none">⇔</span>
+                      </div>
+                      {/* tick down to guide line */}
+                      <div className="w-px bg-white/50" style={{ height: 6 }} />
+                    </div>
+                  ))}
+                </div>
+              )}
               {step === 'edit' && !isErasing && (
-                <div className="hidden md:flex absolute top-5 left-1/2 -translate-x-1/2 bg-white/90 text-black px-5 py-1.5 rounded-full text-[10px] font-bold shadow-lg backdrop-blur-md border border-gray-100 uppercase tracking-widest pointer-events-none">
+                <div className="hidden md:flex absolute left-1/2 -translate-x-1/2 bg-white/90 text-black px-5 py-1.5 rounded-full text-[10px] font-bold shadow-lg backdrop-blur-md border border-gray-100 uppercase tracking-widest pointer-events-none" style={{ top: panelCount > 1 ? 52 : 20 }}>
                   {isDraggingDivider ? 'Перемещайте разделитель' : 'Выберите панель или перетащите разделитель'}
                 </div>
               )}
