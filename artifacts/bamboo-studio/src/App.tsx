@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Upload, Layout, Eraser, RotateCcw, Download, Check, Columns, Undo2, Sun, Moon, FileText } from 'lucide-react';
 import { PANEL_H_MM, PANEL_W_MM, PANEL_AREA_M2, optimizedPanelCalc, packWidthRemainders, packProfileRuns, columnHiddenJoints, packWindowPieces, windowStdPieces, panelsWord, rowsWord } from './lib/panelCalc';
+import { useManagerPrices } from './hooks/useManagerPrices';
+import { ManagerPanel } from './components/ManagerPanel';
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -467,6 +469,14 @@ const BambooStudio = () => {
   const [doorOpeningPoints, setDoorOpeningPoints] = useState<Point[]>([]);
   const [doorMarkMode, setDoorMarkMode] = useState<'wall' | 'opening'>('wall');
   const [points, setPoints] = useState<Point[]>([]);
+  const [showManagerPanel, setShowManagerPanel] = useState(false);
+  const logoClickCountRef = useRef(0);
+  const logoClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const {
+    panelOverrides, moldingOverrides,
+    panelOverridesRef, moldingOverridesRef,
+    setPanelPrice, setMoldingPrice, resetPrices,
+  } = useManagerPrices();
   const [panelCount, setPanelCount] = useState(5);
   // dividerPositions: array of N-1 values in (0,1), sorted ascending
   const [dividerPositions, setDividerPositions] = useState<number[]>(makeEqualDividers(5));
@@ -1812,10 +1822,30 @@ const BambooStudio = () => {
     setSavedPng(dataUrl);
   };
 
+  // ── Logo triple-click → manager panel ─────────────────────────────────
+  const handleLogoClick = (e: React.MouseEvent) => {
+    logoClickCountRef.current++;
+    if (logoClickTimerRef.current) clearTimeout(logoClickTimerRef.current);
+    logoClickTimerRef.current = setTimeout(() => { logoClickCountRef.current = 0; }, 700);
+    if (logoClickCountRef.current >= 3) {
+      e.preventDefault();
+      logoClickCountRef.current = 0;
+      setShowManagerPanel(true);
+    }
+  };
+
   // ── Commercial proposal (КП) PDF generation ──────────────────────────
   const handleGenerateKP = async () => {
     const nQuads = Math.min(3, Math.floor(pointsRef.current.length / 4));
     if (nQuads === 0) return;
+
+    // Override-aware price helpers (respect manager panel adjustments)
+    const getPanelPrice = (panelId: string) => {
+      const seriesId = PANEL_TO_SERIES[panelId] ?? '';
+      return panelOverridesRef.current[seriesId] ?? SERIES_PRICES[seriesId] ?? 4900;
+    };
+    const getEffectiveMoldingPrice = (style: string): number =>
+      moldingOverridesRef.current[style] ?? MOLDING_INFO[style]?.price ?? 940;
 
     // Always render a FRESH export image so the proposal visual matches current settings
     let kpImage: string | null = null;
@@ -2133,7 +2163,7 @@ const BambooStudio = () => {
       profilePiecesTotal += pieces;
       if (pieces > 0) {
         const info = MOLDING_INFO[style];
-        addItem(info.article + '-3M', `${info.name} (3 м, раскрой оптимизирован)`, pieces, info.price);
+        addItem(info.article + '-3M', `${info.name} (3 м, раскрой оптимизирован)`, pieces, getEffectiveMoldingPrice(style));
       }
     }
 
@@ -2872,8 +2902,8 @@ const BambooStudio = () => {
       ══════════════════════════════════════════ */}
       <header className="sticky top-0 z-50 bg-[#1c1c1c] text-white">
         <div className="max-w-7xl mx-auto flex items-center justify-between px-6 h-16">
-          {/* Logo */}
-          <a href="https://allwall.ru" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 shrink-0">
+          {/* Logo — triple-click opens manager panel */}
+          <a href="https://allwall.ru" target="_blank" rel="noopener noreferrer" onClick={handleLogoClick} className="flex items-center gap-3 shrink-0 select-none">
             <img src="/favicon.jpg" alt="ALL WALL" className="h-9 w-9 object-contain rounded"/>
             <div className="leading-none">
               <div className="font-black text-base tracking-widest">ALL WALL</div>
@@ -4139,6 +4169,18 @@ const BambooStudio = () => {
           </div>
         </div>
       </footer>
+
+      {/* Manager panel drawer */}
+      {showManagerPanel && (
+        <ManagerPanel
+          panelOverrides={panelOverrides}
+          moldingOverrides={moldingOverrides}
+          onUpdatePanel={setPanelPrice}
+          onUpdateMolding={setMoldingPrice}
+          onReset={resetPrices}
+          onClose={() => setShowManagerPanel(false)}
+        />
+      )}
 
     </div>
   );
