@@ -199,6 +199,50 @@ type PanelSeries = { id: string; name: string; panels: Panel[] };
 
 const BAMBOO_PANELS: Panel[] = (PANEL_SERIES as PanelSeries[]).flatMap(s => s.panels);
 
+// ─── Dynamic catalog helpers ─────────────────────────────────────────────────
+// Module-level lookup maps built once from the hardcoded catalog.
+// Used to merge DB product list (name, photoUrl) with local render metadata
+// (color, textureScale, textureStretch, slatOverlay).
+const PANEL_META_MAP = new Map<string, {
+  color: string; texture: string;
+  textureScale?: number; textureStretch?: boolean; slatOverlay?: boolean;
+}>();
+const SERIES_ID_MAP = new Map<string, string>();    // series display name → series id
+const SERIES_ORDER_MAP = new Map<string, number>(); // series id → sort position
+(PANEL_SERIES as PanelSeries[]).forEach((s, i) => {
+  SERIES_ID_MAP.set(s.name, s.id);
+  SERIES_ORDER_MAP.set(s.id, i);
+  s.panels.forEach(p => PANEL_META_MAP.set(p.article, {
+    color: p.color, texture: p.texture,
+    textureScale: p.textureScale, textureStretch: p.textureStretch, slatOverlay: p.slatOverlay,
+  }));
+});
+
+type ApiProduct = { id: number; article: string; name: string; series: string | null; photoUrl: string | null };
+
+/** Group API products into PanelSeries[], preserving hardcoded series order. */
+function buildCatalogSeries(products: ApiProduct[]): PanelSeries[] {
+  const seriesMap = new Map<string, PanelSeries>();
+  for (const p of products) {
+    if (!p.series) continue;
+    const sId = SERIES_ID_MAP.get(p.series)
+      ?? p.series.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    if (!seriesMap.has(sId)) seriesMap.set(sId, { id: sId, name: p.series, panels: [] });
+    const meta = PANEL_META_MAP.get(p.article);
+    seriesMap.get(sId)!.panels.push({
+      id: p.article, article: p.article, name: p.name,
+      color: meta?.color ?? '#888888',
+      texture: p.photoUrl ?? meta?.texture ?? '',
+      textureScale: meta?.textureScale,
+      textureStretch: meta?.textureStretch,
+      slatOverlay: meta?.slatOverlay,
+    });
+  }
+  return Array.from(seriesMap.values()).sort((a, b) =>
+    (SERIES_ORDER_MAP.get(a.id) ?? 9999) - (SERIES_ORDER_MAP.get(b.id) ?? 9999)
+  );
+}
+
 // Joint rules for metallic profiles:
 //   1. Wood-family (wood ↔ wood, reiki ↔ reiki, wood ↔ reiki): no profile needed.
 //   2. Reiki ↔ any other type: no profile needed (reiki panels blend into any neighbour).
@@ -567,6 +611,10 @@ const BambooStudio = () => {
   const textureCacheRef = useRef<Record<string, HTMLImageElement>>({}); // preloaded panel textures
   // DB product photos override: article → base64 dataURL (loaded from /api/products on mount)
   const [dbPhotoMap, setDbPhotoMap] = useState<Record<string, string>>({});
+  // Dynamic catalog built from /api/products — drives the right-panel material selector
+  const [catalogSeries, setCatalogSeries] = useState<PanelSeries[]>(PANEL_SERIES as PanelSeries[]);
+  // Flat panel list derived from catalogSeries, kept in a ref so callbacks don't need a dep
+  const catalogPanelsRef = useRef<Panel[]>(BAMBOO_PANELS);
 
   type HistorySnapshot = {
     surfaceIndex: number;
@@ -1500,9 +1548,14 @@ const BambooStudio = () => {
     }
   }, []);
 
-  // Preload all panel texture images into cache; re-draw when each loads
+  // Preload panel texture images into cache; re-runs when the catalog changes
   useEffect(() => {
-    BAMBOO_PANELS.forEach(panel => {
+    const panels = catalogSeries.flatMap(s => s.panels);
+    catalogPanelsRef.current = panels;
+    // Keep _PANEL_SERIES_MAP in sync so noMetallicJoint works with dynamic data
+    _PANEL_SERIES_MAP.clear();
+    catalogSeries.forEach(s => s.panels.forEach(p => _PANEL_SERIES_MAP.set(p.id, s.id)));
+    panels.forEach(panel => {
       if (!panel.texture || textureCacheRef.current[panel.id]) return;
       const img = new Image();
       img.crossOrigin = 'anonymous';
@@ -1512,16 +1565,20 @@ const BambooStudio = () => {
       };
       img.src = panel.texture;
     });
-  }, [drawFullScene]);
+  }, [catalogSeries, drawFullScene]);
 
-  // Fetch DB product photos on mount and inject into texture cache (overrides default textures)
+  // Fetch full product catalog on mount: builds right-panel series list + photo override map
   useEffect(() => {
     fetch('/api/products')
       .then(r => r.ok ? r.json() : [])
-      .then((products: Array<{ article: string; photoUrl: string | null }>) => {
+      .then((products: ApiProduct[]) => {
+        // Build photo override map for texture cache
         const map: Record<string, string> = {};
         products.forEach(p => { if (p.photoUrl) map[p.article] = p.photoUrl; });
         setDbPhotoMap(map);
+        // Build dynamic catalog (falls back to hardcoded if DB is empty)
+        const built = buildCatalogSeries(products);
+        if (built.length > 0) setCatalogSeries(built);
       })
       .catch(() => { /* non-critical */ });
   }, []);
@@ -3601,7 +3658,7 @@ const BambooStudio = () => {
                 {activeSector !== null ? `Панель №${activeSector + 1} — выберите материал` : 'Кликните по панели → выберите материал'}
               </p>
               <SeriesAccordion
-                series={PANEL_SERIES as PanelSeries[]}
+                series={catalogSeries}
                 openIds={openSeries}
                 onToggle={toggleSeries}
                 selectedId={activeSector !== null ? sectorMaterials[activeSector]?.id : undefined}
@@ -3616,7 +3673,7 @@ const BambooStudio = () => {
                     setSectorMaterials(all);
                   }
                   // Auto-collapse all series except the one with the selected panel
-                  const owner = (PANEL_SERIES as PanelSeries[]).find(s => s.panels.some(p => p.id === panel.id));
+                  const owner = catalogSeries.find(s => s.panels.some(p => p.id === panel.id));
                   if (owner) setOpenSeries(new Set([owner.id]));
                 }}
               />
@@ -3822,7 +3879,7 @@ const BambooStudio = () => {
                   const usedIds = new Set<string>();
                   Object.values(sectorMaterials).forEach(m => m && usedIds.add(m.id));
                   surfacesRef.current.forEach((s, q) => { if (q !== activeSurface) Object.values(s.sectorMaterials).forEach(m => m && usedIds.add(m.id)); });
-                  const used = BAMBOO_PANELS.filter(p => usedIds.has(p.id));
+                  const used = catalogPanelsRef.current.filter(p => usedIds.has(p.id));
                   if (used.length === 0) return null;
                   return (
                     <div className="mt-2.5 pt-2.5 border-t border-gray-100">
@@ -4281,10 +4338,12 @@ const BambooStudio = () => {
           onPhotoChange={() => {
             fetch('/api/products')
               .then(r => r.ok ? r.json() : [])
-              .then((products: Array<{ article: string; photoUrl: string | null }>) => {
+              .then((products: ApiProduct[]) => {
                 const map: Record<string, string> = {};
                 products.forEach(p => { if (p.photoUrl) map[p.article] = p.photoUrl; });
                 setDbPhotoMap(map);
+                const built = buildCatalogSeries(products);
+                if (built.length > 0) setCatalogSeries(built);
               })
               .catch(() => {});
           }}
