@@ -470,8 +470,6 @@ const BambooStudio = () => {
   const [doorMarkMode, setDoorMarkMode] = useState<'wall' | 'opening'>('wall');
   const [points, setPoints] = useState<Point[]>([]);
   const [showManagerPanel, setShowManagerPanel] = useState(false);
-  const logoClickCountRef = useRef(0);
-  const logoClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const {
     panelOverrides, moldingOverrides,
     panelOverridesRef, moldingOverridesRef,
@@ -1823,18 +1821,17 @@ const BambooStudio = () => {
   };
 
   // ── Logo triple-click → manager panel ─────────────────────────────────
-  const handleLogoClick = (e: React.MouseEvent) => {
-    logoClickCountRef.current++;
-    if (logoClickTimerRef.current) clearTimeout(logoClickTimerRef.current);
-    logoClickTimerRef.current = setTimeout(() => { logoClickCountRef.current = 0; }, 600);
-    if (logoClickCountRef.current >= 3) {
-      // Stop the click from reaching the <a> tag so the browser doesn't open a new tab
-      e.stopPropagation();
-      e.preventDefault();
-      logoClickCountRef.current = 0;
-      setShowManagerPanel(true);
-    }
-  };
+  // Alt+Shift+A keyboard shortcut → manager panel
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.altKey && e.shiftKey && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        setShowManagerPanel(true);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
   // ── Commercial proposal (КП) PDF generation ──────────────────────────
   const handleGenerateKP = async () => {
@@ -2904,16 +2901,12 @@ const BambooStudio = () => {
       ══════════════════════════════════════════ */}
       <header className="sticky top-0 z-50 bg-[#1c1c1c] text-white">
         <div className="max-w-7xl mx-auto flex items-center justify-between px-6 h-16">
-          {/* Logo — triple-click opens manager panel.
-              Handler sits on the INNER div so stopPropagation on click-3
-              prevents the outer <a> from opening a new tab. */}
-          <a href="https://allwall.ru" target="_blank" rel="noopener noreferrer" className="shrink-0">
-            <div onClick={handleLogoClick} className="flex items-center gap-3 select-none cursor-pointer">
-              <img src="/favicon.jpg" alt="ALL WALL" className="h-9 w-9 object-contain rounded"/>
-              <div className="leading-none">
-                <div className="font-black text-base tracking-widest">ALL WALL</div>
-                <div className="text-[9px] text-gray-400 tracking-widest uppercase mt-0.5">Технология быстрого монтажа</div>
-              </div>
+          {/* Logo */}
+          <a href="https://allwall.ru" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 shrink-0">
+            <img src="/favicon.jpg" alt="ALL WALL" className="h-9 w-9 object-contain rounded"/>
+            <div className="leading-none">
+              <div className="font-black text-base tracking-widest">ALL WALL</div>
+              <div className="text-[9px] text-gray-400 tracking-widest uppercase mt-0.5">Технология быстрого монтажа</div>
             </div>
           </a>
 
@@ -4170,7 +4163,13 @@ const BambooStudio = () => {
 
           {/* Bottom bar */}
           <div className="pt-6 flex flex-col md:flex-row justify-between items-center gap-3 text-xs text-gray-600">
-            <span>© 2024 ALL WALL. Все права защищены.</span>
+            <span>
+              <span
+                onClick={() => setShowManagerPanel(true)}
+                className="cursor-default select-none"
+                title=""
+              >©</span>{' '}2024 ALL WALL. Все права защищены.
+            </span>
             <a href="https://allwall.ru/privacy/" target="_blank" rel="noopener noreferrer" className="hover:text-gray-400 transition-colors">Политика конфиденциальности</a>
           </div>
         </div>
