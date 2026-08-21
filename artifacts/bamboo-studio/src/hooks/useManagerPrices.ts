@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
 // ── Default prices (mirrors module-level constants in App.tsx) ───────────────
 export const DEFAULT_SERIES_PRICES: Array<{ id: string; name: string; defaultPrice: number }> = [
@@ -25,103 +25,145 @@ export const DEFAULT_MOLDING_PRICES: Array<{ id: string; name: string; article: 
   { id: 'brass',    article: 'PR-BRASS', name: 'Профиль латунь',   defaultPrice: 990 },
 ];
 
+export type PriceMap    = Record<string, number>;
+export type SeriesNames = Record<string, string>;
+
+// ── localStorage keys (used only as optimistic cache) ────────────────────────
 const LS_PANEL_KEY         = 'aw_manager_panel_prices';
 const LS_MOLDING_KEY       = 'aw_manager_molding_prices';
 const LS_SERIES_NAMES_KEY  = 'aw_manager_series_names';
 const LS_MOLDING_NAMES_KEY = 'aw_manager_molding_names';
 
-export type PriceMap    = Record<string, number>;
-export type SeriesNames = Record<string, string>; // id → overridden display name
+function loadLS(key: string): Record<string, unknown> {
+  try { const r = localStorage.getItem(key); return r ? JSON.parse(r) as Record<string, unknown> : {}; }
+  catch { return {}; }
+}
+function saveLS(key: string, v: Record<string, unknown>) {
+  try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* ignore */ }
+}
+function clearLS(...keys: string[]) {
+  keys.forEach(k => { try { localStorage.removeItem(k); } catch { /* ignore */ } });
+}
 
-function loadFromLS(key: string): Record<string, unknown> {
+// ── API helpers ───────────────────────────────────────────────────────────────
+async function fetchSettings(): Promise<{
+  panel_prices?: PriceMap;
+  molding_prices?: PriceMap;
+  series_names?: SeriesNames;
+  molding_names?: SeriesNames;
+}> {
   try {
-    const raw = localStorage.getItem(key);
-    if (raw) return JSON.parse(raw) as Record<string, unknown>;
-  } catch { /* ignore */ }
-  return {};
+    const r = await fetch('/api/settings');
+    if (!r.ok) return {};
+    return await r.json() as Record<string, Record<string, unknown>>;
+  } catch { return {}; }
 }
 
-function saveToLS(key: string, data: Record<string, unknown>) {
-  try { localStorage.setItem(key, JSON.stringify(data)); } catch { /* ignore */ }
+async function putSetting(key: string, value: Record<string, unknown>) {
+  try {
+    await fetch(`/api/settings/${key}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(value),
+    });
+  } catch { /* best-effort */ }
 }
 
-/** Returns the display name for a series, applying any manager overrides. */
+async function deleteSetting(key: string) {
+  try { await fetch(`/api/settings/${key}`, { method: 'DELETE' }); }
+  catch { /* best-effort */ }
+}
+
+// ── Exported helpers ──────────────────────────────────────────────────────────
 export function getEffectiveSeriesName(id: string, nameOverrides: SeriesNames): string {
-  if (nameOverrides[id]) return nameOverrides[id];
-  return DEFAULT_SERIES_PRICES.find(s => s.id === id)?.name ?? id;
+  return nameOverrides[id] || DEFAULT_SERIES_PRICES.find(s => s.id === id)?.name || id;
 }
-
-/** Returns the display name for a molding/profile, applying any manager overrides. */
 export function getEffectiveMoldingName(id: string, nameOverrides: SeriesNames): string {
-  if (nameOverrides[id]) return nameOverrides[id];
-  return DEFAULT_MOLDING_PRICES.find(m => m.id === id)?.name ?? id;
+  return nameOverrides[id] || DEFAULT_MOLDING_PRICES.find(m => m.id === id)?.name || id;
 }
 
+// ── Hook ──────────────────────────────────────────────────────────────────────
 export function useManagerPrices() {
-  const [panelOverrides,       setPanelOverrides]       = useState<PriceMap>(() => loadFromLS(LS_PANEL_KEY) as PriceMap);
-  const [moldingOverrides,     setMoldingOverrides]     = useState<PriceMap>(() => loadFromLS(LS_MOLDING_KEY) as PriceMap);
-  const [seriesNameOverrides,  setSeriesNameOverrides]  = useState<SeriesNames>(() => loadFromLS(LS_SERIES_NAMES_KEY) as SeriesNames);
-  const [moldingNameOverrides, setMoldingNameOverrides] = useState<SeriesNames>(() => loadFromLS(LS_MOLDING_NAMES_KEY) as SeriesNames);
+  // Initialise from localStorage so the UI is instant on first render
+  const [panelOverrides,       setPanelOverrides]       = useState<PriceMap>(() => loadLS(LS_PANEL_KEY) as PriceMap);
+  const [moldingOverrides,     setMoldingOverrides]     = useState<PriceMap>(() => loadLS(LS_MOLDING_KEY) as PriceMap);
+  const [seriesNameOverrides,  setSeriesNameOverrides]  = useState<SeriesNames>(() => loadLS(LS_SERIES_NAMES_KEY) as SeriesNames);
+  const [moldingNameOverrides, setMoldingNameOverrides] = useState<SeriesNames>(() => loadLS(LS_MOLDING_NAMES_KEY) as SeriesNames);
 
-  // Refs for use inside callbacks (handleGenerateKP etc.) without stale closures
+  // Refs for use in callbacks without stale closures
   const panelOverridesRef   = useRef(panelOverrides);
   const moldingOverridesRef = useRef(moldingOverrides);
   useEffect(() => { panelOverridesRef.current  = panelOverrides;  }, [panelOverrides]);
   useEffect(() => { moldingOverridesRef.current = moldingOverrides; }, [moldingOverrides]);
 
-  const setPanelPrice = (seriesId: string, price: number) => {
+  // On mount: load authoritative values from DB, then overwrite local state + cache
+  useEffect(() => {
+    void fetchSettings().then(remote => {
+      if (remote.panel_prices)   { setPanelOverrides(remote.panel_prices);   saveLS(LS_PANEL_KEY,         remote.panel_prices as Record<string, unknown>); }
+      if (remote.molding_prices) { setMoldingOverrides(remote.molding_prices); saveLS(LS_MOLDING_KEY,      remote.molding_prices as Record<string, unknown>); }
+      if (remote.series_names)   { setSeriesNameOverrides(remote.series_names); saveLS(LS_SERIES_NAMES_KEY, remote.series_names as Record<string, unknown>); }
+      if (remote.molding_names)  { setMoldingNameOverrides(remote.molding_names); saveLS(LS_MOLDING_NAMES_KEY, remote.molding_names as Record<string, unknown>); }
+    });
+  }, []);
+
+  // ── Setters ─────────────────────────────────────────────────────────────────
+
+  const setPanelPrice = useCallback((seriesId: string, price: number) => {
     setPanelOverrides(prev => {
       const next = { ...prev, [seriesId]: price };
-      saveToLS(LS_PANEL_KEY, next as Record<string, unknown>);
+      saveLS(LS_PANEL_KEY, next as Record<string, unknown>);
+      void putSetting('panel_prices', next as Record<string, unknown>);
       return next;
     });
-  };
+  }, []);
 
-  const setMoldingPrice = (styleId: string, price: number) => {
+  const setMoldingPrice = useCallback((styleId: string, price: number) => {
     setMoldingOverrides(prev => {
       const next = { ...prev, [styleId]: price };
-      saveToLS(LS_MOLDING_KEY, next as Record<string, unknown>);
+      saveLS(LS_MOLDING_KEY, next as Record<string, unknown>);
+      void putSetting('molding_prices', next as Record<string, unknown>);
       return next;
     });
-  };
+  }, []);
 
-  const setSeriesName = (seriesId: string, name: string) => {
+  const setSeriesName = useCallback((seriesId: string, name: string) => {
     setSeriesNameOverrides(prev => {
       const trimmed = name.trim();
       const next: SeriesNames = { ...prev };
       if (trimmed) { next[seriesId] = trimmed; } else { delete next[seriesId]; }
-      saveToLS(LS_SERIES_NAMES_KEY, next as Record<string, unknown>);
+      saveLS(LS_SERIES_NAMES_KEY, next as Record<string, unknown>);
+      void putSetting('series_names', next as Record<string, unknown>);
       return next;
     });
-  };
+  }, []);
 
-  const setMoldingName = (moldingId: string, name: string) => {
+  const setMoldingName = useCallback((moldingId: string, name: string) => {
     setMoldingNameOverrides(prev => {
       const trimmed = name.trim();
       const next: SeriesNames = { ...prev };
       if (trimmed) { next[moldingId] = trimmed; } else { delete next[moldingId]; }
-      saveToLS(LS_MOLDING_NAMES_KEY, next as Record<string, unknown>);
+      saveLS(LS_MOLDING_NAMES_KEY, next as Record<string, unknown>);
+      void putSetting('molding_names', next as Record<string, unknown>);
       return next;
     });
-  };
+  }, []);
 
-  const resetPrices = () => {
+  const resetPrices = useCallback(() => {
     setPanelOverrides({});
     setMoldingOverrides({});
     setSeriesNameOverrides({});
     setMoldingNameOverrides({});
-    localStorage.removeItem(LS_PANEL_KEY);
-    localStorage.removeItem(LS_MOLDING_KEY);
-    localStorage.removeItem(LS_SERIES_NAMES_KEY);
-    localStorage.removeItem(LS_MOLDING_NAMES_KEY);
-  };
+    clearLS(LS_PANEL_KEY, LS_MOLDING_KEY, LS_SERIES_NAMES_KEY, LS_MOLDING_NAMES_KEY);
+    // Remove all four settings from DB
+    void deleteSetting('panel_prices');
+    void deleteSetting('molding_prices');
+    void deleteSetting('series_names');
+    void deleteSetting('molding_names');
+  }, []);
 
-  // Effective price lookup helpers
-  const effectivePanelPrice = (seriesId: string, fallback: number): number =>
-    panelOverridesRef.current[seriesId] ?? fallback;
-
-  const effectiveMoldingPrice = (styleId: string, fallback: number): number =>
-    moldingOverridesRef.current[styleId] ?? fallback;
+  // Effective price lookup helpers (use refs so callbacks don't go stale)
+  const effectivePanelPrice   = (seriesId: string, fallback: number) => panelOverridesRef.current[seriesId]   ?? fallback;
+  const effectiveMoldingPrice = (styleId:  string, fallback: number) => moldingOverridesRef.current[styleId]  ?? fallback;
 
   return {
     panelOverrides,
