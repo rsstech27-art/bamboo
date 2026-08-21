@@ -3286,7 +3286,13 @@ const BambooStudio = () => {
                     <p className="text-[8px] text-gray-400 mb-2">Выделите 4 угла полотна — область внутри будет вырезана из визуализации.</p>
                     <div className="grid grid-cols-2 gap-1.5">
                       <button onClick={() => { setDoorOpeningPoints([]); setDoorMarkMode('opening'); }}
-                        className={`py-2 rounded-lg text-[8px] font-bold transition-all ${doorMarkMode === 'opening' ? 'bg-red-500 text-white' : 'bg-gray-900 text-white'}`}>
+                        className={`py-2 rounded-lg text-[8px] font-bold transition-all active:scale-95 ${
+                          doorMarkMode === 'opening'
+                            ? 'bg-red-500 text-white shadow-md'
+                            : doorOpeningPoints.length < 4
+                              ? 'bg-black text-white shadow-md ring-2 ring-black ring-offset-1'
+                              : 'bg-gray-200 text-gray-400'
+                        }`}>
                         {doorOpeningPoints.length === 4 ? 'Выделить заново' : 'Выделить 4 точки'}
                       </button>
                       <button disabled={doorOpeningPoints.length === 0} onClick={() => { setDoorOpeningPoints([]); setDoorMarkMode('wall'); }}
@@ -3369,7 +3375,13 @@ const BambooStudio = () => {
                 </button>
               )}
               <button disabled={points.length < 4} onClick={handleStartFitting}
-                className="w-full py-3 bg-black text-white rounded-xl text-xs font-bold shadow disabled:opacity-20 transition-all active:scale-95">
+                className={`w-full py-3 rounded-xl text-xs font-bold shadow transition-all active:scale-95 ${
+                  points.length < 4
+                    ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
+                    : wallZone === 'door' && doorOpeningPoints.length < 4
+                      ? 'bg-gray-200 text-gray-400'
+                      : 'bg-black text-white ring-2 ring-black ring-offset-1 shadow-lg'
+                }`}>
                 Начать примерку
               </button>
             </div>
@@ -4011,13 +4023,22 @@ const BambooStudio = () => {
             </div>
 
             {/* Save + КП — side by side, compact so both fit on screen without scrolling */}
+            {/* Next-step guidance: КП is the final goal — it lights up once a material is chosen */}
             <div className="flex gap-1.5 mt-1">
               <button onClick={handleSave}
-                className="flex-1 min-w-0 flex items-center justify-center gap-1 bg-black text-white text-[10px] font-bold py-2 px-1.5 rounded-xl hover:bg-gray-800 transition-all active:scale-95 shadow-sm">
+                className={`flex-1 min-w-0 flex items-center justify-center gap-1 text-[10px] font-bold py-2 px-1.5 rounded-xl transition-all active:scale-95 shadow-sm ${
+                  Object.keys(sectorMaterials).length > 0
+                    ? 'bg-black text-white hover:bg-gray-800'
+                    : 'bg-gray-100 text-gray-400'
+                }`}>
                 <Download size={11} className="shrink-0" /> Сохранить PNG
               </button>
               <button onClick={handleGenerateKP}
-                className="flex-1 min-w-0 flex items-center justify-center gap-1 bg-[#7ec662] text-white text-[10px] font-bold py-2 px-1.5 rounded-xl hover:bg-[#6db453] transition-all active:scale-95 shadow-sm">
+                className={`flex-1 min-w-0 flex items-center justify-center gap-1 text-[10px] font-bold py-2 px-1.5 rounded-xl transition-all active:scale-95 ${
+                  Object.keys(sectorMaterials).length > 0
+                    ? 'bg-[#7ec662] text-white hover:bg-[#6db453] shadow-md ring-2 ring-[#7ec662] ring-offset-1'
+                    : 'bg-[#c8e0be] text-white/70 shadow-sm'
+                }`}>
                 <FileText size={11} className="shrink-0" /> Рассчитать КП
               </button>
             </div>
