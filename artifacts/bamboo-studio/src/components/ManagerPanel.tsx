@@ -423,6 +423,8 @@ function ProductCard({ product, onEdit, onDelete }: {
   );
 }
 
+const CATALOG_SIZE = 132;
+
 function TabProducts({ seriesOptions, onPhotoChange }: {
   seriesOptions: string[];
   onPhotoChange?: () => void;
@@ -430,6 +432,8 @@ function TabProducts({ seriesOptions, onPhotoChange }: {
   const { data, loading, error, reload } = useFetch<Product[]>('/api/products');
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [seeding, setSeeding] = useState(false);
+  const [seedResult, setSeedResult] = useState<{ inserted: number; skipped: number } | null>(null);
 
   const create = async (form: typeof EMPTY_PRODUCT) => {
     await fetch('/api/products', {
@@ -459,12 +463,72 @@ function TabProducts({ seriesOptions, onPhotoChange }: {
     await reload();
   };
 
+  const seedCatalog = async () => {
+    setSeeding(true);
+    setSeedResult(null);
+    try {
+      const r = await fetch('/api/products/seed-catalog', { method: 'POST' });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const result = await r.json() as { inserted: number; skipped: number };
+      setSeedResult(result);
+      await reload();
+      if (result.inserted > 0) onPhotoChange?.();
+    } catch {
+      setSeedResult({ inserted: 0, skipped: -1 });
+    } finally {
+      setSeeding(false);
+    }
+  };
+
+  const currentCount = data?.length ?? 0;
+  const alreadyFull = currentCount >= CATALOG_SIZE;
+
   return (
     <div className="max-w-2xl mx-auto py-6 px-4 space-y-4">
+
+      {/* ── Seed banner ── */}
+      <div className={`rounded-2xl border px-4 py-3.5 flex items-center justify-between gap-3 transition-colors
+        ${alreadyFull ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
+        <div className="min-w-0">
+          <div className="text-sm font-bold text-gray-800">Каталог ALL WALL</div>
+          <div className="text-xs text-gray-500 mt-0.5">
+            {loading ? 'Загрузка…'
+              : alreadyFull
+                ? `${currentCount} из ${CATALOG_SIZE} позиций загружено`
+                : `${currentCount} из ${CATALOG_SIZE} — заполните одним нажатием`}
+          </div>
+          {seedResult && seedResult.skipped !== -1 && (
+            <div className="text-xs text-green-600 font-medium mt-1">
+              {seedResult.inserted > 0
+                ? `✓ Добавлено ${seedResult.inserted} новых, пропущено ${seedResult.skipped}`
+                : `Все ${seedResult.skipped} позиций уже есть`}
+            </div>
+          )}
+          {seedResult && seedResult.skipped === -1 && (
+            <div className="text-xs text-red-500 mt-1">Ошибка при загрузке</div>
+          )}
+        </div>
+        <button
+          onClick={seedCatalog}
+          disabled={seeding}
+          className={`shrink-0 flex items-center gap-2 text-xs font-bold px-4 py-2.5 rounded-xl transition-all active:scale-95 disabled:opacity-60
+            ${alreadyFull
+              ? 'bg-green-100 text-green-700 hover:bg-green-200 border border-green-300'
+              : 'bg-black text-white hover:bg-gray-800 shadow-sm'}`}
+        >
+          {seeding
+            ? <><Loader2 size={13} className="animate-spin" /> Загрузка…</>
+            : alreadyFull
+              ? <><RotateCcw size={13} /> Обновить</>
+              : <><Package size={13} /> Загрузить каталог</>}
+        </button>
+      </div>
+
+      {/* ── Add manually ── */}
       {!creating && (
         <button onClick={() => setCreating(true)}
           className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 hover:border-black text-gray-500 hover:text-black text-sm font-bold py-3.5 rounded-2xl transition-colors">
-          <Plus size={16} /> Добавить товар
+          <Plus size={16} /> Добавить товар вручную
         </button>
       )}
 
@@ -485,9 +549,9 @@ function TabProducts({ seriesOptions, onPhotoChange }: {
       {error && <div className="text-sm text-red-500 text-center py-8">Ошибка: {error}</div>}
 
       {!loading && data && data.length === 0 && !creating && (
-        <div className="text-center py-16 text-gray-400">
+        <div className="text-center py-8 text-gray-400">
           <Package size={36} className="mx-auto mb-3 opacity-30" />
-          <p className="text-sm">Пока нет товаров — нажмите «Добавить товар»</p>
+          <p className="text-sm">Нажмите «Загрузить каталог» или добавьте товар вручную</p>
         </div>
       )}
 

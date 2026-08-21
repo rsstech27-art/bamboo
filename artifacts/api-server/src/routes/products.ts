@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { productsTable, insertProductSchema } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
+import { PANEL_CATALOG } from "../data/panel-catalog";
 
 const router: IRouter = Router();
 
@@ -16,6 +17,43 @@ router.get("/products", async (_req, res) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: "Failed to fetch products", detail: msg });
+  }
+});
+
+// POST /api/products/seed-catalog  — must come before /products/:id
+router.post("/products/seed-catalog", async (_req, res) => {
+  try {
+    // Count existing
+    const [{ count: existingCount }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(productsTable);
+
+    const rows = PANEL_CATALOG.map(e => ({
+      name: e.name,
+      article: e.article,
+      series: e.series,
+      cost: e.cost,
+      photoUrl: e.photoUrl,
+      collection: null as string | null,
+    }));
+
+    // Batch insert, skip conflicts on article
+    await db
+      .insert(productsTable)
+      .values(rows)
+      .onConflictDoNothing({ target: productsTable.article });
+
+    const [{ count: newCount }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(productsTable);
+
+    const inserted = newCount - existingCount;
+    const skipped = rows.length - inserted;
+
+    res.json({ inserted, skipped, total: newCount });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: "Failed to seed catalog", detail: msg });
   }
 });
 
