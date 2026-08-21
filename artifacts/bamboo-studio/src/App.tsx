@@ -3278,21 +3278,6 @@ const BambooStudio = () => {
                   Сначала отметьте <span className="font-bold text-gray-600">4 угла стены с дверью</span>, затем отдельным ластиком выделите дверное полотно. Размеры откосов задаются на следующем экране.
                 </p>
                 {points.length >= 4 && (<>
-                  <div className="rounded-xl border border-[#7ec662]/40 bg-[#f5fbf1] p-2.5 mb-3">
-                    <p className="text-[8px] font-black uppercase tracking-widest text-[#5a9c3e] mb-2">Стена с дверью выделена</p>
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {([
-                        ['left', 'Левый', '←'],
-                        ['right', 'Правый', '→'],
-                        ['top', 'Верхний', '↑'],
-                      ] as const).map(([zone, label, icon]) => (
-                        <button key={zone} onClick={() => { setDoorSelectedReveal(zone); setDoorMarkMode('wall'); }}
-                          className={`rounded-lg px-1 py-2 text-[8px] font-bold transition-all ${doorSelectedReveal === zone ? 'bg-[#7ec662] text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200 hover:border-[#7ec662]'}`}>
-                          <span className="block text-sm leading-none mb-1">{icon}</span>{label} откос
-                        </button>
-                      ))}
-                    </div>
-                  </div>
                   <div className={`rounded-xl p-2.5 border ${doorMarkMode === 'opening' ? 'border-red-400 bg-red-50' : 'border-gray-200 bg-white'}`}>
                     <div className="flex items-center justify-between gap-2 mb-1.5">
                       <p className="text-[8px] font-black uppercase tracking-widest text-gray-500">Ластик · дверь клиента</p>
