@@ -3196,7 +3196,7 @@ const BambooStudio = () => {
               </div>
               {wallZone === 'door' ? (<>
                 <p className="text-[9px] text-gray-400 mb-3 leading-relaxed">
-                  Сначала отметьте <span className="font-bold text-gray-600">4 угла стены с дверью</span>. После этого задайте каждый откос через чекпоинт и отдельным ластиком выделите дверное полотно.
+                  Сначала отметьте <span className="font-bold text-gray-600">4 угла стены с дверью</span>, затем отдельным ластиком выделите дверное полотно. Размеры откосов задаются на следующем экране.
                 </p>
                 {points.length >= 4 && (<>
                   <div className="rounded-xl border border-[#7ec662]/40 bg-[#f5fbf1] p-2.5 mb-3">
@@ -3211,24 +3211,6 @@ const BambooStudio = () => {
                           className={`rounded-lg px-1 py-2 text-[8px] font-bold transition-all ${doorSelectedReveal === zone ? 'bg-[#7ec662] text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200 hover:border-[#7ec662]'}`}>
                           <span className="block text-sm leading-none mb-1">{icon}</span>{label} откос
                         </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="rounded-xl bg-gray-50 p-2.5 mb-3">
-                    <p className="text-[8px] font-black uppercase tracking-widest text-gray-500 mb-2">
-                      {doorSelectedReveal === 'left' ? 'Левый откос' : doorSelectedReveal === 'right' ? 'Правый откос' : 'Верхний откос'} · размеры
-                    </p>
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {([
-                        ['widthMm', doorSelectedReveal === 'top' ? 'Ширина, м' : 'Ширина, м'],
-                        ['heightMm', doorSelectedReveal === 'top' && doorType === 'with-transom' ? 'Фрамуга, м' : 'Высота, м'],
-                        ['depthMm', 'Глубина, м'],
-                      ] as const).map(([key, label]) => (
-                        <label key={key} className="min-w-0">
-                          <span className="block text-[7px] font-bold text-gray-400 uppercase mb-0.5">{label}</span>
-                          <MeterInput placeholder="0,1" valueMm={doorRevealSizes[doorSelectedReveal][key]}
-                            onChangeMm={(v) => { pushHistory(); updateDoorRevealSize(doorSelectedReveal, key, v); }} />
-                        </label>
                       ))}
                     </div>
                   </div>
