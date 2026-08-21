@@ -25,29 +25,40 @@ export const DEFAULT_MOLDING_PRICES: Array<{ id: string; name: string; article: 
   { id: 'brass',    article: 'PR-BRASS', name: 'Профиль латунь',   defaultPrice: 990 },
 ];
 
-const LS_PANEL_KEY   = 'aw_manager_panel_prices';
-const LS_MOLDING_KEY = 'aw_manager_molding_prices';
+const LS_PANEL_KEY        = 'aw_manager_panel_prices';
+const LS_MOLDING_KEY      = 'aw_manager_molding_prices';
+const LS_SERIES_NAMES_KEY = 'aw_manager_series_names';
 
-export type PriceMap = Record<string, number>;
+export type PriceMap     = Record<string, number>;
+export type SeriesNames  = Record<string, string>; // id → overridden display name
 
-function loadFromLS(key: string): PriceMap {
+function loadFromLS(key: string): Record<string, unknown> {
   try {
     const raw = localStorage.getItem(key);
-    if (raw) return JSON.parse(raw) as PriceMap;
+    if (raw) return JSON.parse(raw) as Record<string, unknown>;
   } catch { /* ignore */ }
   return {};
 }
 
-function saveToLS(key: string, data: PriceMap) {
+function saveToLS(key: string, data: Record<string, unknown>) {
   try { localStorage.setItem(key, JSON.stringify(data)); } catch { /* ignore */ }
 }
 
+/** Returns the display name for a series, applying any manager overrides. */
+export function getEffectiveSeriesName(id: string, nameOverrides: SeriesNames): string {
+  if (nameOverrides[id]) return nameOverrides[id];
+  return DEFAULT_SERIES_PRICES.find(s => s.id === id)?.name ?? id;
+}
+
 export function useManagerPrices() {
-  const [panelOverrides, setPanelOverrides] = useState<PriceMap>(() => loadFromLS(LS_PANEL_KEY));
-  const [moldingOverrides, setMoldingOverrides] = useState<PriceMap>(() => loadFromLS(LS_MOLDING_KEY));
+  const [panelOverrides,   setPanelOverrides]   = useState<PriceMap>(() => loadFromLS(LS_PANEL_KEY) as PriceMap);
+  const [moldingOverrides, setMoldingOverrides] = useState<PriceMap>(() => loadFromLS(LS_MOLDING_KEY) as PriceMap);
+  const [seriesNameOverrides, setSeriesNameOverrides] = useState<SeriesNames>(
+    () => loadFromLS(LS_SERIES_NAMES_KEY) as SeriesNames
+  );
 
   // Refs for use inside callbacks (handleGenerateKP etc.) without stale closures
-  const panelOverridesRef  = useRef(panelOverrides);
+  const panelOverridesRef   = useRef(panelOverrides);
   const moldingOverridesRef = useRef(moldingOverrides);
   useEffect(() => { panelOverridesRef.current  = panelOverrides;  }, [panelOverrides]);
   useEffect(() => { moldingOverridesRef.current = moldingOverrides; }, [moldingOverrides]);
@@ -55,7 +66,7 @@ export function useManagerPrices() {
   const setPanelPrice = (seriesId: string, price: number) => {
     setPanelOverrides(prev => {
       const next = { ...prev, [seriesId]: price };
-      saveToLS(LS_PANEL_KEY, next);
+      saveToLS(LS_PANEL_KEY, next as Record<string, unknown>);
       return next;
     });
   };
@@ -63,7 +74,21 @@ export function useManagerPrices() {
   const setMoldingPrice = (styleId: string, price: number) => {
     setMoldingOverrides(prev => {
       const next = { ...prev, [styleId]: price };
-      saveToLS(LS_MOLDING_KEY, next);
+      saveToLS(LS_MOLDING_KEY, next as Record<string, unknown>);
+      return next;
+    });
+  };
+
+  const setSeriesName = (seriesId: string, name: string) => {
+    setSeriesNameOverrides(prev => {
+      const trimmed = name.trim();
+      const next: SeriesNames = { ...prev };
+      if (trimmed) {
+        next[seriesId] = trimmed;
+      } else {
+        delete next[seriesId]; // revert to default when cleared
+      }
+      saveToLS(LS_SERIES_NAMES_KEY, next as Record<string, unknown>);
       return next;
     });
   };
@@ -71,8 +96,10 @@ export function useManagerPrices() {
   const resetPrices = () => {
     setPanelOverrides({});
     setMoldingOverrides({});
+    setSeriesNameOverrides({});
     localStorage.removeItem(LS_PANEL_KEY);
     localStorage.removeItem(LS_MOLDING_KEY);
+    localStorage.removeItem(LS_SERIES_NAMES_KEY);
   };
 
   // Effective price lookup helpers
@@ -85,10 +112,12 @@ export function useManagerPrices() {
   return {
     panelOverrides,
     moldingOverrides,
+    seriesNameOverrides,
     panelOverridesRef,
     moldingOverridesRef,
     setPanelPrice,
     setMoldingPrice,
+    setSeriesName,
     resetPrices,
     effectivePanelPrice,
     effectiveMoldingPrice,

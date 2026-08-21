@@ -471,9 +471,9 @@ const BambooStudio = () => {
   const [points, setPoints] = useState<Point[]>([]);
   const [showManagerPanel, setShowManagerPanel] = useState(false);
   const {
-    panelOverrides, moldingOverrides,
+    panelOverrides, moldingOverrides, seriesNameOverrides,
     panelOverridesRef, moldingOverridesRef,
-    setPanelPrice, setMoldingPrice, resetPrices,
+    setPanelPrice, setMoldingPrice, setSeriesName, resetPrices,
   } = useManagerPrices();
   const [panelCount, setPanelCount] = useState(5);
   // dividerPositions: array of N-1 values in (0,1), sorted ascending
@@ -4240,8 +4240,10 @@ const BambooStudio = () => {
         <ManagerPanel
           panelOverrides={panelOverrides}
           moldingOverrides={moldingOverrides}
+          seriesNameOverrides={seriesNameOverrides}
           onUpdatePanel={setPanelPrice}
           onUpdateMolding={setMoldingPrice}
+          onUpdateSeriesName={setSeriesName}
           onReset={resetPrices}
           onClose={() => setShowManagerPanel(false)}
           onPhotoChange={() => {

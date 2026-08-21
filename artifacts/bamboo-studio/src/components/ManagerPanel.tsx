@@ -6,7 +6,9 @@ import {
 import {
   DEFAULT_SERIES_PRICES,
   DEFAULT_MOLDING_PRICES,
+  getEffectiveSeriesName,
   type PriceMap,
+  type SeriesNames,
 } from '../hooks/useManagerPrices';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -43,7 +45,7 @@ interface Order {
 // ─────────────────────────────────────────────────────────────────────────────
 const fmt = (n: number) => n.toLocaleString('ru-RU') + ' ₽';
 
-function useFetch<T>(url: string, deps: unknown[] = []) {
+function useFetch<T>(url: string) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -61,7 +63,7 @@ function useFetch<T>(url: string, deps: unknown[] = []) {
     }
   }, [url]);
 
-  useEffect(() => { void load(); }, [load, ...deps]); // eslint-disable-line
+  useEffect(() => { void load(); }, [load]);
   return { data, loading, error, reload: load };
 }
 
@@ -113,8 +115,85 @@ function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Tab: Цены
+// Tab: Цены — price + editable series name per row
 // ─────────────────────────────────────────────────────────────────────────────
+
+/** Single row: editable name on the left, editable price on the right */
+function SeriesRow({ seriesId, defaultName, defaultPrice, nameOverride, priceOverride, onNameChange, onPriceChange }: {
+  seriesId: string;
+  defaultName: string;
+  defaultPrice: number;
+  nameOverride?: string;
+  priceOverride?: number;
+  onNameChange: (v: string) => void;
+  onPriceChange: (v: number) => void;
+}) {
+  const effectiveName  = nameOverride  ?? defaultName;
+  const effectivePrice = priceOverride ?? defaultPrice;
+  const nameModified  = nameOverride  !== undefined && nameOverride  !== defaultName;
+  const priceModified = priceOverride !== undefined && priceOverride !== defaultPrice;
+
+  const [nameText,  setNameText]  = useState(effectiveName);
+  const [priceText, setPriceText] = useState(String(effectivePrice));
+
+  useEffect(() => { setNameText(nameOverride ?? defaultName); },   [nameOverride,  defaultName]);
+  useEffect(() => { setPriceText(String(priceOverride ?? defaultPrice)); }, [priceOverride, defaultPrice]);
+
+  const commitName  = () => {
+    const v = nameText.trim();
+    onNameChange(v); // empty string → revert to default (handled in hook)
+    if (!v) setNameText(defaultName);
+  };
+  const commitPrice = () => {
+    const v = parseInt(priceText.replace(/\s/g, ''), 10);
+    if (!isNaN(v) && v > 0) { onPriceChange(v); setPriceText(String(v)); }
+    else setPriceText(String(effectivePrice));
+  };
+
+  const anyModified = nameModified || priceModified;
+
+  return (
+    <div className={`flex items-center gap-2 py-2.5 border-b border-gray-100 last:border-0 ${anyModified ? 'bg-green-50/50 -mx-4 px-4 rounded-lg' : ''}`}>
+      {/* Editable name */}
+      <input
+        value={nameText}
+        onChange={e => setNameText(e.target.value)}
+        onBlur={commitName}
+        onKeyDown={e => e.key === 'Enter' && commitName()}
+        title="Нажмите для редактирования названия"
+        className={`flex-1 text-sm px-2 py-1.5 rounded-lg border outline-none transition-colors min-w-0
+          ${nameModified
+            ? 'border-[#7ec662] bg-green-50 text-green-800 font-semibold'
+            : 'border-transparent bg-transparent hover:border-gray-200 focus:border-black focus:bg-white text-gray-700'
+          }`}
+      />
+      {/* Default name hint when modified */}
+      {nameModified && (
+        <span className="text-xs text-gray-400 line-through shrink-0 hidden sm:block">{defaultName}</span>
+      )}
+      {/* Default price hint when modified */}
+      {priceModified && (
+        <span className="text-xs text-gray-400 line-through shrink-0">{defaultPrice.toLocaleString('ru-RU')}</span>
+      )}
+      {/* Editable price */}
+      <div className="flex items-center gap-1 shrink-0">
+        <input
+          type="text" inputMode="numeric" value={priceText}
+          onChange={e => setPriceText(e.target.value)}
+          onBlur={commitPrice}
+          onKeyDown={e => e.key === 'Enter' && commitPrice()}
+          className={`w-24 text-right text-sm px-2 py-1.5 rounded-lg border outline-none transition-colors
+            ${priceModified
+              ? 'border-[#7ec662] bg-green-50 text-green-800 font-bold'
+              : 'border-gray-200 bg-gray-50 focus:border-black focus:bg-white text-gray-700'
+            }`}
+        />
+        <span className="text-xs text-gray-400">₽</span>
+      </div>
+    </div>
+  );
+}
+
 function PriceRow({ label, defaultPrice, overridePrice, onChange }: {
   label: string; defaultPrice: number; overridePrice?: number; onChange: (v: number) => void;
 }) {
@@ -147,37 +226,53 @@ function PriceRow({ label, defaultPrice, overridePrice, onChange }: {
   );
 }
 
-function TabPrices({ panelOverrides, moldingOverrides, onUpdatePanel, onUpdateMolding, onReset }: {
-  panelOverrides: PriceMap; moldingOverrides: PriceMap;
+function TabPrices({ panelOverrides, moldingOverrides, seriesNameOverrides, onUpdatePanel, onUpdateMolding, onUpdateSeriesName, onReset }: {
+  panelOverrides: PriceMap;
+  moldingOverrides: PriceMap;
+  seriesNameOverrides: SeriesNames;
   onUpdatePanel: (id: string, p: number) => void;
   onUpdateMolding: (id: string, p: number) => void;
+  onUpdateSeriesName: (id: string, name: string) => void;
   onReset: () => void;
 }) {
-  const modified =
+  const modifiedPrices =
     Object.keys(panelOverrides).filter(k => panelOverrides[k] !== DEFAULT_SERIES_PRICES.find(s => s.id === k)?.defaultPrice).length +
     Object.keys(moldingOverrides).filter(k => moldingOverrides[k] !== DEFAULT_MOLDING_PRICES.find(s => s.id === k)?.defaultPrice).length;
+  const modifiedNames = Object.keys(seriesNameOverrides).length;
+  const totalModified = modifiedPrices + modifiedNames;
 
   return (
     <div className="max-w-xl mx-auto space-y-6 py-6 px-4">
-      {modified > 0 && (
+      {totalModified > 0 && (
         <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
-          <span className="text-sm text-green-700 font-medium">Изменено позиций: {modified} — сохранено в браузере</span>
-          <button onClick={() => { if (confirm('Сбросить все цены?')) onReset(); }}
+          <span className="text-sm text-green-700 font-medium">Изменено: {totalModified} — сохранено в браузере</span>
+          <button onClick={() => { if (confirm('Сбросить все цены и названия серий?')) onReset(); }}
             className="flex items-center gap-1.5 text-xs font-bold text-green-700 hover:text-green-900 border border-green-300 rounded-lg px-3 py-1.5 transition-colors bg-white">
-            <RotateCcw size={11} /> Сбросить
+            <RotateCcw size={11} /> Сбросить всё
           </button>
         </div>
       )}
 
       <section>
-        <div className="flex items-center gap-2 mb-3">
-          <ChevronRight size={13} className="text-gray-400" />
-          <h3 className="text-xs font-black uppercase tracking-widest text-gray-500">Цены панелей (₽/панель)</h3>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <ChevronRight size={13} className="text-gray-400" />
+            <h3 className="text-xs font-black uppercase tracking-widest text-gray-500">Серии панелей</h3>
+          </div>
+          <span className="text-[10px] text-gray-400">Название · Цена (₽/панель)</span>
         </div>
         <div className="bg-white border border-gray-100 rounded-xl px-4 shadow-sm">
           {DEFAULT_SERIES_PRICES.map(s => (
-            <PriceRow key={s.id} label={s.name} defaultPrice={s.defaultPrice}
-              overridePrice={panelOverrides[s.id]} onChange={p => onUpdatePanel(s.id, p)} />
+            <SeriesRow
+              key={s.id}
+              seriesId={s.id}
+              defaultName={s.name}
+              defaultPrice={s.defaultPrice}
+              nameOverride={seriesNameOverrides[s.id]}
+              priceOverride={panelOverrides[s.id]}
+              onNameChange={name => onUpdateSeriesName(s.id, name)}
+              onPriceChange={price => onUpdatePanel(s.id, price)}
+            />
           ))}
         </div>
       </section>
@@ -196,19 +291,21 @@ function TabPrices({ panelOverrides, moldingOverrides, onUpdatePanel, onUpdateMo
       </section>
 
       <p className="text-xs text-gray-400 text-center pb-4">
-        Цены применяются при расчёте КП. Хранятся локально в браузере.
+        Клик по названию серии — редактировать. Очистите поле чтобы вернуть оригинал.
+        Хранится локально в браузере.
       </p>
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Tab: База данных (Products)
+// Tab: Товары (Products)
 // ─────────────────────────────────────────────────────────────────────────────
 const EMPTY_PRODUCT = { name: '', article: '', collection: '', series: '', cost: 0, photoUrl: null as string | null };
 
-function ProductForm({ initial, onSave, onCancel }: {
+function ProductForm({ initial, seriesOptions, onSave, onCancel }: {
   initial: typeof EMPTY_PRODUCT;
+  seriesOptions: string[];
   onSave: (data: typeof EMPTY_PRODUCT) => Promise<void>;
   onCancel: () => void;
 }) {
@@ -233,8 +330,8 @@ function ProductForm({ initial, onSave, onCancel }: {
 
   return (
     <form onSubmit={submit} className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4 shadow-sm">
-      {/* Photo */}
       <div className="flex items-start gap-4">
+        {/* Photo uploader */}
         <button type="button" onClick={() => fileRef.current?.click()}
           className="shrink-0 w-20 h-20 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center hover:border-black transition-colors overflow-hidden bg-gray-50">
           {form.photoUrl
@@ -242,6 +339,7 @@ function ProductForm({ initial, onSave, onCancel }: {
             : <Image size={20} className="text-gray-300" />}
         </button>
         <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handlePhoto} />
+
         <div className="flex-1 space-y-2.5">
           <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
             placeholder="Наименование *" required
@@ -250,12 +348,22 @@ function ProductForm({ initial, onSave, onCancel }: {
             placeholder="Артикул *" required
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-black transition-colors" />
           <div className="flex gap-2">
+            {/* Collection — free text */}
             <input value={form.collection} onChange={e => setForm(f => ({ ...f, collection: e.target.value }))}
               placeholder="Коллекция"
               className="w-1/2 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-black transition-colors" />
-            <input value={form.series} onChange={e => setForm(f => ({ ...f, series: e.target.value }))}
-              placeholder="Серия"
-              className="w-1/2 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-black transition-colors" />
+            {/* Series — dropdown from manager series names */}
+            <select
+              value={form.series}
+              onChange={e => setForm(f => ({ ...f, series: e.target.value }))}
+              className={`w-1/2 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-black transition-colors bg-white appearance-none
+                ${form.series ? 'text-gray-900' : 'text-gray-400'}`}
+            >
+              <option value="">Серия…</option>
+              {seriesOptions.map(name => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
           </div>
           <input value={form.cost || ''} onChange={e => setForm(f => ({ ...f, cost: parseInt(e.target.value) || 0 }))}
             placeholder="Стоимость, ₽" type="number" min="0"
@@ -315,7 +423,10 @@ function ProductCard({ product, onEdit, onDelete }: {
   );
 }
 
-function TabProducts({ onPhotoChange }: { onPhotoChange?: () => void }) {
+function TabProducts({ seriesOptions, onPhotoChange }: {
+  seriesOptions: string[];
+  onPhotoChange?: () => void;
+}) {
   const { data, loading, error, reload } = useFetch<Product[]>('/api/products');
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -350,7 +461,6 @@ function TabProducts({ onPhotoChange }: { onPhotoChange?: () => void }) {
 
   return (
     <div className="max-w-2xl mx-auto py-6 px-4 space-y-4">
-      {/* Add button */}
       {!creating && (
         <button onClick={() => setCreating(true)}
           className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 hover:border-black text-gray-500 hover:text-black text-sm font-bold py-3.5 rounded-2xl transition-colors">
@@ -358,16 +468,15 @@ function TabProducts({ onPhotoChange }: { onPhotoChange?: () => void }) {
         </button>
       )}
 
-      {/* Create form */}
       {creating && (
         <ProductForm
           initial={EMPTY_PRODUCT}
+          seriesOptions={seriesOptions}
           onSave={create}
           onCancel={() => setCreating(false)}
         />
       )}
 
-      {/* Loading / error */}
       {loading && (
         <div className="flex items-center justify-center py-12 gap-2 text-gray-400">
           <Loader2 size={18} className="animate-spin" /> Загрузка…
@@ -375,7 +484,6 @@ function TabProducts({ onPhotoChange }: { onPhotoChange?: () => void }) {
       )}
       {error && <div className="text-sm text-red-500 text-center py-8">Ошибка: {error}</div>}
 
-      {/* List */}
       {!loading && data && data.length === 0 && !creating && (
         <div className="text-center py-16 text-gray-400">
           <Package size={36} className="mx-auto mb-3 opacity-30" />
@@ -388,6 +496,7 @@ function TabProducts({ onPhotoChange }: { onPhotoChange?: () => void }) {
           <ProductForm
             key={p.id}
             initial={{ name: p.name, article: p.article, collection: p.collection ?? '', series: p.series ?? '', cost: p.cost, photoUrl: p.photoUrl }}
+            seriesOptions={seriesOptions}
             onSave={(f) => update(p.id, f)}
             onCancel={() => setEditingId(null)}
           />
@@ -430,10 +539,8 @@ function OrderCard({ order, expanded, onToggle }: {
 
   return (
     <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
-      <button
-        onClick={onToggle}
-        className="w-full flex items-center gap-4 px-5 py-4 hover:bg-gray-50 transition-colors text-left"
-      >
+      <button onClick={onToggle}
+        className="w-full flex items-center gap-4 px-5 py-4 hover:bg-gray-50 transition-colors text-left">
         <span className={`shrink-0 text-xs font-black px-2.5 py-1 rounded-lg ${ZONE_COLORS[order.prefix] ?? 'bg-gray-100 text-gray-700'}`}>
           {order.orderNumber}
         </span>
@@ -511,9 +618,9 @@ function TabOrders() {
 // Root export
 // ─────────────────────────────────────────────────────────────────────────────
 const TABS = [
-  { id: 'prices', label: 'Цены', icon: Tag },
-  { id: 'products', label: 'Товары', icon: Package },
-  { id: 'orders', label: 'Заказы клиентов', icon: ShoppingBag },
+  { id: 'prices',   label: 'Цены',             icon: Tag },
+  { id: 'products', label: 'Товары',            icon: Package },
+  { id: 'orders',   label: 'Заказы клиентов',   icon: ShoppingBag },
 ] as const;
 
 type TabId = typeof TABS[number]['id'];
@@ -521,17 +628,27 @@ type TabId = typeof TABS[number]['id'];
 interface Props {
   panelOverrides: PriceMap;
   moldingOverrides: PriceMap;
+  seriesNameOverrides: SeriesNames;
   onUpdatePanel: (id: string, p: number) => void;
   onUpdateMolding: (id: string, p: number) => void;
+  onUpdateSeriesName: (id: string, name: string) => void;
   onReset: () => void;
   onClose: () => void;
-  /** Called after any product photo save so the visualizer can reload textures */
   onPhotoChange?: () => void;
 }
 
-export function ManagerPanel({ panelOverrides, moldingOverrides, onUpdatePanel, onUpdateMolding, onReset, onClose, onPhotoChange }: Props) {
+export function ManagerPanel({
+  panelOverrides, moldingOverrides, seriesNameOverrides,
+  onUpdatePanel, onUpdateMolding, onUpdateSeriesName,
+  onReset, onClose, onPhotoChange,
+}: Props) {
   const [isAuth, setIsAuth] = useState(() => sessionStorage.getItem(SESSION_KEY) === '1');
   const [tab, setTab] = useState<TabId>('prices');
+
+  // Computed list of effective series names for dropdown
+  const seriesOptions = DEFAULT_SERIES_PRICES.map(s =>
+    getEffectiveSeriesName(s.id, seriesNameOverrides)
+  );
 
   const logout = () => {
     sessionStorage.removeItem(SESSION_KEY);
@@ -541,10 +658,7 @@ export function ManagerPanel({ panelOverrides, moldingOverrides, onUpdatePanel, 
 
   return (
     <>
-      {/* Backdrop */}
       <div className="fixed inset-0 z-[998] bg-black/50 backdrop-blur-sm" onClick={onClose} />
-
-      {/* Full-screen panel */}
       <div className="fixed inset-0 z-[999] flex flex-col bg-[#f8f8f6] animate-[slideInUp_0.25s_ease]">
         {!isAuth ? (
           <>
@@ -595,19 +709,26 @@ export function ManagerPanel({ panelOverrides, moldingOverrides, onUpdatePanel, 
               </div>
             </div>
 
-            {/* Tab content — scrollable */}
+            {/* Tab content */}
             <div className="flex-1 overflow-y-auto">
               {tab === 'prices' && (
                 <TabPrices
                   panelOverrides={panelOverrides}
                   moldingOverrides={moldingOverrides}
+                  seriesNameOverrides={seriesNameOverrides}
                   onUpdatePanel={onUpdatePanel}
                   onUpdateMolding={onUpdateMolding}
+                  onUpdateSeriesName={onUpdateSeriesName}
                   onReset={onReset}
                 />
               )}
-              {tab === 'products' && <TabProducts onPhotoChange={onPhotoChange} />}
-              {tab === 'orders'   && <TabOrders />}
+              {tab === 'products' && (
+                <TabProducts
+                  seriesOptions={seriesOptions}
+                  onPhotoChange={onPhotoChange}
+                />
+              )}
+              {tab === 'orders' && <TabOrders />}
             </div>
           </>
         )}
