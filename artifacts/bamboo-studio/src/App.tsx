@@ -1826,8 +1826,10 @@ const BambooStudio = () => {
   const handleLogoClick = (e: React.MouseEvent) => {
     logoClickCountRef.current++;
     if (logoClickTimerRef.current) clearTimeout(logoClickTimerRef.current);
-    logoClickTimerRef.current = setTimeout(() => { logoClickCountRef.current = 0; }, 700);
+    logoClickTimerRef.current = setTimeout(() => { logoClickCountRef.current = 0; }, 600);
     if (logoClickCountRef.current >= 3) {
+      // Stop the click from reaching the <a> tag so the browser doesn't open a new tab
+      e.stopPropagation();
       e.preventDefault();
       logoClickCountRef.current = 0;
       setShowManagerPanel(true);
@@ -2902,12 +2904,16 @@ const BambooStudio = () => {
       ══════════════════════════════════════════ */}
       <header className="sticky top-0 z-50 bg-[#1c1c1c] text-white">
         <div className="max-w-7xl mx-auto flex items-center justify-between px-6 h-16">
-          {/* Logo — triple-click opens manager panel */}
-          <a href="https://allwall.ru" target="_blank" rel="noopener noreferrer" onClick={handleLogoClick} className="flex items-center gap-3 shrink-0 select-none">
-            <img src="/favicon.jpg" alt="ALL WALL" className="h-9 w-9 object-contain rounded"/>
-            <div className="leading-none">
-              <div className="font-black text-base tracking-widest">ALL WALL</div>
-              <div className="text-[9px] text-gray-400 tracking-widest uppercase mt-0.5">Технология быстрого монтажа</div>
+          {/* Logo — triple-click opens manager panel.
+              Handler sits on the INNER div so stopPropagation on click-3
+              prevents the outer <a> from opening a new tab. */}
+          <a href="https://allwall.ru" target="_blank" rel="noopener noreferrer" className="shrink-0">
+            <div onClick={handleLogoClick} className="flex items-center gap-3 select-none cursor-pointer">
+              <img src="/favicon.jpg" alt="ALL WALL" className="h-9 w-9 object-contain rounded"/>
+              <div className="leading-none">
+                <div className="font-black text-base tracking-widest">ALL WALL</div>
+                <div className="text-[9px] text-gray-400 tracking-widest uppercase mt-0.5">Технология быстрого монтажа</div>
+              </div>
             </div>
           </a>
 
