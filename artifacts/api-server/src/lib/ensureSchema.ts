@@ -24,5 +24,28 @@ export async function ensureSchema(): Promise<void> {
     CREATE UNIQUE INDEX IF NOT EXISTS products_article_unique ON products (article)
   `);
 
+  // 3. connect-pg-simple session table.
+  //    Created here instead of using createTableIfMissing because that option
+  //    reads table.sql from disk, which breaks after esbuild bundling.
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "session" (
+      "sid"    varchar      NOT NULL COLLATE "default",
+      "sess"   json         NOT NULL,
+      "expire" timestamp(6) NOT NULL
+    )
+  `);
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'session_pkey'
+      ) THEN
+        ALTER TABLE "session" ADD CONSTRAINT session_pkey PRIMARY KEY (sid) NOT DEFERRABLE INITIALLY IMMEDIATE;
+      END IF;
+    END $$
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" (expire)
+  `);
+
   logger.info("Schema check complete.");
 }

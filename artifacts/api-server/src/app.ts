@@ -91,7 +91,9 @@ app.use(
     store: new PgSessionStore({
       conString: process.env["DATABASE_URL"],
       tableName: "session",
-      createTableIfMissing: true,
+      // Table is created by ensureSchema() at startup — do NOT use
+      // createTableIfMissing here because connect-pg-simple reads table.sql
+      // from disk at runtime, which breaks after esbuild bundling.
     }),
     resave: false,
     saveUninitialized: false,
