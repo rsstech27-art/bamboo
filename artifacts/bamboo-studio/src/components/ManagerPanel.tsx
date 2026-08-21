@@ -452,13 +452,16 @@ function ProductCreateForm({ seriesOptions, onSave, onCancel }: {
 }) {
   const [form, setForm] = useState({ ...EMPTY_PRODUCT });
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim() || !form.article.trim()) return;
-    setSaving(true);
-    try { await onSave(form); } finally { setSaving(false); }
+    setSaving(true); setSaveError(null);
+    try { await onSave(form); }
+    catch (err) { setSaveError(err instanceof Error ? err.message : 'Ошибка сохранения'); }
+    finally { setSaving(false); }
   };
 
   return (
@@ -468,6 +471,9 @@ function ProductCreateForm({ seriesOptions, onSave, onCancel }: {
         <button type="button" onClick={onCancel} className="text-gray-400 hover:text-gray-700 transition-colors"><X size={16} /></button>
       </div>
       <ProductFormFields form={form} setForm={setForm} seriesOptions={seriesOptions} fileRef={fileRef} />
+      {saveError && (
+        <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{saveError}</div>
+      )}
       <div className="flex gap-2 pt-1">
         <button type="submit" disabled={saving}
           className="flex-1 flex items-center justify-center gap-2 bg-black text-white text-sm font-bold py-2.5 rounded-xl hover:bg-gray-800 active:scale-95 transition-all disabled:opacity-50">
@@ -498,6 +504,7 @@ function EditProductModal({ product, seriesOptions, onSave, onClose }: {
     photoUrl: product.photoUrl,
   });
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   // Close on Escape
@@ -510,8 +517,10 @@ function EditProductModal({ product, seriesOptions, onSave, onClose }: {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim() || !form.article.trim()) return;
-    setSaving(true);
-    try { await onSave(form); onClose(); } finally { setSaving(false); }
+    setSaving(true); setSaveError(null);
+    try { await onSave(form); onClose(); }
+    catch (err) { setSaveError(err instanceof Error ? err.message : 'Ошибка сохранения'); }
+    finally { setSaving(false); }
   };
 
   return (
@@ -536,6 +545,10 @@ function EditProductModal({ product, seriesOptions, onSave, onClose }: {
           </div>
 
           <ProductFormFields form={form} setForm={setForm} seriesOptions={seriesOptions} fileRef={fileRef} />
+
+          {saveError && (
+            <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{saveError}</div>
+          )}
 
           <div className="flex gap-2 pt-1">
             <button type="submit" disabled={saving}
@@ -591,7 +604,7 @@ function ProductCard({ product, onEdit, onDelete }: {
   );
 }
 
-const CATALOG_SIZE = 116;
+const CATALOG_SIZE = 115;
 
 function TabProducts({ seriesOptions, onPhotoChange }: {
   seriesOptions: string[];
@@ -603,23 +616,30 @@ function TabProducts({ seriesOptions, onPhotoChange }: {
   const [seeding, setSeeding] = useState(false);
   const [seedResult, setSeedResult] = useState<{ inserted: number; skipped: number } | null>(null);
 
+  const apiErrorText = async (r: Response) => {
+    try { return ((await r.json()) as { error?: string }).error ?? `HTTP ${r.status}`; }
+    catch { return `HTTP ${r.status}`; }
+  };
+
   const create = async (form: typeof EMPTY_PRODUCT) => {
-    await managerFetch('/api/products', {
+    const r = await managerFetch('/api/products', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(form),
     });
+    if (!r.ok) throw new Error(await apiErrorText(r));
     setCreating(false);
     await reload();
     if (form.photoUrl) onPhotoChange?.();
   };
 
   const update = async (id: number, form: typeof EMPTY_PRODUCT) => {
-    await managerFetch(`/api/products/${id}`, {
+    const r = await managerFetch(`/api/products/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(form),
     });
+    if (!r.ok) throw new Error(await apiErrorText(r));
     setEditingProduct(null);
     await reload();
     onPhotoChange?.();
@@ -627,7 +647,8 @@ function TabProducts({ seriesOptions, onPhotoChange }: {
 
   const del = async (id: number) => {
     if (!confirm('Удалить товар?')) return;
-    await managerFetch(`/api/products/${id}`, { method: 'DELETE' });
+    const r = await managerFetch(`/api/products/${id}`, { method: 'DELETE' });
+    if (!r.ok) { alert(`Ошибка удаления: ${await apiErrorText(r)}`); return; }
     await reload();
   };
 

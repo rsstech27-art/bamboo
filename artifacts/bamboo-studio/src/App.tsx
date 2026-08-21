@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Upload, Layout, Eraser, RotateCcw, Download, Check, Columns, Undo2, Sun, Moon, FileText } from 'lucide-react';
 import { PANEL_H_MM, PANEL_W_MM, PANEL_AREA_M2, optimizedPanelCalc, packWidthRemainders, packProfileRuns, columnHiddenJoints, packWindowPieces, windowStdPieces, panelsWord, rowsWord } from './lib/panelCalc';
-import { useManagerPrices } from './hooks/useManagerPrices';
+import { useManagerPrices, getEffectiveSeriesName, getEffectiveMoldingName } from './hooks/useManagerPrices';
 import { ManagerPanel } from './components/ManagerPanel';
 
 const BASE = import.meta.env.BASE_URL;
@@ -230,13 +230,14 @@ const PanelThumb = ({ panel, selected, onClick }: { panel: Panel; selected: bool
 );
 
 const SeriesAccordion = ({
-  series, openIds, onToggle, selectedId, onSelect,
+  series, openIds, onToggle, selectedId, onSelect, nameOverrides = {},
 }: {
   series: PanelSeries[];
   openIds: Set<string>;
   onToggle: (id: string) => void;
   selectedId: string | undefined;
   onSelect: (panel: Panel) => void;
+  nameOverrides?: Record<string, string>;
 }) => (
   <div className="space-y-1">
     {series.map(s => (
@@ -244,7 +245,9 @@ const SeriesAccordion = ({
         <button
           onClick={() => onToggle(s.id)}
           className="w-full flex items-center justify-between px-2.5 py-1.5 bg-gray-50 hover:bg-gray-100 transition-colors">
-          <span className="text-[8px] font-black uppercase tracking-widest text-gray-500">{s.name}</span>
+          <span className="text-[8px] font-black uppercase tracking-widest text-gray-500">
+            {getEffectiveSeriesName(s.id, nameOverrides)}
+          </span>
           <span className="text-[8px] text-gray-400 ml-1">{openIds.has(s.id) ? '▲' : '▼'}</span>
         </button>
         {openIds.has(s.id) && (
@@ -2188,7 +2191,7 @@ const BambooStudio = () => {
       profilePiecesTotal += pieces;
       if (pieces > 0) {
         const info = MOLDING_INFO[style];
-        addItem(info.article + '-3M', `${info.name} (3 м, раскрой оптимизирован)`, pieces, getEffectiveMoldingPrice(style));
+        addItem(info.article + '-3M', `${getEffectiveMoldingName(style, moldingNameOverrides)} (3 м, раскрой оптимизирован)`, pieces, getEffectiveMoldingPrice(style));
       }
     }
 
@@ -3576,6 +3579,7 @@ const BambooStudio = () => {
                 openIds={openSeries}
                 onToggle={toggleSeries}
                 selectedId={activeSector !== null ? sectorMaterials[activeSector]?.id : undefined}
+                nameOverrides={seriesNameOverrides}
                 onSelect={(panel) => {
                   pushHistory();
                   if (activeSector !== null) {

@@ -18,21 +18,10 @@ export async function ensureSchema(): Promise<void> {
     )
   `);
 
-  // 2. Unique constraint on products.article (required by seed ON CONFLICT)
+  // 2. Unique index on products.article (required by seed ON CONFLICT).
+  //    IF NOT EXISTS is idempotent — safe whether drizzle-kit push ran or not.
   await db.execute(sql`
-    DO $$
-    BEGIN
-      IF NOT EXISTS (
-        SELECT 1 FROM information_schema.table_constraints
-        WHERE constraint_type = 'UNIQUE'
-          AND table_name      = 'products'
-          AND constraint_name = 'products_article_unique'
-      ) THEN
-        ALTER TABLE products
-          ADD CONSTRAINT products_article_unique UNIQUE (article);
-      END IF;
-    END
-    $$
+    CREATE UNIQUE INDEX IF NOT EXISTS products_article_unique ON products (article)
   `);
 
   logger.info("Schema check complete.");
