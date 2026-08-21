@@ -22,6 +22,8 @@ interface Product {
   id: number;
   name: string;
   article: string;
+  collection: string | null;
+  series: string | null;
   cost: number;
   photoUrl: string | null;
   createdAt: string;
@@ -203,7 +205,7 @@ function TabPrices({ panelOverrides, moldingOverrides, onUpdatePanel, onUpdateMo
 // ─────────────────────────────────────────────────────────────────────────────
 // Tab: База данных (Products)
 // ─────────────────────────────────────────────────────────────────────────────
-const EMPTY_PRODUCT = { name: '', article: '', cost: 0, photoUrl: null as string | null };
+const EMPTY_PRODUCT = { name: '', article: '', collection: '', series: '', cost: 0, photoUrl: null as string | null };
 
 function ProductForm({ initial, onSave, onCancel }: {
   initial: typeof EMPTY_PRODUCT;
@@ -240,13 +242,21 @@ function ProductForm({ initial, onSave, onCancel }: {
             : <Image size={20} className="text-gray-300" />}
         </button>
         <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handlePhoto} />
-        <div className="flex-1 space-y-3">
+        <div className="flex-1 space-y-2.5">
           <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
             placeholder="Наименование *" required
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-black transition-colors" />
           <input value={form.article} onChange={e => setForm(f => ({ ...f, article: e.target.value }))}
             placeholder="Артикул *" required
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-black transition-colors" />
+          <div className="flex gap-2">
+            <input value={form.collection} onChange={e => setForm(f => ({ ...f, collection: e.target.value }))}
+              placeholder="Коллекция"
+              className="w-1/2 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-black transition-colors" />
+            <input value={form.series} onChange={e => setForm(f => ({ ...f, series: e.target.value }))}
+              placeholder="Серия"
+              className="w-1/2 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-black transition-colors" />
+          </div>
           <input value={form.cost || ''} onChange={e => setForm(f => ({ ...f, cost: parseInt(e.target.value) || 0 }))}
             placeholder="Стоимость, ₽" type="number" min="0"
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-black transition-colors" />
@@ -280,7 +290,15 @@ function ProductCard({ product, onEdit, onDelete }: {
           </div>}
       <div className="flex-1 min-w-0">
         <div className="font-bold text-sm text-gray-900 truncate">{product.name}</div>
-        <div className="text-xs text-gray-400 mt-0.5">{product.article}</div>
+        <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+          <span className="text-xs font-mono text-gray-400">{product.article}</span>
+          {product.collection && (
+            <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-md">{product.collection}</span>
+          )}
+          {product.series && (
+            <span className="text-[10px] bg-blue-50 text-blue-500 px-1.5 py-0.5 rounded-md">{product.series}</span>
+          )}
+        </div>
         <div className="text-sm font-bold text-[#7ec662] mt-1">{fmt(product.cost)}</div>
       </div>
       <div className="flex flex-col gap-1 shrink-0">
@@ -297,7 +315,7 @@ function ProductCard({ product, onEdit, onDelete }: {
   );
 }
 
-function TabProducts() {
+function TabProducts({ onPhotoChange }: { onPhotoChange?: () => void }) {
   const { data, loading, error, reload } = useFetch<Product[]>('/api/products');
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -310,6 +328,7 @@ function TabProducts() {
     });
     setCreating(false);
     await reload();
+    if (form.photoUrl) onPhotoChange?.();
   };
 
   const update = async (id: number, form: typeof EMPTY_PRODUCT) => {
@@ -320,6 +339,7 @@ function TabProducts() {
     });
     setEditingId(null);
     await reload();
+    if (form.photoUrl) onPhotoChange?.();
   };
 
   const del = async (id: number) => {
@@ -367,7 +387,7 @@ function TabProducts() {
         editingId === p.id ? (
           <ProductForm
             key={p.id}
-            initial={{ name: p.name, article: p.article, cost: p.cost, photoUrl: p.photoUrl }}
+            initial={{ name: p.name, article: p.article, collection: p.collection ?? '', series: p.series ?? '', cost: p.cost, photoUrl: p.photoUrl }}
             onSave={(f) => update(p.id, f)}
             onCancel={() => setEditingId(null)}
           />
@@ -375,7 +395,7 @@ function TabProducts() {
           <ProductCard
             key={p.id}
             product={p}
-            onEdit={() => setEditingId(p.id)}
+            onEdit={() => { setEditingId(p.id); setCreating(false); }}
             onDelete={() => del(p.id)}
           />
         )
@@ -492,7 +512,7 @@ function TabOrders() {
 // ─────────────────────────────────────────────────────────────────────────────
 const TABS = [
   { id: 'prices', label: 'Цены', icon: Tag },
-  { id: 'products', label: 'База данных', icon: Package },
+  { id: 'products', label: 'Товары', icon: Package },
   { id: 'orders', label: 'Заказы клиентов', icon: ShoppingBag },
 ] as const;
 
@@ -505,9 +525,11 @@ interface Props {
   onUpdateMolding: (id: string, p: number) => void;
   onReset: () => void;
   onClose: () => void;
+  /** Called after any product photo save so the visualizer can reload textures */
+  onPhotoChange?: () => void;
 }
 
-export function ManagerPanel({ panelOverrides, moldingOverrides, onUpdatePanel, onUpdateMolding, onReset, onClose }: Props) {
+export function ManagerPanel({ panelOverrides, moldingOverrides, onUpdatePanel, onUpdateMolding, onReset, onClose, onPhotoChange }: Props) {
   const [isAuth, setIsAuth] = useState(() => sessionStorage.getItem(SESSION_KEY) === '1');
   const [tab, setTab] = useState<TabId>('prices');
 
@@ -584,7 +606,7 @@ export function ManagerPanel({ panelOverrides, moldingOverrides, onUpdatePanel, 
                   onReset={onReset}
                 />
               )}
-              {tab === 'products' && <TabProducts />}
+              {tab === 'products' && <TabProducts onPhotoChange={onPhotoChange} />}
               {tab === 'orders'   && <TabOrders />}
             </div>
           </>

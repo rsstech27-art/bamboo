@@ -6,6 +6,8 @@ export const productsTable = pgTable("products", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   article: text("article").notNull(),
+  collection: text("collection"),
+  series: text("series"),
   cost: integer("cost").notNull().default(0),
   photoUrl: text("photo_url"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

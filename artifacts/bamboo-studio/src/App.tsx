@@ -562,6 +562,8 @@ const BambooStudio = () => {
   const maskStrokesRef = useRef<Array<{ x: number; y: number; r: number }>>([]);
   const maskUndoStackRef = useRef<number[]>([]); // stores stroke-array length before each erase drag
   const textureCacheRef = useRef<Record<string, HTMLImageElement>>({}); // preloaded panel textures
+  // DB product photos override: article → base64 dataURL (loaded from /api/products on mount)
+  const [dbPhotoMap, setDbPhotoMap] = useState<Record<string, string>>({});
 
   type HistorySnapshot = {
     surfaceIndex: number;
@@ -1508,6 +1510,30 @@ const BambooStudio = () => {
       img.src = panel.texture;
     });
   }, [drawFullScene]);
+
+  // Fetch DB product photos on mount and inject into texture cache (overrides default textures)
+  useEffect(() => {
+    fetch('/api/products')
+      .then(r => r.ok ? r.json() : [])
+      .then((products: Array<{ article: string; photoUrl: string | null }>) => {
+        const map: Record<string, string> = {};
+        products.forEach(p => { if (p.photoUrl) map[p.article] = p.photoUrl; });
+        setDbPhotoMap(map);
+      })
+      .catch(() => { /* non-critical */ });
+  }, []);
+
+  // When DB photo map changes, inject images into texture cache for matching panels
+  useEffect(() => {
+    Object.entries(dbPhotoMap).forEach(([article, dataUrl]) => {
+      const img = new Image();
+      img.onload = () => {
+        textureCacheRef.current[article] = img;
+        drawFullScene();
+      };
+      img.src = dataUrl;
+    });
+  }, [dbPhotoMap, drawFullScene]);
 
   // Find which divider (index) is near a given canvas point, or -1 if none
   const findNearDivider = useCallback((cx: number, cy: number): number => {
@@ -4218,6 +4244,16 @@ const BambooStudio = () => {
           onUpdateMolding={setMoldingPrice}
           onReset={resetPrices}
           onClose={() => setShowManagerPanel(false)}
+          onPhotoChange={() => {
+            fetch('/api/products')
+              .then(r => r.ok ? r.json() : [])
+              .then((products: Array<{ article: string; photoUrl: string | null }>) => {
+                const map: Record<string, string> = {};
+                products.forEach(p => { if (p.photoUrl) map[p.article] = p.photoUrl; });
+                setDbPhotoMap(map);
+              })
+              .catch(() => {});
+          }}
         />
       )}
 
