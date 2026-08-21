@@ -2436,6 +2436,36 @@ const BambooStudio = () => {
     const finalTotal = items.reduce((sum, it) => sum + it.qty * it.price, 0);
     void totalCalcCost; void totalProjCostDimWalls;
 
+    // ── Save КП as an order in the database ────────────────────────────────
+    const orderPrefix =
+      wallZone === 'column'    ? 'К'  :
+      wallZone === 'door'      ? 'ДП' :
+      wallZone === 'window'    ? 'ОП' :
+      wallZone === 'tv'        ? 'ТВ' :
+      (wallZone === 'wall-niche' || nQuads > 1) ? 'СВ' : 'С';
+    const orderZoneLabel =
+      wallZone === 'column'    ? 'Колонна'         :
+      wallZone === 'door'      ? 'Дверной проём'   :
+      wallZone === 'window'    ? 'Оконный проём'   :
+      wallZone === 'tv'        ? 'ТВ-зона'         :
+      (wallZone === 'wall-niche' || nQuads > 1) ? 'Стена с выступом' : 'Стена';
+    let orderNumber = '';
+    try {
+      const orderResp = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prefix: orderPrefix,
+          zoneLabel: orderZoneLabel,
+          kpData: { items, total: finalTotal },
+        }),
+      });
+      if (orderResp.ok) {
+        const saved = await orderResp.json() as { orderNumber?: string };
+        orderNumber = saved.orderNumber ?? '';
+      }
+    } catch { /* non-critical — PDF still generated without order number */ }
+
     // Render КП onto an A4 canvas (Cyrillic-safe), then embed into PDF
     const W = 1240, H = 1754; // A4 @ 150dpi
     const cv = document.createElement('canvas');
@@ -2459,6 +2489,10 @@ const BambooStudio = () => {
     c.fillStyle = '#bbbbbb'; c.font = '18px sans-serif'; c.textAlign = 'right';
     c.fillText(new Date().toLocaleDateString('ru-RU'), W - 60, 50);
     c.fillText('+7 495 151-09-46 · allwall.ru', W - 60, 82);
+    if (orderNumber) {
+      c.fillStyle = '#7ec662'; c.font = 'bold 16px sans-serif';
+      c.fillText(`№ ${orderNumber}`, W - 60, 112);
+    }
     c.textAlign = 'left';
 
     let y = 170;
