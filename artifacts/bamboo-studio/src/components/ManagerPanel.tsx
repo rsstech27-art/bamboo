@@ -857,12 +857,110 @@ function OrderCard({ order, expanded, onToggle }: {
   );
 }
 
+type SortKey = 'date_desc' | 'date_asc' | 'sum_desc' | 'sum_asc';
+
+const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+  { value: 'date_desc', label: 'Сначала новые' },
+  { value: 'date_asc',  label: 'Сначала старые' },
+  { value: 'sum_desc',  label: 'По сумме ↓' },
+  { value: 'sum_asc',   label: 'По сумме ↑' },
+];
+
 function TabOrders() {
   const { data, loading, error } = useFetch<Order[]>('/api/orders');
-  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [expandedId, setExpandedId]     = useState<number | null>(null);
+  const [search, setSearch]             = useState('');
+  const [activePrefix, setActivePrefix] = useState<string | null>(null);
+  const [sort, setSort]                 = useState<SortKey>('date_desc');
+
+  // Collect all distinct prefixes present in loaded data
+  const prefixes: string[] = data
+    ? [...new Set(data.map(o => o.prefix))].sort()
+    : [];
+
+  // Filter + sort
+  const visible = (data ?? [])
+    .filter(o => {
+      const q = search.trim().toLowerCase();
+      const matchSearch = !q || o.orderNumber.toLowerCase().includes(q);
+      const matchPrefix = !activePrefix || o.prefix === activePrefix;
+      return matchSearch && matchPrefix;
+    })
+    .sort((a, b) => {
+      if (sort === 'date_asc')  return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      if (sort === 'date_desc') return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      const sumA = (a.kpData.total as number | undefined) ?? 0;
+      const sumB = (b.kpData.total as number | undefined) ?? 0;
+      if (sort === 'sum_asc')  return sumA - sumB;
+      return sumB - sumA;
+    });
 
   return (
     <div className="max-w-2xl mx-auto py-6 px-4 space-y-3">
+
+      {/* ── Controls ── */}
+      {!loading && !error && (data?.length ?? 0) > 0 && (
+        <div className="space-y-2.5 pb-1">
+          {/* Search */}
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+              </svg>
+            </span>
+            <input
+              type="text"
+              placeholder="Поиск по номеру КП…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full pl-9 pr-9 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-black transition-colors bg-white"
+            />
+            {search && (
+              <button onClick={() => setSearch('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-600 transition-colors">
+                <X size={13} />
+              </button>
+            )}
+          </div>
+
+          {/* Prefix filter chips + sort */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {/* "All" chip */}
+            <button
+              onClick={() => setActivePrefix(null)}
+              className={`text-xs font-bold px-2.5 py-1 rounded-lg transition-colors border
+                ${activePrefix === null
+                  ? 'bg-gray-900 text-white border-gray-900'
+                  : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'}`}>
+              Все
+            </button>
+            {prefixes.map(p => (
+              <button key={p}
+                onClick={() => setActivePrefix(prev => prev === p ? null : p)}
+                className={`text-xs font-bold px-2.5 py-1 rounded-lg transition-colors border
+                  ${activePrefix === p
+                    ? ZONE_COLORS[p] ?? 'bg-gray-800 text-white border-transparent'
+                    : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'}`}>
+                {p}
+              </button>
+            ))}
+
+            {/* Sort — pushed to right */}
+            <div className="ml-auto">
+              <select
+                value={sort}
+                onChange={e => setSort(e.target.value as SortKey)}
+                className="text-xs text-gray-600 border border-gray-200 rounded-xl px-2.5 py-1.5 bg-white outline-none focus:border-black transition-colors cursor-pointer">
+                {SORT_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Content ── */}
       {loading && (
         <div className="flex items-center justify-center py-12 gap-2 text-gray-400">
           <Loader2 size={18} className="animate-spin" /> Загрузка…
@@ -876,7 +974,16 @@ function TabOrders() {
           <p className="text-xs mt-1 opacity-60">Заказы появятся здесь после нажатия «Рассчитать КП»</p>
         </div>
       )}
-      {data && data.map(o => (
+      {!loading && data && data.length > 0 && visible.length === 0 && (
+        <div className="text-center py-12 text-gray-400">
+          <p className="text-sm">Ничего не найдено</p>
+          <button onClick={() => { setSearch(''); setActivePrefix(null); }}
+            className="mt-2 text-xs underline hover:text-gray-600 transition-colors">
+            Сбросить фильтры
+          </button>
+        </div>
+      )}
+      {visible.map(o => (
         <OrderCard key={o.id} order={o}
           expanded={expandedId === o.id}
           onToggle={() => setExpandedId(prev => prev === o.id ? null : o.id)} />
