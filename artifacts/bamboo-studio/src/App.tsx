@@ -2095,13 +2095,21 @@ const BambooStudio = () => {
       if (faceH > 0) addRuns(style, faceH, 2); // 2 вертикальных: левый и правый угол
       if (faceW > 0) addRuns(style, faceW, 2); // 2 горизонтальных: верхний и нижний угол
     }
-    // Door zone: profiles at reveal corners (2 vertical + 1 horizontal)
+    // Door zone: profiles at reveal corners (2 vertical + 1 horizontal) — only when joint=profile
     if (isDoor && doorJoint === 'profile' && doorCut) {
       const visStyle = kpCfgs.find(cfg => cfg.moldingStyle !== 'none')?.moldingStyle;
       const style = visStyle && visStyle !== 'none' ? visStyle : 'metallic';
       addRuns(style, leftReveal.heightMm, 1);
       addRuns(style, rightReveal.heightMm, 1);
       addRuns(style, topReveal.widthMm, 1);
+    }
+    // Door with-transom: the faux-frame panel meets the side wall panels via profile
+    // (always — regardless of how the reveals are joined).
+    // 2 vertical profiles, each as tall as the transom height.
+    if (isDoor && doorType === 'with-transom' && topReveal.heightMm > 0) {
+      const visStyle = kpCfgs.find(cfg => cfg.moldingStyle !== 'none')?.moldingStyle;
+      const style = visStyle && visStyle !== 'none' ? visStyle : 'metallic';
+      addRuns(style, topReveal.heightMm, 2); // left side + right side of transom panel
     }
     // Pack each style's runs into 3 m pieces (offcuts reused project-wide)
     let profilePiecesTotal = 0;
@@ -2680,7 +2688,15 @@ const BambooStudio = () => {
         y += 28;
         if (doorJoint === 'profile') {
           c.fillText(
-            `Профили: лев. ${ (dLeft.heightMm / 1000).toLocaleString('ru-RU')} м + прав. ${(dRight.heightMm / 1000).toLocaleString('ru-RU')} м + верх. ${(dTop.widthMm / 1000).toLocaleString('ru-RU')} м · хлыстов 3 м: ${packProfileRuns([dLeft.heightMm, dRight.heightMm, dTop.widthMm])}`,
+            `Профили откосов: лев. ${(dLeft.heightMm / 1000).toLocaleString('ru-RU')} м + прав. ${(dRight.heightMm / 1000).toLocaleString('ru-RU')} м + верх. ${(dTop.widthMm / 1000).toLocaleString('ru-RU')} м · хлыстов 3 м: ${packProfileRuns([dLeft.heightMm, dRight.heightMm, dTop.widthMm])}`,
+            60, y + 8);
+          y += 28;
+        }
+        if (doorType === 'with-transom' && dTop.heightMm > 0) {
+          const hM = (dTop.heightMm / 1000).toLocaleString('ru-RU');
+          const pcs = packProfileRuns([dTop.heightMm, dTop.heightMm]);
+          c.fillText(
+            `Профили фальшфрамуги (стыки с боковыми панелями): 2 × ${hM} м · хлыстов 3 м: ${pcs}`,
             60, y + 8);
           y += 28;
         }
