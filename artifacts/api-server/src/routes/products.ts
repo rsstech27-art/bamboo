@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { productsTable, insertProductSchema } from "@workspace/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { PANEL_CATALOG } from "../data/panel-catalog";
+import { requireManagerSession } from "../middleware/managerAuth";
 
 const router: IRouter = Router();
 
@@ -21,7 +22,7 @@ router.get("/products", async (_req, res) => {
 });
 
 // POST /api/products/seed-catalog  — must come before /products/:id
-router.post("/products/seed-catalog", async (_req, res) => {
+router.post("/products/seed-catalog", requireManagerSession, async (_req, res) => {
   try {
     // Count existing
     const [{ count: existingCount }] = await db
@@ -58,7 +59,7 @@ router.post("/products/seed-catalog", async (_req, res) => {
 });
 
 // POST /api/products
-router.post("/products", async (req, res) => {
+router.post("/products", requireManagerSession, async (req, res) => {
   try {
     const parsed = insertProductSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -73,9 +74,9 @@ router.post("/products", async (req, res) => {
 });
 
 // PUT /api/products/:id
-router.put("/products/:id", async (req, res) => {
+router.put("/products/:id", requireManagerSession, async (req, res) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params["id"] as string, 10);
     if (isNaN(id)) return void res.status(400).json({ error: "Invalid id" });
 
     const parsed = insertProductSchema.partial().safeParse(req.body);
@@ -97,9 +98,9 @@ router.put("/products/:id", async (req, res) => {
 });
 
 // DELETE /api/products/:id
-router.delete("/products/:id", async (req, res) => {
+router.delete("/products/:id", requireManagerSession, async (req, res) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params["id"] as string, 10);
     if (isNaN(id)) return void res.status(400).json({ error: "Invalid id" });
     const [deleted] = await db.delete(productsTable).where(eq(productsTable.id, id)).returning();
     if (!deleted) return void res.status(404).json({ error: "Product not found" });

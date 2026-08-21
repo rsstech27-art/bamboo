@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { managerFetch } from '../lib/managerApi';
 
 // ── Default prices (mirrors module-level constants in App.tsx) ───────────────
 export const DEFAULT_SERIES_PRICES: Array<{ id: string; name: string; defaultPrice: number }> = [
@@ -61,7 +62,7 @@ async function fetchSettings(): Promise<{
 
 async function putSetting(key: string, value: Record<string, unknown>) {
   try {
-    await fetch(`/api/settings/${key}`, {
+    await managerFetch(`/api/settings/${key}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(value),
@@ -70,7 +71,7 @@ async function putSetting(key: string, value: Record<string, unknown>) {
 }
 
 async function deleteSetting(key: string) {
-  try { await fetch(`/api/settings/${key}`, { method: 'DELETE' }); }
+  try { await managerFetch(`/api/settings/${key}`, { method: 'DELETE' }); }
   catch { /* best-effort */ }
 }
 

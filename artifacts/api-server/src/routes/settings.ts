@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { managerSettingsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
+import { requireManagerSession } from "../middleware/managerAuth";
 
 const router: IRouter = Router();
 
@@ -24,8 +25,8 @@ router.get("/settings", async (_req, res) => {
 });
 
 // PUT /api/settings/:key  — upsert a single setting
-router.put("/settings/:key", async (req, res) => {
-  const { key } = req.params;
+router.put("/settings/:key", requireManagerSession, async (req, res) => {
+  const key = req.params["key"] as string;
   if (!VALID_KEYS.has(key)) {
     return void res.status(400).json({ error: `Unknown setting key: ${key}` });
   }
@@ -51,8 +52,8 @@ router.put("/settings/:key", async (req, res) => {
 });
 
 // DELETE /api/settings/:key  — reset a setting to default (remove the row)
-router.delete("/settings/:key", async (req, res) => {
-  const { key } = req.params;
+router.delete("/settings/:key", requireManagerSession, async (req, res) => {
+  const key = req.params["key"] as string;
   if (!VALID_KEYS.has(key)) {
     return void res.status(400).json({ error: `Unknown setting key: ${key}` });
   }
