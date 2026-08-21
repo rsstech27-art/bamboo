@@ -356,10 +356,12 @@ function TabPrices({ panelOverrides, moldingOverrides, seriesNameOverrides, mold
 const EMPTY_PRODUCT = { name: '', article: '', collection: '', series: '', cost: 0, photoUrl: null as string | null };
 
 // ── Shared product form fields (used inside modal and inline create) ──────────
+const COLLECTION_OPTIONS = ['All Wall', 'Legend'] as const;
+
 function ProductFormFields({ form, setForm, seriesOptions, fileRef }: {
   form: typeof EMPTY_PRODUCT;
   setForm: React.Dispatch<React.SetStateAction<typeof EMPTY_PRODUCT>>;
-  seriesOptions: string[];
+  seriesOptions: Array<{ name: string; price: number }>;
   fileRef: React.RefObject<HTMLInputElement | null>;
 }) {
   const handlePhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -368,6 +370,20 @@ function ProductFormFields({ form, setForm, seriesOptions, fileRef }: {
     const reader = new FileReader();
     reader.onload = () => setForm(f => ({ ...f, photoUrl: reader.result as string }));
     reader.readAsDataURL(file);
+  };
+
+  const handleSeriesChange = (name: string) => {
+    const matched = seriesOptions.find(s => s.name === name);
+    setForm(f => ({
+      ...f,
+      series: name,
+      // Auto-fill cost from series price only when cost is still zero or
+      // the current cost exactly matches some other series price (i.e. was
+      // previously auto-filled and hasn't been manually overridden).
+      cost: matched
+        ? matched.price
+        : f.cost,
+    }));
   };
 
   return (
@@ -419,22 +435,30 @@ function ProductFormFields({ form, setForm, seriesOptions, fileRef }: {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Серия</label>
-            <select value={form.series} onChange={e => setForm(f => ({ ...f, series: e.target.value }))}
+            <select value={form.series} onChange={e => handleSeriesChange(e.target.value)}
               className={`w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-black transition-colors bg-white
                 ${form.series ? 'text-gray-900' : 'text-gray-400'}`}>
               <option value="">— не выбрана —</option>
-              {seriesOptions.map(name => <option key={name} value={name}>{name}</option>)}
+              {seriesOptions.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Коллекция</label>
-            <input value={form.collection} onChange={e => setForm(f => ({ ...f, collection: e.target.value }))}
-              placeholder="Дерево"
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-black transition-colors" />
+            <select value={form.collection} onChange={e => setForm(f => ({ ...f, collection: e.target.value }))}
+              className={`w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-black transition-colors bg-white
+                ${form.collection ? 'text-gray-900' : 'text-gray-400'}`}>
+              <option value="">— не выбрана —</option>
+              {COLLECTION_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
           </div>
         </div>
         <div>
-          <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Стоимость, ₽</label>
+          <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">
+            Стоимость, ₽
+            {form.series && (
+              <span className="ml-1 normal-case font-normal text-gray-400">(из серии — можно изменить)</span>
+            )}
+          </label>
           <input value={form.cost || ''} onChange={e => setForm(f => ({ ...f, cost: parseInt(e.target.value) || 0 }))}
             placeholder="5 200" type="number" min="0"
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-black transition-colors" />
@@ -446,7 +470,7 @@ function ProductFormFields({ form, setForm, seriesOptions, fileRef }: {
 
 // ── Inline create form (shown above list) ─────────────────────────────────────
 function ProductCreateForm({ seriesOptions, onSave, onCancel }: {
-  seriesOptions: string[];
+  seriesOptions: Array<{ name: string; price: number }>;
   onSave: (data: typeof EMPTY_PRODUCT) => Promise<void>;
   onCancel: () => void;
 }) {
@@ -491,7 +515,7 @@ function ProductCreateForm({ seriesOptions, onSave, onCancel }: {
 // ── Edit modal (renders as fixed overlay) ─────────────────────────────────────
 function EditProductModal({ product, seriesOptions, onSave, onClose }: {
   product: Product;
-  seriesOptions: string[];
+  seriesOptions: Array<{ name: string; price: number }>;
   onSave: (data: typeof EMPTY_PRODUCT) => Promise<void>;
   onClose: () => void;
 }) {
@@ -607,7 +631,7 @@ function ProductCard({ product, onEdit, onDelete }: {
 const CATALOG_SIZE = 115;
 
 function TabProducts({ seriesOptions, onPhotoChange }: {
-  seriesOptions: string[];
+  seriesOptions: Array<{ name: string; price: number }>;
   onPhotoChange?: () => void;
 }) {
   const { data, loading, error, reload } = useFetch<Product[]>('/api/products');
@@ -903,10 +927,11 @@ export function ManagerPanel({
     });
   }, []);
 
-  // Computed list of effective series names for dropdown
-  const seriesOptions = DEFAULT_SERIES_PRICES.map(s =>
-    getEffectiveSeriesName(s.id, seriesNameOverrides)
-  );
+  // Computed list of effective series names + prices for dropdown
+  const seriesOptions: Array<{ name: string; price: number }> = DEFAULT_SERIES_PRICES.map(s => ({
+    name: getEffectiveSeriesName(s.id, seriesNameOverrides),
+    price: panelOverrides[s.id] ?? s.defaultPrice,
+  }));
 
   const logout = async () => {
     await managerLogout();
