@@ -2387,6 +2387,13 @@ const BambooStudio = () => {
     const cv = document.createElement('canvas');
     cv.width = W; cv.height = H;
     const c = cv.getContext('2d')!;
+    // Canvas clips text silently. Give every PDF label a safe maximum width so
+    // long calculations are condensed instead of running beyond the A4 margins.
+    const rawFillText = c.fillText.bind(c);
+    c.fillText = (text: string, x: number, y: number, maxWidth?: number) => {
+      const availableWidth = maxWidth ?? (c.textAlign === 'right' ? x - 60 : W - x - 60);
+      rawFillText(text, x, y, Math.max(1, availableWidth));
+    };
     c.fillStyle = 'white'; c.fillRect(0, 0, W, H);
 
     // Header
@@ -2436,7 +2443,7 @@ const BambooStudio = () => {
       if (idx % 2 === 1) { c.fillStyle = '#f7f7f7'; c.fillRect(60, y, W - 120, 40); }
       c.fillStyle = '#333333';
       c.fillText(it.article, colX[0] + 14, y + 20);
-      c.fillText(it.name, colX[1], y + 20);
+      c.fillText(it.name, colX[1], y + 20, colX[2] - colX[1] - 14);
       c.fillText(`${it.qty} шт`, colX[2], y + 20);
       c.fillText(fmt(it.price), colX[3], y + 20);
       c.fillText(fmt(it.qty * it.price), colX[4], y + 20);
@@ -2464,21 +2471,21 @@ const BambooStudio = () => {
         c.fillStyle = '#333333';
         c.fillText(
           `Стена ${q + 1}: ${wM.toLocaleString('ru-RU')} × ${hM.toLocaleString('ru-RU')} м · ${area.toFixed(2).replace('.', ',')} м² · панелей в проекте: ${cfg.panelCount}${widthNote}${heightNote} · расчётная стоимость: ${fmt(calcCost)}`,
-          60, y + 8);
+          60, y + 8, W - 120);
         y += 28;
       });
       if (sharedPanelsTotal > 0) {
         c.fillStyle = '#5a9c3e'; c.font = 'bold 16px sans-serif';
         c.fillText(
           `Докрой по ширине: узкие полосы всех стен кроятся из общих панелей — ${sharedPanelsTotal} ${panelsWord(sharedPanelsTotal)}${savedPanelsTotal > 0 ? ` (экономия ${savedPanelsTotal} ${panelsWord(savedPanelsTotal)} — остатки идут в работу)` : ''}`,
-          60, y + 8);
+          60, y + 8, W - 120);
         y += 26;
         c.font = '16px sans-serif';
       }
       c.fillStyle = '#555555'; c.font = 'bold 16px sans-serif';
       c.fillText(
         `Панель 2,8 × 1,22 м (${PANEL_AREA_M2.toFixed(2).replace('.', ',')} м²) · общая площадь стен: ${totalWallArea.toFixed(2).replace('.', ',')} м²`,
-        60, y + 8);
+        60, y + 8, W - 120);
       y += 26;
       c.fillStyle = '#111111';
       c.fillText(
@@ -2494,33 +2501,33 @@ const BambooStudio = () => {
       c.fillText('Колонна — расчёт по периметру', 60, y + 10);
       y += 34;
       c.font = '16px sans-serif'; c.fillStyle = '#333333';
-      c.fillText(
+        c.fillText(
         `Форма: ${COLUMN_SHAPE_LABELS[columnShape]} · ${columnSizesText(columnShape, columnSides)}${columnHeightMm > 0 ? ` · высота ${(columnHeightMm / 1000).toLocaleString('ru-RU')} м` : ''}`,
-        60, y + 8);
+          60, y + 8, W - 120);
       y += 28;
       c.fillText(
         `Периметр: ${(colPerMm / 1000).toFixed(2).replace('.', ',')} м${columnCalc.areaM2 > 0 ? ` · площадь: ${columnCalc.areaM2.toFixed(2).replace('.', ',')} м²` : ''} · панелей: ${columnCalc.needed} (по периметру ${columnCalc.perRow}, вкл. заднюю грань)`,
-        60, y + 8);
+        60, y + 8, W - 120);
       y += 28;
       if (columnCalc.opt.donorPanels > 0) {
         c.fillText(
           `Докрой по высоте: ${columnCalc.opt.donorPanels} ${panelsWord(columnCalc.opt.donorPanels)} режется на полосы ${(columnCalc.opt.remMm / 10).toFixed(0)} см (${columnCalc.opt.stripsPerPanel} шт. из одной панели)`,
-          60, y + 8);
+          60, y + 8, W - 120);
         y += 28;
       }
       if (columnCalc.wrappedCorners > 0) {
         c.fillText(
           `Загибы панелей на углах: ${columnCalc.wrappedCorners} — угловые профили в местах загиба не требуются`,
-          60, y + 8);
+          60, y + 8, W - 120);
         y += 28;
       }
       if (columnCalc.hiddenCount > 0) {
         c.fillStyle = '#333333'; c.font = '16px sans-serif';
-        c.fillText(
+          c.fillText(
           columnCalc.hiddenNames.length > 0
             ? `Невидимые стороны: ${columnCalc.hiddenCount} ${panelsWord(columnCalc.hiddenCount)} — «${columnCalc.hiddenNames.join('», «')}» (выбрано клиентом)`
             : `Невидимые стороны: ${columnCalc.hiddenCount} ${panelsWord(columnCalc.hiddenCount)} — по средней цене видимых панелей`,
-          60, y + 8);
+            60, y + 8, W - 120);
         y += 28;
       }
       c.fillStyle = '#111111'; c.font = 'bold 16px sans-serif';
@@ -2537,17 +2544,17 @@ const BambooStudio = () => {
       c.font = '16px sans-serif'; c.fillStyle = '#333333';
       c.fillText(
         `${isWindowPan ? 'Панорамное окно' : 'Окно'}: ${(winWidthMm / 1000).toLocaleString('ru-RU')} × ${(winHeightMm / 1000).toLocaleString('ru-RU')} м · откос ${(winSlopeDepthMm / 1000).toLocaleString('ru-RU')} м${isWindowPan ? ' (подоконник отсутствует)' : ''}`,
-        60, y + 8);
+        60, y + 8, W - 120);
       y += 28;
       c.fillText(
         `Деталей: ${windowCut.pieces.length}${winSlopeDepthMm > 0 ? ' — откосы: 2 вертикальных + 1 верхний' : ''} · панелей: ${windowCut.panels} (обрезки полос используются повторно)`,
-        60, y + 8);
+        60, y + 8, W - 120);
       y += 28;
       c.fillText(
         winJoint === 'profile'
           ? `Соединение на углах: через профиль — 2 вертикальных (${(winHeightMm / 1000).toLocaleString('ru-RU')} м) + 1 горизонтальный (${(winWidthMm / 1000).toLocaleString('ru-RU')} м), хлысты 3 м`
           : 'Соединение на углах: загиб панели — профили не требуются',
-        60, y + 8);
+        60, y + 8, W - 120);
       y += 28;
       c.fillStyle = '#111111'; c.font = 'bold 16px sans-serif';
       c.fillText(`Расчётная стоимость панелей окна: ${fmt(Math.round(panelsTableCost))}`, 60, y + 8);
