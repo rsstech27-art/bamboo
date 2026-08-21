@@ -2479,6 +2479,7 @@ const BambooStudio = () => {
       wallZone === 'tv'        ? 'ТВ-зона'         :
       (wallZone === 'wall-niche' || nQuads > 1) ? 'Стена с выступом' : 'Стена';
     let orderNumber = '';
+    let savedOrderId: number | null = null;
     try {
       const orderResp = await fetch('/api/orders', {
         method: 'POST',
@@ -2490,8 +2491,9 @@ const BambooStudio = () => {
         }),
       });
       if (orderResp.ok) {
-        const saved = await orderResp.json() as { orderNumber?: string };
+        const saved = await orderResp.json() as { id?: number; orderNumber?: string };
         orderNumber = saved.orderNumber ?? '';
+        savedOrderId = saved.id ?? null;
       }
     } catch { /* non-critical — PDF still generated without order number */ }
 
@@ -2844,6 +2846,30 @@ const BambooStudio = () => {
     const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
     pdf.addImage(cv.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 210, 297);
     pdf.save('allwall-kp.pdf');
+
+    // Upload PDF to object storage so managers can retrieve it later.
+    // Non-critical: run after the download so the user isn't blocked.
+    if (savedOrderId !== null) {
+      try {
+        const urlResp = await fetch(`/api/orders/${savedOrderId}/pdf-upload-url`, { method: 'POST' });
+        if (urlResp.ok) {
+          const { uploadURL, objectPath } = await urlResp.json() as { uploadURL: string; objectPath: string };
+          const pdfBlob = pdf.output('blob');
+          const uploadResp = await fetch(uploadURL, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/pdf' },
+            body: pdfBlob,
+          });
+          if (uploadResp.ok) {
+            await fetch(`/api/orders/${savedOrderId}/pdf`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ objectPath }),
+            });
+          }
+        }
+      } catch { /* non-critical — PDF available locally even without storage */ }
+    }
   };
 
   const handleChangePanelCount = (count: number) => {

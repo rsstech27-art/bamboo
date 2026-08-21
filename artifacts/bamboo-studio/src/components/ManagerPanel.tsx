@@ -33,6 +33,7 @@ interface Order {
   prefix: string;
   zoneLabel: string;
   kpData: Record<string, unknown>;
+  pdfPath: string | null;
   createdAt: string;
 }
 
@@ -808,6 +809,8 @@ function OrderCard({ order, expanded, onToggle }: {
     hour: '2-digit', minute: '2-digit',
   });
 
+  const pdfUrl = order.pdfPath ? `/api/orders/${order.id}/pdf` : null;
+
   return (
     <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
       <button onClick={onToggle}
@@ -820,6 +823,19 @@ function OrderCard({ order, expanded, onToggle }: {
           <div className="text-xs text-gray-400 mt-0.5">{date}</div>
         </div>
         <div className="shrink-0 text-sm font-bold text-[#7ec662]">{fmt(total)}</div>
+        {pdfUrl && (
+          <a href={pdfUrl} target="_blank" rel="noreferrer"
+            onClick={e => e.stopPropagation()}
+            title="Открыть PDF"
+            className="shrink-0 flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 hover:bg-red-50 hover:text-red-600 text-gray-400 transition-colors">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="9" y1="13" x2="15" y2="13"/>
+              <line x1="9" y1="17" x2="13" y2="17"/>
+            </svg>
+          </a>
+        )}
         <ChevronRight size={14} className={`shrink-0 text-gray-300 transition-transform ${expanded ? 'rotate-90' : ''}`} />
       </button>
 

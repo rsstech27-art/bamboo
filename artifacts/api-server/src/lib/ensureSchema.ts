@@ -47,5 +47,10 @@ export async function ensureSchema(): Promise<void> {
     CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" (expire)
   `);
 
+  // 4. pdf_path column on orders (added after initial schema creation)
+  await db.execute(sql`
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS pdf_path TEXT
+  `);
+
   logger.info("Schema check complete.");
 }

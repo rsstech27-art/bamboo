@@ -15,6 +15,7 @@ export const ordersTable = pgTable("orders", {
   prefix: text("prefix").notNull(),                    // С | СВ | ОП | ДП | ТВ | К
   zoneLabel: text("zone_label").notNull(),             // human-readable zone name
   kpData: jsonb("kp_data").notNull(),                  // full КП snapshot (items, totals, etc.)
+  pdfPath: text("pdf_path"),                           // object-storage path to the saved PDF
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
