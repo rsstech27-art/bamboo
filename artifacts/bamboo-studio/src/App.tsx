@@ -2026,6 +2026,21 @@ const BambooStudio = () => {
         if (isColumn) columnVisibleJoints += totalJoints; // column geometry uses all joints
       }
       if (cfg.hMoldingStyle !== 'none') addRuns(cfg.hMoldingStyle, wMm, cfg.hMoldingCount);
+
+      // Mandatory horizontal row-join profiles: when the wall is taller than one panel
+      // (PANEL_H_MM = 2800 mm for vertical orientation, PANEL_W_MM = 1220 mm for horizontal TV),
+      // every additional row requires a horizontal profile across the full wall width.
+      // Only computed when wall height is explicitly set — otherwise we assume a single row.
+      if (cfg.wallHeightMm > 0 && !isColumn) {
+        const singleRowH = isHorizTv ? PANEL_W_MM : PANEL_H_MM;
+        const rowJoints = Math.max(0, Math.ceil(hMm / singleRowH) - 1);
+        if (rowJoints > 0) {
+          // Prefer the wall's chosen molding style; fall back to mandatory metallic
+          const rowJointStyle: Exclude<MoldingStyle, 'none'> =
+            cfg.moldingStyle !== 'none' ? cfg.moldingStyle as Exclude<MoldingStyle, 'none'> : 'metallic';
+          addRuns(rowJointStyle, wMm, rowJoints);
+        }
+      }
     }
     // Mandatory corner profiles: an external corner WITHOUT загиб always needs a
     // vertical profile at the shared edge — even if the walls have no molding style.
