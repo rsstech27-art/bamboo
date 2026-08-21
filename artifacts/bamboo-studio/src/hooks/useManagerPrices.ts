@@ -25,12 +25,13 @@ export const DEFAULT_MOLDING_PRICES: Array<{ id: string; name: string; article: 
   { id: 'brass',    article: 'PR-BRASS', name: 'Профиль латунь',   defaultPrice: 990 },
 ];
 
-const LS_PANEL_KEY        = 'aw_manager_panel_prices';
-const LS_MOLDING_KEY      = 'aw_manager_molding_prices';
-const LS_SERIES_NAMES_KEY = 'aw_manager_series_names';
+const LS_PANEL_KEY         = 'aw_manager_panel_prices';
+const LS_MOLDING_KEY       = 'aw_manager_molding_prices';
+const LS_SERIES_NAMES_KEY  = 'aw_manager_series_names';
+const LS_MOLDING_NAMES_KEY = 'aw_manager_molding_names';
 
-export type PriceMap     = Record<string, number>;
-export type SeriesNames  = Record<string, string>; // id → overridden display name
+export type PriceMap    = Record<string, number>;
+export type SeriesNames = Record<string, string>; // id → overridden display name
 
 function loadFromLS(key: string): Record<string, unknown> {
   try {
@@ -50,12 +51,17 @@ export function getEffectiveSeriesName(id: string, nameOverrides: SeriesNames): 
   return DEFAULT_SERIES_PRICES.find(s => s.id === id)?.name ?? id;
 }
 
+/** Returns the display name for a molding/profile, applying any manager overrides. */
+export function getEffectiveMoldingName(id: string, nameOverrides: SeriesNames): string {
+  if (nameOverrides[id]) return nameOverrides[id];
+  return DEFAULT_MOLDING_PRICES.find(m => m.id === id)?.name ?? id;
+}
+
 export function useManagerPrices() {
-  const [panelOverrides,   setPanelOverrides]   = useState<PriceMap>(() => loadFromLS(LS_PANEL_KEY) as PriceMap);
-  const [moldingOverrides, setMoldingOverrides] = useState<PriceMap>(() => loadFromLS(LS_MOLDING_KEY) as PriceMap);
-  const [seriesNameOverrides, setSeriesNameOverrides] = useState<SeriesNames>(
-    () => loadFromLS(LS_SERIES_NAMES_KEY) as SeriesNames
-  );
+  const [panelOverrides,       setPanelOverrides]       = useState<PriceMap>(() => loadFromLS(LS_PANEL_KEY) as PriceMap);
+  const [moldingOverrides,     setMoldingOverrides]     = useState<PriceMap>(() => loadFromLS(LS_MOLDING_KEY) as PriceMap);
+  const [seriesNameOverrides,  setSeriesNameOverrides]  = useState<SeriesNames>(() => loadFromLS(LS_SERIES_NAMES_KEY) as SeriesNames);
+  const [moldingNameOverrides, setMoldingNameOverrides] = useState<SeriesNames>(() => loadFromLS(LS_MOLDING_NAMES_KEY) as SeriesNames);
 
   // Refs for use inside callbacks (handleGenerateKP etc.) without stale closures
   const panelOverridesRef   = useRef(panelOverrides);
@@ -83,12 +89,18 @@ export function useManagerPrices() {
     setSeriesNameOverrides(prev => {
       const trimmed = name.trim();
       const next: SeriesNames = { ...prev };
-      if (trimmed) {
-        next[seriesId] = trimmed;
-      } else {
-        delete next[seriesId]; // revert to default when cleared
-      }
+      if (trimmed) { next[seriesId] = trimmed; } else { delete next[seriesId]; }
       saveToLS(LS_SERIES_NAMES_KEY, next as Record<string, unknown>);
+      return next;
+    });
+  };
+
+  const setMoldingName = (moldingId: string, name: string) => {
+    setMoldingNameOverrides(prev => {
+      const trimmed = name.trim();
+      const next: SeriesNames = { ...prev };
+      if (trimmed) { next[moldingId] = trimmed; } else { delete next[moldingId]; }
+      saveToLS(LS_MOLDING_NAMES_KEY, next as Record<string, unknown>);
       return next;
     });
   };
@@ -97,9 +109,11 @@ export function useManagerPrices() {
     setPanelOverrides({});
     setMoldingOverrides({});
     setSeriesNameOverrides({});
+    setMoldingNameOverrides({});
     localStorage.removeItem(LS_PANEL_KEY);
     localStorage.removeItem(LS_MOLDING_KEY);
     localStorage.removeItem(LS_SERIES_NAMES_KEY);
+    localStorage.removeItem(LS_MOLDING_NAMES_KEY);
   };
 
   // Effective price lookup helpers
@@ -113,11 +127,13 @@ export function useManagerPrices() {
     panelOverrides,
     moldingOverrides,
     seriesNameOverrides,
+    moldingNameOverrides,
     panelOverridesRef,
     moldingOverridesRef,
     setPanelPrice,
     setMoldingPrice,
     setSeriesName,
+    setMoldingName,
     resetPrices,
     effectivePanelPrice,
     effectiveMoldingPrice,
