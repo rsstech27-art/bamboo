@@ -304,8 +304,9 @@ const WINDOW_STD_LABELS = ['Откос', 'Подоконник', '—'];
 const TV_ZONE_LABELS = ['Передняя · Основная', 'Верхняя', 'Боковая'];
 const WINDOW_PAN_LABELS = ['Откос', 'Горизонтальная плоскость', '—'];
 // Door: standard=2 quads (left dobor, right dobor); with-transom=3 quads (left, transom, right)
-const DOOR_STD_LABELS = ['Левый добор', 'Правый добор'];
-const DOOR_TRANSOM_LABELS = ['Левый добор', 'Фальшфрамуга', 'Правый добор'];
+type DoorRevealZone = 'left' | 'right' | 'top';
+type DoorRevealSize = { widthMm: number; heightMm: number; depthMm: number };
+const EMPTY_DOOR_REVEAL: DoorRevealSize = { widthMm: 0, heightMm: 0, depthMm: 0 };
 
 // ── Column (колонна) shapes & perimeter helpers ──
 type ColumnShape = 'rect' | 'round' | 'triangle';
@@ -457,6 +458,14 @@ const BambooStudio = () => {
   const [doorTransomHeightMm, setDoorTransomHeightMm] = useState(0);
   const [doorJoint, setDoorJoint] = useState<'profile' | 'bend'>('profile');
   const [doorShowDoor, setDoorShowDoor] = useState(true);
+  const [doorRevealSizes, setDoorRevealSizes] = useState<Record<DoorRevealZone, DoorRevealSize>>({
+    left: { ...EMPTY_DOOR_REVEAL },
+    right: { ...EMPTY_DOOR_REVEAL },
+    top: { ...EMPTY_DOOR_REVEAL },
+  });
+  const [doorSelectedReveal, setDoorSelectedReveal] = useState<DoorRevealZone>('left');
+  const [doorOpeningPoints, setDoorOpeningPoints] = useState<Point[]>([]);
+  const [doorMarkMode, setDoorMarkMode] = useState<'wall' | 'opening'>('wall');
   const [points, setPoints] = useState<Point[]>([]);
   const [panelCount, setPanelCount] = useState(5);
   // dividerPositions: array of N-1 values in (0,1), sorted ascending
@@ -495,6 +504,8 @@ const BambooStudio = () => {
   const wallZoneRef = useRef<string | null>(null);
   const doorTypeRef = useRef<'standard' | 'with-transom' | null>(null);
   const doorShowDoorRef = useRef(true);
+  const doorOpeningPointsRef = useRef<Point[]>([]);
+  const doorMarkModeRef = useRef<'wall' | 'opening'>('wall');
   const columnShapeRef = useRef<ColumnShape>('rect');
   // Column (колонна) parameters
   const [columnShape, setColumnShape] = useState<ColumnShape>('rect');
@@ -659,6 +670,8 @@ const BambooStudio = () => {
   useEffect(() => { wallZoneRef.current = wallZone; }, [wallZone]);
   useEffect(() => { doorTypeRef.current = doorType; }, [doorType]);
   useEffect(() => { doorShowDoorRef.current = doorShowDoor; }, [doorShowDoor]);
+  useEffect(() => { doorOpeningPointsRef.current = doorOpeningPoints; }, [doorOpeningPoints]);
+  useEffect(() => { doorMarkModeRef.current = doorMarkMode; }, [doorMarkMode]);
   useEffect(() => { columnShapeRef.current = columnShape; }, [columnShape]);
   // Persist current edits into the active surface's config
   useEffect(() => {
@@ -802,6 +815,47 @@ const BambooStudio = () => {
           ctx.fillText(`Стена ${g + 1}`, cxm, cym);
           ctx.restore();
         }
+      }
+      if (wallZoneRef.current === 'door' && pts.length >= 4) {
+        const wall = pts.slice(0, 4);
+        ctx.save();
+        ctx.fillStyle = 'rgba(126,198,98,0.14)';
+        ctx.strokeStyle = '#7ec662';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([12, 6]);
+        ctx.beginPath();
+        ctx.moveTo(wall[0].x, wall[0].y);
+        wall.slice(1).forEach(p => ctx.lineTo(p.x, p.y));
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+      if (wallZoneRef.current === 'door' && doorOpeningPointsRef.current.length > 0) {
+        const opening = doorOpeningPointsRef.current;
+        ctx.save();
+        ctx.fillStyle = 'rgba(239,68,68,0.12)';
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 3;
+        ctx.setLineDash(opening.length === 4 ? [10, 5] : [5, 4]);
+        ctx.beginPath();
+        ctx.moveTo(opening[0].x, opening[0].y);
+        opening.slice(1).forEach(p => ctx.lineTo(p.x, p.y));
+        if (opening.length === 4) ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        opening.forEach((p, i) => {
+          ctx.fillStyle = '#ef4444';
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 9px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(String(i + 1), p.x, p.y);
+        });
+        ctx.restore();
       }
       return;
     }
@@ -1251,34 +1305,6 @@ const BambooStudio = () => {
         }
         renderQuad(pts.slice(q * 4, q * 4 + 4), quadCfgs[q], q === curActiveSurf, overrideMat);
       }
-      // Door silhouette is based on the average inner edges of the marked
-      // side quads. For a transom, keep the upper marked quad as finish.
-      if (wallZoneRef.current === 'door' && doorShowDoorRef.current && pts.length >= 8) {
-        const rightQuadIdx = doorTypeRef.current === 'with-transom' && pts.length >= 12 ? 2 : 1;
-        const left = pts.slice(0, 4);
-        const right = pts.slice(rightQuadIdx * 4, rightQuadIdx * 4 + 4);
-        if (left.length === 4 && right.length === 4) {
-          // Marking convention is clockwise: p1/p2 is the inner right edge
-          // of the left dobor, p0/p3 is the inner left edge of the right dobor.
-          // Using the corresponding corners preserves the photo perspective.
-          const leftTop = left[1];
-          const leftBottom = left[2];
-          const rightTop = right[0];
-          const rightBottom = right[3];
-          tCtx.save();
-          tCtx.globalAlpha = 0.58;
-          tCtx.fillStyle = '#888888';
-          tCtx.beginPath();
-          tCtx.moveTo(leftTop.x, leftTop.y);
-          tCtx.lineTo(rightTop.x, rightTop.y);
-          tCtx.lineTo(rightBottom.x, rightBottom.y);
-          tCtx.lineTo(leftBottom.x, leftBottom.y);
-          tCtx.closePath();
-          tCtx.fill();
-          tCtx.restore();
-        }
-      }
-
       // Simplified cylindrical shading for round/oval columns:
       // dark edges + light center overlay makes the flat marked plane read as a cylinder
       if (wallZoneRef.current === 'column' && columnShapeRef.current === 'round') {
@@ -1390,6 +1416,17 @@ const BambooStudio = () => {
         tCtx.globalCompositeOperation = 'destination-out';
         tCtx.drawImage(tempMask, 0, 0);
         tCtx.globalCompositeOperation = 'source-over';
+      }
+      const doorOpening = doorOpeningPointsRef.current;
+      if (wallZoneRef.current === 'door' && doorOpening.length === 4) {
+        tCtx.save();
+        tCtx.globalCompositeOperation = 'destination-out';
+        tCtx.beginPath();
+        tCtx.moveTo(doorOpening[0].x, doorOpening[0].y);
+        doorOpening.slice(1).forEach(p => tCtx.lineTo(p.x, p.y));
+        tCtx.closePath();
+        tCtx.fill();
+        tCtx.restore();
       }
 
       ctx.save();
@@ -1579,7 +1616,7 @@ const BambooStudio = () => {
   useEffect(() => {
     if (!image) return;
     drawFullScene();
-  }, [points, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, lightMode, cylHighlightPos, activeSurface, cornerTypes, wrapJunctions, wallZone, columnShape, drawFullScene, image, panelOrientation]);
+  }, [points, doorOpeningPoints, doorMarkMode, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, lightMode, cylHighlightPos, activeSurface, cornerTypes, wrapJunctions, wallZone, columnShape, drawFullScene, image, panelOrientation]);
 
   const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = mainCanvasRef.current;
@@ -1704,7 +1741,13 @@ const BambooStudio = () => {
     // Don't trigger sector selection if click was near a divider or h-molding handle
     if (step === 'edit' && (findNearDivider(x, y) !== -1 || findNearHMolding(x, y) !== -1)) return;
 
-    if (step === 'mark' && points.length < (wallZone === 'wall-niche' || (wallZone === 'tv' && tvType !== 'surface') ? 12 : wallZone === 'column' || wallZone === 'window' || (wallZone === 'door' && doorType === 'standard') ? 8 : wallZone === 'door' && doorType === 'with-transom' ? 12 : 4)) {
+    if (step === 'mark' && wallZone === 'door') {
+      if (doorMarkMode === 'opening' && doorOpeningPoints.length < 4) {
+        setDoorOpeningPoints([...doorOpeningPoints, { x, y }]);
+      } else if (doorMarkMode === 'wall' && points.length < 4) {
+        setPoints([...points, { x, y }]);
+      }
+    } else if (step === 'mark' && points.length < (wallZone === 'wall-niche' || (wallZone === 'tv' && tvType !== 'surface') ? 12 : wallZone === 'column' || wallZone === 'window' ? 8 : 4)) {
       setPoints([...points, { x, y }]);
     } else if (step === 'edit') {
       const pts = pointsRef.current;
@@ -1896,14 +1939,24 @@ const BambooStudio = () => {
       : null;
     // Door zone: cuts for the reveals (2 side + 1 top)
     const isDoor = wallZone === 'door';
-    const doorCut = isDoor && doorRevealDepthMm > 0 && doorWidthMm > 0 && doorHeightMm > 0
+    const leftReveal = doorRevealSizes.left;
+    const rightReveal = doorRevealSizes.right;
+    const topReveal = doorRevealSizes.top;
+    const doorOpeningWidthMm = topReveal.widthMm;
+    const doorOpeningHeightMm = Math.round((leftReveal.heightMm + rightReveal.heightMm) / 2);
+    const doorOpeningAreaMm2 = doorOpeningWidthMm > 0 && doorOpeningHeightMm > 0
+      ? doorOpeningWidthMm * doorOpeningHeightMm
+      : 0;
+    const doorCut = isDoor && leftReveal.heightMm > 0 && leftReveal.depthMm > 0
+      && rightReveal.heightMm > 0 && rightReveal.depthMm > 0
+      && topReveal.widthMm > 0 && topReveal.depthMm > 0
       ? (() => {
           const pieces: import('./lib/panelCalc').WindowPiece[] = [];
-          pieces.push({ wMm: doorRevealDepthMm, lMm: doorHeightMm }); // левый откос
-          pieces.push({ wMm: doorRevealDepthMm, lMm: doorHeightMm }); // правый откос
-          pieces.push({ wMm: doorRevealDepthMm, lMm: doorWidthMm });  // верхний откос
-          if (doorType === 'with-transom' && doorTransomHeightMm > 0) {
-            pieces.push({ wMm: doorWidthMm, lMm: doorTransomHeightMm }); // фальшфрамуга
+          pieces.push({ wMm: leftReveal.depthMm, lMm: leftReveal.heightMm }); // левый откос
+          pieces.push({ wMm: rightReveal.depthMm, lMm: rightReveal.heightMm }); // правый откос
+          pieces.push({ wMm: topReveal.depthMm, lMm: topReveal.widthMm }); // верхний откос
+          if (doorType === 'with-transom' && topReveal.heightMm > 0) {
+            pieces.push({ wMm: topReveal.widthMm, lMm: topReveal.heightMm }); // фальшфрамуга
           }
           return packWindowPieces(pieces);
         })()
@@ -2041,11 +2094,12 @@ const BambooStudio = () => {
       if (faceW > 0) addRuns(style, faceW, 2); // 2 горизонтальных: верхний и нижний угол
     }
     // Door zone: profiles at reveal corners (2 vertical + 1 horizontal)
-    if (isDoor && doorJoint === 'profile' && doorHeightMm > 0 && doorWidthMm > 0) {
+    if (isDoor && doorJoint === 'profile' && doorCut) {
       const visStyle = kpCfgs.find(cfg => cfg.moldingStyle !== 'none')?.moldingStyle;
       const style = visStyle && visStyle !== 'none' ? visStyle : 'metallic';
-      addRuns(style, doorHeightMm, 2); // левый + правый вертикальный
-      addRuns(style, doorWidthMm, 1);  // верхний горизонтальный
+      addRuns(style, leftReveal.heightMm, 1);
+      addRuns(style, rightReveal.heightMm, 1);
+      addRuns(style, topReveal.widthMm, 1);
     }
     // Pack each style's runs into 3 m pieces (offcuts reused project-wide)
     let profilePiecesTotal = 0;
@@ -2125,8 +2179,17 @@ const BambooStudio = () => {
         // Width-offcut reuse: this wall's own full panels; the narrow remainder
         // strip of each row goes into the shared cross-wall packing below
         const fullPerRow = Math.floor(cfg.wallWidthMm / colW);
-        const remW = cfg.wallWidthMm - fullPerRow * colW;
-        const ownPanels = fullPerRow * opt.fullRows + opt.donorPanels;
+        const wallAreaMm2 = cfg.wallWidthMm * cfg.wallHeightMm;
+        const netDoorWallAreaMm2 = isDoor && q === 0
+          ? Math.max(0, wallAreaMm2 - Math.min(wallAreaMm2, doorOpeningAreaMm2))
+          : wallAreaMm2;
+        const hasMeasuredDoorOpening = isDoor && q === 0 && doorOpeningAreaMm2 > 0;
+        // A door wall is not a full rectangle: calculate the panel purchase from
+        // the wall area minus the measured opening, then add each reveal separately.
+        const remW = hasMeasuredDoorOpening ? 0 : cfg.wallWidthMm - fullPerRow * colW;
+        const ownPanels = hasMeasuredDoorOpening
+          ? Math.ceil(netDoorWallAreaMm2 / (PANEL_W_MM * PANEL_H_MM))
+          : fullPerRow * opt.fullRows + opt.donorPanels;
         // Match the items aggregation: sector 0 after a wrapped junction is
         // a continuation of the previous wall's panel, not billed separately
         const wrapL = q > 0 && (wrapJunctionsRef.current[q - 1] ?? false)
@@ -2139,7 +2202,7 @@ const BambooStudio = () => {
         }
         const billedCount = cfg.panelCount - (wrapL ? 1 : 0);
         const avgPrice = billedCount > 0 ? projCost / billedCount : getPanelPrice(BAMBOO_PANELS[0].id);
-        return { cfg, q, cols, opt, fullPerRow, remW, ownPanels, projCost, avgPrice, billedCount, colW };
+        return { cfg, q, cols, opt, fullPerRow, remW, ownPanels, projCost, avgPrice, billedCount, colW, netDoorWallAreaMm2, hasMeasuredDoorOpening };
       })
       .map((w, _i, all) => {
         // Cross-wall width packing: all walls' remainder strips share donor panels
@@ -2578,7 +2641,7 @@ const BambooStudio = () => {
     }
 
     // Door zone: reveals block
-    if (isDoor && (doorRevealDepthMm > 0 || doorWidthMm > 0 || doorHeightMm > 0)) {
+    if (isDoor && (doorRevealSizes.left.depthMm > 0 || doorRevealSizes.right.depthMm > 0 || doorRevealSizes.top.depthMm > 0)) {
       y += 18;
       c.fillStyle = '#111111'; c.font = 'bold 18px sans-serif';
       c.fillText('Дверной проём — расчёт материала', 60, y + 10);
@@ -2588,28 +2651,27 @@ const BambooStudio = () => {
         `Тип: ${doorType === 'with-transom' ? 'с фальшфрамугой' : 'стандартный'} · соединение: ${doorJoint === 'profile' ? 'через профиль' : 'загиб панелей'}`,
         60, y + 8);
       y += 28;
-      const dW = doorWidthMm / 1000, dH = doorHeightMm / 1000, dD = doorRevealDepthMm / 1000;
-      c.fillText(`Проём: ${dW.toLocaleString('ru-RU')} × ${dH.toLocaleString('ru-RU')} м · глубина откоса ${dD.toLocaleString('ru-RU')} м`, 60, y + 8);
-      y += 28;
-      if (doorRevealDepthMm > 0 && doorHeightMm > 0) {
-        c.fillText(`Боковые откосы (×2): ${dD.toLocaleString('ru-RU')} × ${dH.toLocaleString('ru-RU')} м · площадь: ${(2 * dD * dH).toFixed(2).replace('.', ',')} м²`, 60, y + 8);
+      const dLeft = doorRevealSizes.left, dRight = doorRevealSizes.right, dTop = doorRevealSizes.top;
+      const printReveal = (name: string, depthMm: number, lengthMm: number) => {
+        if (depthMm <= 0 || lengthMm <= 0) return;
+        const d = depthMm / 1000, l = lengthMm / 1000;
+        c.fillText(`${name}: ${d.toLocaleString('ru-RU')} × ${l.toLocaleString('ru-RU')} м · площадь: ${(d * l).toFixed(2).replace('.', ',')} м²`, 60, y + 8);
         y += 28;
-      }
-      if (doorRevealDepthMm > 0 && doorWidthMm > 0) {
-        c.fillText(`Верхний откос: ${dD.toLocaleString('ru-RU')} × ${dW.toLocaleString('ru-RU')} м · площадь: ${(dD * dW).toFixed(2).replace('.', ',')} м²`, 60, y + 8);
-        y += 28;
-      }
-      if (doorType === 'with-transom' && doorTransomHeightMm > 0 && doorWidthMm > 0) {
-        const dT = doorTransomHeightMm / 1000;
+      };
+      printReveal('Левый откос', dLeft.depthMm, dLeft.heightMm);
+      printReveal('Правый откос', dRight.depthMm, dRight.heightMm);
+      printReveal('Верхний откос', dTop.depthMm, dTop.widthMm);
+      if (doorType === 'with-transom' && dTop.heightMm > 0 && dTop.widthMm > 0) {
+        const dW = dTop.widthMm / 1000, dT = dTop.heightMm / 1000;
         c.fillText(`Фальшфрамуга: ${dW.toLocaleString('ru-RU')} × ${dT.toLocaleString('ru-RU')} м · площадь: ${(dW * dT).toFixed(2).replace('.', ',')} м²`, 60, y + 8);
         y += 28;
       }
       if (doorCut) {
-        c.fillText(`Деталей: ${doorCut.pieces.length} · откосы ×2 + верхний откос${doorType === 'with-transom' && doorTransomHeightMm > 0 ? ' + фальшфрамуга' : ''} · панелей: ${doorCut.panels}`, 60, y + 8);
+        c.fillText(`Деталей: ${doorCut.pieces.length} · левый, правый и верхний откос${doorType === 'with-transom' && dTop.heightMm > 0 ? ' + фальшфрамуга' : ''} · панелей: ${doorCut.panels}`, 60, y + 8);
         y += 28;
         if (doorJoint === 'profile') {
           c.fillText(
-            `Профили: бок. 2×${dH.toLocaleString('ru-RU')} м + горизонт. 1×${dW.toLocaleString('ru-RU')} м · хлыстов 3 м: ${packProfileRuns([doorHeightMm, doorHeightMm, doorWidthMm])}`,
+            `Профили: лев. ${ (dLeft.heightMm / 1000).toLocaleString('ru-RU')} м + прав. ${(dRight.heightMm / 1000).toLocaleString('ru-RU')} м + верх. ${(dTop.widthMm / 1000).toLocaleString('ru-RU')} м · хлыстов 3 м: ${packProfileRuns([dLeft.heightMm, dRight.heightMm, dTop.widthMm])}`,
             60, y + 8);
           y += 28;
         }
@@ -2663,6 +2725,14 @@ const BambooStudio = () => {
     setDividerPositions(makeEqualDividers(panelCount));
   };
 
+  const updateDoorRevealSize = (zone: DoorRevealZone, key: keyof DoorRevealSize, valueMm: number) => {
+    setDoorRevealSizes(prev => ({ ...prev, [zone]: { ...prev[zone], [key]: valueMm } }));
+    if (zone === 'top' && key === 'widthMm') setDoorWidthMm(valueMm);
+    if (zone === 'left' && key === 'heightMm') setDoorHeightMm(valueMm);
+    if ((zone === 'left' || zone === 'right' || zone === 'top') && key === 'depthMm') setDoorRevealDepthMm(valueMm);
+    if (zone === 'top' && key === 'heightMm') setDoorTransomHeightMm(valueMm);
+  };
+
   // Start fitting (примерка): place panels VERTICALLY — panel count per surface is
   // derived from the marked quad's proportions so each sector matches a real
   // upright 1,22 × 2,8 м panel (width : height = 1220 : 2800)
@@ -2707,6 +2777,10 @@ const BambooStudio = () => {
           setImage(img);
           setStep('mark');
           setPoints([]);
+           setDoorOpeningPoints([]);
+           setDoorMarkMode('wall');
+           setDoorSelectedReveal('left');
+           setDoorRevealSizes({ left: { ...EMPTY_DOOR_REVEAL }, right: { ...EMPTY_DOOR_REVEAL }, top: { ...EMPTY_DOOR_REVEAL } });
           setSectorMaterials({});
           setActiveSector(null);
           setIsErasing(false);
@@ -2839,7 +2913,7 @@ const BambooStudio = () => {
             )}
             {step !== 'zone' && (
               <button
-                 onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setHistoryLen(0); surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setSavedPng(null); setWinSlopeDepthMm(0); setWinWidthMm(0); setWinHeightMm(0); setWinJoint('profile'); setTvCutoutWidthMm(0); setTvCutoutHeightMm(0); setTvCutoutDepthMm(0); setTvCutoutJoint('profile'); setTvCutoutInputMode('size'); setTvCutoutPresetInches(null); setTvType(null); setTvSurfaceSideDepthMm(0); setTvSurfaceTopBottomDepthMm(0); setTvSurfaceJoint('profile'); setDoorType(null); setDoorWidthMm(0); setDoorHeightMm(0); setDoorRevealDepthMm(0); setDoorTransomHeightMm(0); setDoorJoint('profile'); setDoorShowDoor(true); setStep('zone'); setWallZone(null); setWindowType(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
+                 onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setHistoryLen(0); surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setSavedPng(null); setWinSlopeDepthMm(0); setWinWidthMm(0); setWinHeightMm(0); setWinJoint('profile'); setTvCutoutWidthMm(0); setTvCutoutHeightMm(0); setTvCutoutDepthMm(0); setTvCutoutJoint('profile'); setTvCutoutInputMode('size'); setTvCutoutPresetInches(null); setTvType(null); setTvSurfaceSideDepthMm(0); setTvSurfaceTopBottomDepthMm(0); setTvSurfaceJoint('profile'); setDoorType(null); setDoorWidthMm(0); setDoorHeightMm(0); setDoorRevealDepthMm(0); setDoorTransomHeightMm(0); setDoorJoint('profile'); setDoorShowDoor(true); setDoorOpeningPoints([]); setDoorMarkMode('wall'); setDoorSelectedReveal('left'); setDoorRevealSizes({ left: { ...EMPTY_DOOR_REVEAL }, right: { ...EMPTY_DOOR_REVEAL }, top: { ...EMPTY_DOOR_REVEAL } }); setStep('zone'); setWallZone(null); setWindowType(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
                 className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
               >
                 ← Назад
@@ -2935,8 +3009,8 @@ const BambooStudio = () => {
               </div>
               <div className="grid grid-cols-2 gap-3 w-full max-w-lg">
                 {([
-                  { id: 'standard',     label: 'Стандартная дверь',      desc: '2 добора · левый + правый', img: `${BASE}zones/door-standard.jpg` },
-                  { id: 'with-transom', label: 'Дверь с фальшфрамугой', desc: '2 добора + фальшфрамуга сверху', img: `${BASE}zones/door-transom.jpg` },
+                  { id: 'standard',     label: 'Стандартная дверь',      desc: 'левый и правый откос', img: `${BASE}zones/door-standard.jpg` },
+                  { id: 'with-transom', label: 'Дверь с фальшфрамугой', desc: 'откосы и фальшфрамуга сверху', img: `${BASE}zones/door-transom.jpg` },
                 ] as const).map(dt => (
                   <button
                     key={dt.id}
@@ -3056,8 +3130,8 @@ const BambooStudio = () => {
                     ? (points.length < 4 ? `Откос: точка ${points.length + 1}/4` : points.length < 8 ? `Подоконник: точка ${points.length - 3}/4 или «Начать»` : 'Нажмите «Начать примерку»')
                     : wallZone === 'window' && windowType === 'panoramic'
                     ? (points.length < 4 ? `Откос: точка ${points.length + 1}/4` : points.length < 8 ? `Гориз. плоскость: точка ${points.length - 3}/4 или «Начать»` : 'Нажмите «Начать примерку»')
-                     : wallZone === 'door'
-                     ? (points.length < 4 ? `Левый добор: точка ${points.length + 1}/4` : points.length < 8 ? `${doorType === 'with-transom' ? 'Фальшфрамуга' : 'Правый добор'}: точка ${points.length - 3}/4 или «Начать»` : points.length < 12 && doorType === 'with-transom' ? `Правый добор: точка ${points.length - 7}/4 или «Начать»` : 'Нажмите «Начать примерку»')
+                      : wallZone === 'door'
+                      ? (points.length < 4 ? `Стена с дверью: точка ${points.length + 1}/4` : doorMarkMode === 'opening' ? `Дверное полотно: точка ${doorOpeningPoints.length + 1}/4` : 'Задайте откосы или выделите дверь ластиком')
                     : (points.length < 4 ? `Кликните на угол стены (${points.length}/4)` : 'Нажмите «Начать примерку»')}
                 </div>
               )}
@@ -3090,10 +3164,10 @@ const BambooStudio = () => {
                   ? (points.length < 4 ? `Грань 1: точка ${points.length + 1}/4` : points.length < 8 ? `Грань 2 (опц.): точка ${points.length - 3}/4 или «Начать»` : 'Нажмите «Начать примерку»')
                   : wallZone === 'window' && windowType === 'standard'
                   ? (points.length < 4 ? `Откос: точка ${points.length + 1}/4` : points.length < 8 ? `Подоконник: точка ${points.length - 3}/4 или «Начать»` : 'Нажмите «Начать примерку»')
-                  : wallZone === 'window' && windowType === 'panoramic'
-                  ? (points.length < 4 ? `Откос: точка ${points.length + 1}/4` : points.length < 8 ? `Гориз. плоскость: точка ${points.length - 3}/4 или «Начать»` : 'Нажмите «Начать примерку»')
-                     : wallZone === 'door'
-                     ? (points.length < 4 ? `Левый добор: точка ${points.length + 1}/4` : points.length < 8 ? `${doorType === 'with-transom' ? 'Фальшфрамуга' : 'Правый добор'}: точка ${points.length - 3}/4 или «Начать»` : points.length < 12 && doorType === 'with-transom' ? `Правый добор: точка ${points.length - 7}/4 или «Начать»` : 'Нажмите «Начать примерку»')
+                   : wallZone === 'window' && windowType === 'panoramic'
+                   ? (points.length < 4 ? `Откос: точка ${points.length + 1}/4` : points.length < 8 ? `Гориз. плоскость: точка ${points.length - 3}/4 или «Начать»` : 'Нажмите «Начать примерку»')
+                   : wallZone === 'door'
+                   ? (points.length < 4 ? `Стена с дверью: точка ${points.length + 1}/4` : doorMarkMode === 'opening' ? `Дверное полотно: точка ${doorOpeningPoints.length + 1}/4` : 'Задайте откосы или выделите дверь ластиком')
                   : (points.length < 4 ? `Кликните на угол стены (${points.length}/4)` : 'Нажмите «Начать примерку»')}
               </div>
             )}
@@ -3120,7 +3194,63 @@ const BambooStudio = () => {
                 <Check size={12} className="text-gray-400" />
                 <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Разметка стены</span>
               </div>
-              {wallZone === 'wall-niche' ? (<>
+              {wallZone === 'door' ? (<>
+                <p className="text-[9px] text-gray-400 mb-3 leading-relaxed">
+                  Сначала отметьте <span className="font-bold text-gray-600">4 угла стены с дверью</span>. После этого задайте каждый откос через чекпоинт и отдельным ластиком выделите дверное полотно.
+                </p>
+                {points.length >= 4 && (<>
+                  <div className="rounded-xl border border-[#7ec662]/40 bg-[#f5fbf1] p-2.5 mb-3">
+                    <p className="text-[8px] font-black uppercase tracking-widest text-[#5a9c3e] mb-2">Стена с дверью выделена</p>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {([
+                        ['left', 'Левый', '←'],
+                        ['right', 'Правый', '→'],
+                        ['top', 'Верхний', '↑'],
+                      ] as const).map(([zone, label, icon]) => (
+                        <button key={zone} onClick={() => { setDoorSelectedReveal(zone); setDoorMarkMode('wall'); }}
+                          className={`rounded-lg px-1 py-2 text-[8px] font-bold transition-all ${doorSelectedReveal === zone ? 'bg-[#7ec662] text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200 hover:border-[#7ec662]'}`}>
+                          <span className="block text-sm leading-none mb-1">{icon}</span>{label} откос
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="rounded-xl bg-gray-50 p-2.5 mb-3">
+                    <p className="text-[8px] font-black uppercase tracking-widest text-gray-500 mb-2">
+                      {doorSelectedReveal === 'left' ? 'Левый откос' : doorSelectedReveal === 'right' ? 'Правый откос' : 'Верхний откос'} · размеры
+                    </p>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {([
+                        ['widthMm', doorSelectedReveal === 'top' ? 'Ширина, м' : 'Ширина, м'],
+                        ['heightMm', doorSelectedReveal === 'top' && doorType === 'with-transom' ? 'Фрамуга, м' : 'Высота, м'],
+                        ['depthMm', 'Глубина, м'],
+                      ] as const).map(([key, label]) => (
+                        <label key={key} className="min-w-0">
+                          <span className="block text-[7px] font-bold text-gray-400 uppercase mb-0.5">{label}</span>
+                          <MeterInput placeholder="0,1" valueMm={doorRevealSizes[doorSelectedReveal][key]}
+                            onChangeMm={(v) => { pushHistory(); updateDoorRevealSize(doorSelectedReveal, key, v); }} />
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <div className={`rounded-xl p-2.5 border ${doorMarkMode === 'opening' ? 'border-red-400 bg-red-50' : 'border-gray-200 bg-white'}`}>
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <p className="text-[8px] font-black uppercase tracking-widest text-gray-500">Ластик · дверь клиента</p>
+                      <span className="text-[8px] font-bold text-red-500">{doorOpeningPoints.length}/4 точки</span>
+                    </div>
+                    <p className="text-[8px] text-gray-400 mb-2">Выделите 4 угла полотна — область внутри будет вырезана из визуализации.</p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button onClick={() => { setDoorOpeningPoints([]); setDoorMarkMode('opening'); }}
+                        className={`py-2 rounded-lg text-[8px] font-bold transition-all ${doorMarkMode === 'opening' ? 'bg-red-500 text-white' : 'bg-gray-900 text-white'}`}>
+                        {doorOpeningPoints.length === 4 ? 'Выделить заново' : 'Выделить 4 точки'}
+                      </button>
+                      <button disabled={doorOpeningPoints.length === 0} onClick={() => { setDoorOpeningPoints([]); setDoorMarkMode('wall'); }}
+                        className="py-2 rounded-lg text-[8px] font-bold border border-gray-200 text-gray-500 disabled:opacity-30">
+                        Сбросить вырез
+                      </button>
+                    </div>
+                  </div>
+                </>)}
+              </>) : wallZone === 'wall-niche' ? (<>
                 <p className="text-[9px] text-gray-400 mb-2 leading-relaxed">
                   Каждая стена отмечается <span className="font-bold text-gray-600">отдельно</span> — 4 угла по часовой стрелке. Контуры стен не связаны между собой.<br/>
                   <span className="font-bold text-[#007aff]">Стена 1</span> — основная (обязательно).<br/>
@@ -3183,10 +3313,13 @@ const BambooStudio = () => {
                   </div>
                 ))}
               </div>
-              {points.length > 0 && (
-                <button onClick={() => setPoints(points.slice(0,-1))}
+              {(points.length > 0 || (wallZone === 'door' && doorOpeningPoints.length > 0)) && (
+                <button onClick={() => {
+                  if (wallZone === 'door' && doorMarkMode === 'opening') setDoorOpeningPoints(doorOpeningPoints.slice(0, -1));
+                  else setPoints(points.slice(0, -1));
+                }}
                   className="w-full mb-2 py-1.5 text-[9px] font-bold text-gray-400 hover:text-red-500 flex items-center justify-center gap-1 transition-colors">
-                  <Undo2 size={11}/> Отменить точку
+                  <Undo2 size={11}/> Отменить {wallZone === 'door' && doorMarkMode === 'opening' ? 'точку двери' : 'точку'}
                 </button>
               )}
               <button disabled={points.length < 4} onClick={handleStartFitting}
@@ -3230,7 +3363,8 @@ const BambooStudio = () => {
               )}
             </div>
 
-            {/* Eraser */}
+            {/* Freehand eraser is not used for doors: the door uses its four-point cutout above. */}
+            {wallZone !== 'door' && (
             <div className={`rounded-2xl p-3.5 shadow-sm transition-colors ${isErasing ? 'bg-red-50 ring-2 ring-red-400' : 'bg-white'}`}>
               <div className="flex items-center gap-1.5 mb-2.5">
                 <Eraser size={12} className={isErasing ? 'text-red-400' : 'text-gray-400'}/>
@@ -3264,6 +3398,7 @@ const BambooStudio = () => {
                 </button>
               </div>
             </div>
+            )}
 
             {/* Material */}
             <div className="bg-white rounded-2xl p-3.5 shadow-sm">
@@ -3379,7 +3514,7 @@ const BambooStudio = () => {
                   {Array.from({ length: Math.min(3, Math.floor(points.length / 4)) }, (_, i) => i).map(i => (
                     <button key={i} onClick={() => switchSurface(i)}
                       className={`w-full py-2 px-3 text-left text-[10px] font-bold rounded-xl border transition-all active:scale-95 ${activeSurface === i ? 'bg-[#7ec662] text-white border-[#7ec662]' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
-                      {(wallZone === 'column' ? COLUMN_SURFACE_LABELS : wallZone === 'window' ? (windowType === 'panoramic' ? WINDOW_PAN_LABELS : WINDOW_STD_LABELS) : wallZone === 'tv' ? TV_ZONE_LABELS : wallZone === 'door' ? (doorType === 'with-transom' ? DOOR_TRANSOM_LABELS : DOOR_STD_LABELS) : SURFACE_LABELS)[i]}
+                      {(wallZone === 'column' ? COLUMN_SURFACE_LABELS : wallZone === 'window' ? (windowType === 'panoramic' ? WINDOW_PAN_LABELS : WINDOW_STD_LABELS) : wallZone === 'tv' ? TV_ZONE_LABELS : wallZone === 'door' ? ['Стена с дверью'] : SURFACE_LABELS)[i]}
                     </button>
                   ))}
                 </div>
@@ -3567,31 +3702,36 @@ const BambooStudio = () => {
               </div>
             )}
 
-            {/* Door zone: opening dimensions + reveal depth + joint + show toggle */}
-            {wallZone === 'door' && points.length >= 8 && (
+            {/* Door zone: reveal settings remain available after starting the fitting. */}
+            {wallZone === 'door' && points.length >= 4 && (
               <div className="bg-white rounded-2xl p-3.5 shadow-sm">
                 <div className="flex items-center gap-1.5 mb-2.5">
-                  <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Дверной проём · размеры и стыковка</span>
+                  <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Дверной проём · откосы</span>
                 </div>
-                <div className="grid grid-cols-2 gap-2 mb-2">
-                  <label className="block">
-                    <span className="text-[8px] font-bold text-gray-400 uppercase">Ширина двери, м</span>
-                    <MeterInput placeholder="напр. 0,9" valueMm={doorWidthMm} onChangeMm={(v) => { pushHistory(); setDoorWidthMm(v); }} />
-                  </label>
-                  <label className="block">
-                    <span className="text-[8px] font-bold text-gray-400 uppercase">Высота двери, м</span>
-                    <MeterInput placeholder="напр. 2,1" valueMm={doorHeightMm} onChangeMm={(v) => { pushHistory(); setDoorHeightMm(v); }} />
-                  </label>
-                  <label className="block col-span-2">
-                    <span className="text-[8px] font-bold text-gray-400 uppercase">Глубина откоса, м</span>
-                    <MeterInput placeholder="напр. 0,1" valueMm={doorRevealDepthMm} onChangeMm={(v) => { pushHistory(); setDoorRevealDepthMm(v); }} />
-                  </label>
-                  {doorType === 'with-transom' && (
-                    <label className="block col-span-2">
-                      <span className="text-[8px] font-bold text-gray-400 uppercase">Высота фальшфрамуги, м</span>
-                      <MeterInput placeholder="напр. 0,4" valueMm={doorTransomHeightMm} onChangeMm={(v) => { pushHistory(); setDoorTransomHeightMm(v); }} />
+                <div className="grid grid-cols-3 gap-1.5 mb-2">
+                  {([
+                    ['left', 'Левый'],
+                    ['right', 'Правый'],
+                    ['top', 'Верхний'],
+                  ] as const).map(([zone, label]) => (
+                    <button key={zone} onClick={() => setDoorSelectedReveal(zone)}
+                      className={`py-2 rounded-lg text-[8px] font-bold transition-all ${doorSelectedReveal === zone ? 'bg-[#7ec662] text-white' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <div className="grid grid-cols-3 gap-1.5 mb-3">
+                  {([
+                    ['widthMm', 'Ширина, м'],
+                    ['heightMm', doorSelectedReveal === 'top' && doorType === 'with-transom' ? 'Фрамуга, м' : 'Высота, м'],
+                    ['depthMm', 'Глубина, м'],
+                  ] as const).map(([key, label]) => (
+                    <label key={key} className="min-w-0">
+                      <span className="block text-[7px] font-bold text-gray-400 uppercase mb-0.5">{label}</span>
+                      <MeterInput placeholder="0,1" valueMm={doorRevealSizes[doorSelectedReveal][key]}
+                        onChangeMm={(v) => { pushHistory(); updateDoorRevealSize(doorSelectedReveal, key, v); }} />
                     </label>
-                  )}
+                  ))}
                 </div>
                 <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Соединение на углах откосов</p>
                 <div className="grid grid-cols-2 gap-1.5 mb-2">
@@ -3604,31 +3744,23 @@ const BambooStudio = () => {
                   ))}
                 </div>
                 <p className="text-[8px] text-gray-400 mb-2">{doorJoint === 'profile'
-                  ? 'На углах откосов ставится профиль: 2 вертикальных (высота двери) + 1 горизонтальный (ширина двери). Хлысты 3 м, раскрой оптимизирован.'
+                  ? 'На углах откосов ставится профиль по индивидуальным длинам левого, правого и верхнего откоса. Хлысты 3 м, раскрой оптимизирован.'
                   : 'Панель загибается на углах — профили не требуются.'}</p>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[8px] font-bold text-gray-400 uppercase">Показать дверь на фото</span>
-                  <button
-                    onClick={() => { pushHistory(); setDoorShowDoor(v => !v); }}
-                    className={`w-10 h-5 rounded-full transition-colors flex items-center px-0.5 ${doorShowDoor ? 'bg-[#7ec662]' : 'bg-gray-200'}`}
-                  >
-                    <span className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${doorShowDoor ? 'translate-x-5' : ''}`} />
-                  </button>
-                </div>
                 {(() => {
-                  if (doorRevealDepthMm <= 0 || doorWidthMm <= 0 || doorHeightMm <= 0) return null;
+                  const { left, right, top } = doorRevealSizes;
+                  if (left.depthMm <= 0 || left.heightMm <= 0 || right.depthMm <= 0 || right.heightMm <= 0 || top.depthMm <= 0 || top.widthMm <= 0) return null;
                   const pieces: import('./lib/panelCalc').WindowPiece[] = [
-                    { wMm: doorRevealDepthMm, lMm: doorHeightMm },
-                    { wMm: doorRevealDepthMm, lMm: doorHeightMm },
-                    { wMm: doorRevealDepthMm, lMm: doorWidthMm },
+                    { wMm: left.depthMm, lMm: left.heightMm },
+                    { wMm: right.depthMm, lMm: right.heightMm },
+                    { wMm: top.depthMm, lMm: top.widthMm },
                   ];
-                  if (doorType === 'with-transom' && doorTransomHeightMm > 0) {
-                    pieces.push({ wMm: doorWidthMm, lMm: doorTransomHeightMm });
+                  if (doorType === 'with-transom' && top.heightMm > 0) {
+                    pieces.push({ wMm: top.widthMm, lMm: top.heightMm });
                   }
                   const cut = packWindowPieces(pieces);
                   return (
                     <div className="space-y-1 mt-1">
-                      <p className="text-[9px] font-bold text-gray-600">Деталей: {cut.pieces.length} (откосы ×3{doorType === 'with-transom' && doorTransomHeightMm > 0 ? ' + фальшфрамуга' : ''})</p>
+                      <p className="text-[9px] font-bold text-gray-600">Деталей: {cut.pieces.length} (откосы ×3{doorType === 'with-transom' && top.heightMm > 0 ? ' + фальшфрамуга' : ''})</p>
                       <p className="text-[9px] font-bold text-[#5a9c3e]">Панелей (откос): {cut.panels} — обрезки используются повторно</p>
                     </div>
                   );
@@ -3641,7 +3773,7 @@ const BambooStudio = () => {
             <div className="bg-white rounded-2xl p-3.5 shadow-sm">
               <div className="flex items-center gap-1.5 mb-2.5">
                 <Columns size={12} className="text-gray-400"/>
-                <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">{wallZone === 'tv' ? (tvType === 'surface' ? 'ТВ-зона накладная — Основная плоскость' : `ТВ-зона — ${TV_ZONE_LABELS[activeSurface]}`) : wallZone === 'door' ? ((doorType === 'with-transom' ? DOOR_TRANSOM_LABELS : DOOR_STD_LABELS)[activeSurface] ?? `Добор ${activeSurface + 1}`) : `Размеры стены ${activeSurface + 1}`}</span>
+                <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">{wallZone === 'tv' ? (tvType === 'surface' ? 'ТВ-зона накладная — Основная плоскость' : `ТВ-зона — ${TV_ZONE_LABELS[activeSurface]}`) : wallZone === 'door' ? 'Размеры стены с дверью' : `Размеры стены ${activeSurface + 1}`}</span>
               </div>
               <div className="grid grid-cols-2 gap-2 mb-2">
                 <label className="block">
