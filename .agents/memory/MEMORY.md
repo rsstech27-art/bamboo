@@ -1,0 +1,1 @@
+- [Switch-sync per-surface state](switch-sync-surfaces.md) — canvas editor uses globals-as-active-surface model; all reset paths must also reset activeSurface + stored configs, and draw must clamp the active index.
