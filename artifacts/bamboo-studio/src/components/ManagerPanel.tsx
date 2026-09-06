@@ -729,6 +729,7 @@ function TabProducts({ seriesOptions, onPhotoChange }: {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [seeding, setSeeding] = useState(false);
   const [seedResult, setSeedResult] = useState<{ inserted: number; skipped: number } | null>(null);
+  const [seriesFilter, setSeriesFilter] = useState<string | null>(null);
 
   const apiErrorText = async (r: Response) => {
     try { return ((await r.json()) as { error?: string }).error ?? `HTTP ${r.status}`; }
@@ -786,6 +787,16 @@ function TabProducts({ seriesOptions, onPhotoChange }: {
 
   const currentCount = data?.length ?? 0;
   const alreadyFull = currentCount >= CATALOG_SIZE;
+
+  // Уникальные серии из загруженных товаров (сохраняем порядок появления)
+  const availableSeries = data
+    ? Array.from(new Set(data.map(p => p.series).filter((s): s is string => !!s)))
+    : [];
+
+  // Товары после фильтрации
+  const visibleProducts = data
+    ? (seriesFilter ? data.filter(p => p.series === seriesFilter) : data)
+    : [];
 
   return (
     <div className="max-w-2xl mx-auto py-6 px-4 space-y-4">
@@ -863,7 +874,46 @@ function TabProducts({ seriesOptions, onPhotoChange }: {
         </div>
       )}
 
-      {data && data.map(p => (
+      {/* ── Фильтр по сериям ── */}
+      {!loading && availableSeries.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setSeriesFilter(null)}
+            className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
+              seriesFilter === null
+                ? 'bg-black text-white border-black'
+                : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400 hover:text-gray-800'
+            }`}>
+            Все
+          </button>
+          {availableSeries.map(s => (
+            <button
+              key={s}
+              onClick={() => setSeriesFilter(seriesFilter === s ? null : s)}
+              className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
+                seriesFilter === s
+                  ? 'bg-black text-white border-black'
+                  : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400 hover:text-gray-800'
+              }`}>
+              {s}
+              <span className={`ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                seriesFilter === s ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-400'
+              }`}>
+                {data!.filter(p => p.series === s).length}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Список товаров ── */}
+      {visibleProducts.length === 0 && !loading && seriesFilter && (
+        <div className="text-center py-8 text-gray-400 text-sm">
+          В серии «{seriesFilter}» нет товаров
+        </div>
+      )}
+
+      {visibleProducts.map(p => (
         <ProductCard
           key={p.id}
           product={p}
