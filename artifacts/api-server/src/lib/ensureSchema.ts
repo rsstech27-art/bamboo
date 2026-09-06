@@ -62,5 +62,10 @@ export async function ensureSchema(): Promise<void> {
     ALTER TABLE products ADD COLUMN IF NOT EXISTS no_metallic_profile BOOLEAN NOT NULL DEFAULT TRUE
   `);
 
+  // 7. kp_name, panel_width_mm, panel_height_mm — дополнительные поля для КП
+  await db.execute(sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS kp_name TEXT`);
+  await db.execute(sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS panel_width_mm INTEGER`);
+  await db.execute(sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS panel_height_mm INTEGER`);
+
   logger.info("Schema check complete.");
 }

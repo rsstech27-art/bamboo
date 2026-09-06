@@ -199,7 +199,7 @@ const PANEL_SERIES = [
   },
 ];
 
-type Panel = { id: string; article: string; name: string; color: string; texture: string; textureScale?: number; textureStretch?: boolean; slatOverlay?: boolean; noMetallicProfile?: boolean };
+type Panel = { id: string; article: string; name: string; color: string; texture: string; textureScale?: number; textureStretch?: boolean; slatOverlay?: boolean; noMetallicProfile?: boolean; kpName?: string; panelWidthMm?: number; panelHeightMm?: number };
 type PanelSeries = { id: string; name: string; panels: Panel[] };
 
 const BAMBOO_PANELS: Panel[] = (PANEL_SERIES as PanelSeries[]).flatMap(s => s.panels);
@@ -223,7 +223,7 @@ const SERIES_ORDER_MAP = new Map<string, number>(); // series id → sort positi
   }));
 });
 
-type ApiProduct = { id: number; article: string; name: string; series: string | null; photoUrl: string | null; scaleDown: boolean; noMetallicProfile: boolean };
+type ApiProduct = { id: number; article: string; name: string; series: string | null; photoUrl: string | null; scaleDown: boolean; noMetallicProfile: boolean; kpName: string | null; panelWidthMm: number | null; panelHeightMm: number | null };
 
 /** Group API products into PanelSeries[], preserving hardcoded series order. */
 function buildCatalogSeries(products: ApiProduct[]): PanelSeries[] {
@@ -244,6 +244,9 @@ function buildCatalogSeries(products: ApiProduct[]): PanelSeries[] {
       textureStretch: meta?.textureStretch,
       slatOverlay: meta?.slatOverlay,
       noMetallicProfile: p.noMetallicProfile,
+      kpName: p.kpName ?? undefined,
+      panelWidthMm: p.panelWidthMm ?? undefined,
+      panelHeightMm: p.panelHeightMm ?? undefined,
     });
   }
   return Array.from(seriesMap.values()).sort((a, b) =>
@@ -260,6 +263,9 @@ const _PANEL_SERIES_MAP = new Map<string, string>();
 const WOOD_FAMILY = new Set(['wood', 'reiki']);
 const isWoodFamilyId = (panelId: string) => WOOD_FAMILY.has(_PANEL_SERIES_MAP.get(panelId) ?? '');
 const isReikiId     = (panelId: string) => (_PANEL_SERIES_MAP.get(panelId) ?? '') === 'reiki';
+/** Возвращает отображаемое название панели для КП: kpName если задан, иначе name. */
+const matLabel = (m: Panel) => m.kpName ?? m.name;
+
 /** Returns true when no metallic profile is required at the joint between left and right.
  *  Per-panel override (noMetallicProfile === false) takes precedence over series rules. */
 const noMetallicJoint = (left: Panel, right: Panel) =>
@@ -2003,7 +2009,7 @@ const BambooStudio = () => {
         if (i === 0 && wrapLeft) continue;
         const mat = cfg.sectorMaterials[i] || BAMBOO_PANELS[0];
         const isBent = i === cfg.panelCount - 1 && wrapRight;
-        addItem(mat.article, `Панель «${mat.name}»${isBent ? ' (с загибом на угол)' : ''}`, 1, getPanelPrice(mat.id));
+        addItem(mat.article, `Панель «${matLabel(mat)}»${isBent ? ' (с загибом на угол)' : ''}`, 1, getPanelPrice(mat.id));
         panelArticles.add(mat.article);
         projectPanelCount++;
       }
@@ -2334,8 +2340,12 @@ const BambooStudio = () => {
         // Horizontal TV panels: the long dimension (PANEL_H_MM = 2800) covers wall width,
         // the short dimension (PANEL_W_MM = 1220) covers wall height — swap for calculations.
         const isHorizTv = wallZone === 'tv' && cfg.panelOrientation === 'horizontal';
-        const colW = isHorizTv ? PANEL_H_MM : PANEL_W_MM; // how much width one panel covers
-        const rowH = isHorizTv ? PANEL_W_MM : PANEL_H_MM; // how much height one panel covers
+        // Индивидуальные размеры панели из карточки товара (или стандарт 1220×2800)
+        const primaryMat = cfg.sectorMaterials[0] ?? BAMBOO_PANELS[0];
+        const pW = primaryMat.panelWidthMm ?? PANEL_W_MM;
+        const pH = primaryMat.panelHeightMm ?? PANEL_H_MM;
+        const colW = isHorizTv ? pH : pW; // how much width one panel covers
+        const rowH = isHorizTv ? pW : pH; // how much height one panel covers
         const cols = Math.ceil(cfg.wallWidthMm / colW);
         const opt = optimizedPanelCalc(cols, cfg.wallHeightMm, rowH);
         // Width-offcut reuse: this wall's own full panels; the narrow remainder
@@ -2350,7 +2360,7 @@ const BambooStudio = () => {
         // the wall area minus the measured opening, then add each reveal separately.
         const remW = hasMeasuredDoorOpening ? 0 : cfg.wallWidthMm - fullPerRow * colW;
         const ownPanels = hasMeasuredDoorOpening
-          ? Math.ceil(netDoorWallAreaMm2 / (PANEL_W_MM * PANEL_H_MM))
+          ? Math.ceil(netDoorWallAreaMm2 / (pW * pH))
           : fullPerRow * opt.fullRows + opt.donorPanels;
         // Match the items aggregation: sector 0 after a wrapped junction is
         // a continuation of the previous wall's panel, not billed separately
@@ -2412,7 +2422,7 @@ const BambooStudio = () => {
           const qty = per + (extra > 0 ? 1 : 0);
           if (extra > 0) extra--;
           if (qty > 0) {
-            addItem(p.article, `Панель «${p.name}» (невидимая сторона)`, qty, getPanelPrice(p.id));
+            addItem(p.article, `Панель «${matLabel(p)}» (невидимая сторона)`, qty, getPanelPrice(p.id));
             panelArticles.add(p.article);
           }
         });
@@ -2429,7 +2439,7 @@ const BambooStudio = () => {
       if (panelRows.reduce((s, it) => s + it.qty, 0) <= 0 && panelsTableTotal > 0) {
         // No panel rows on the visualization (edge case) — bill by the default panel
         const mat = BAMBOO_PANELS[0];
-        addItem(mat.article, `Панель «${mat.name}»`, panelsTableTotal, getPanelPrice(mat.id));
+        addItem(mat.article, `Панель «${matLabel(mat)}»`, panelsTableTotal, getPanelPrice(mat.id));
         panelArticles.add(mat.article);
       } else {
         scaleQtys(panelRows, panelsTableTotal);
@@ -2440,7 +2450,7 @@ const BambooStudio = () => {
       const panelRows = items.filter(it => panelArticles.has(it.article));
       if (panelRows.reduce((s, it) => s + it.qty, 0) <= 0 && panelsTableTotal > 0) {
         const mat = BAMBOO_PANELS[0];
-        addItem(mat.article, `Панель «${mat.name}»`, panelsTableTotal, getPanelPrice(mat.id));
+        addItem(mat.article, `Панель «${matLabel(mat)}»`, panelsTableTotal, getPanelPrice(mat.id));
         panelArticles.add(mat.article);
       } else {
         scaleQtys(panelRows, panelsTableTotal);
@@ -2490,7 +2500,7 @@ const BambooStudio = () => {
           // Wall whose only sector was consumed by a wrap — bill by its sector-0 material
           const mat = w.cfg.sectorMaterials[0] ?? BAMBOO_PANELS[0];
           cnt.set(mat.article, 1);
-          addItem(mat.article, `Панель «${mat.name}»`, 0, getPanelPrice(mat.id));
+          addItem(mat.article, `Панель «${matLabel(mat)}»`, 0, getPanelPrice(mat.id));
           panelArticles.add(mat.article);
         }
         // Largest-remainder split of the wall target across ITS articles
@@ -2521,21 +2531,21 @@ const BambooStudio = () => {
     if (tvBuiltinCut) {
       panelsTableTotal += tvBuiltinCut.panels;
       const mat = kpCfgs[0]?.sectorMaterials[0] ?? BAMBOO_PANELS[0];
-      addItem(mat.article, `Панель «${mat.name}» (загибы внутри выреза ТВ)`, tvBuiltinCut.panels, getPanelPrice(mat.id));
+      addItem(mat.article, `Панель «${matLabel(mat)}» (загибы внутри выреза ТВ)`, tvBuiltinCut.panels, getPanelPrice(mat.id));
       panelArticles.add(mat.article);
     }
     // Built-in TV: outer faces of the box
     if (tvBuiltinOuterCut) {
       panelsTableTotal += tvBuiltinOuterCut.panels;
       const mat = kpCfgs[0]?.sectorMaterials[0] ?? BAMBOO_PANELS[0];
-      addItem(mat.article, `Панель «${mat.name}» (наружние грани короба ТВ)`, tvBuiltinOuterCut.panels, getPanelPrice(mat.id));
+      addItem(mat.article, `Панель «${matLabel(mat)}» (наружние грани короба ТВ)`, tvBuiltinOuterCut.panels, getPanelPrice(mat.id));
       panelArticles.add(mat.article);
     }
     // Door zone: add reveal panels on top of the wall panels
     if (doorCut) {
       panelsTableTotal += doorCut.panels;
       const mat = kpCfgs[0]?.sectorMaterials[0] ?? BAMBOO_PANELS[0];
-      addItem(mat.article, `Панель «${mat.name}» (откосы дверного проёма)`, doorCut.panels, getPanelPrice(mat.id));
+      addItem(mat.article, `Панель «${matLabel(mat)}» (откосы дверного проёма)`, doorCut.panels, getPanelPrice(mat.id));
       panelArticles.add(mat.article);
     }
     const panelsTableCost = items.filter(it => panelArticles.has(it.article))

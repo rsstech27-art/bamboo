@@ -27,6 +27,9 @@ interface Product {
   photoUrl: string | null;
   scaleDown: boolean;
   noMetallicProfile: boolean;
+  kpName: string | null;
+  panelWidthMm: number | null;
+  panelHeightMm: number | null;
   createdAt: string;
 }
 
@@ -429,7 +432,7 @@ function TabPrices({ panelOverrides, moldingOverrides, seriesNameOverrides, mold
 // ─────────────────────────────────────────────────────────────────────────────
 // Tab: Товары (Products)
 // ─────────────────────────────────────────────────────────────────────────────
-const EMPTY_PRODUCT = { name: '', article: '', collection: '', series: '', cost: 0, photoUrl: null as string | null, scaleDown: false, noMetallicProfile: true };
+const EMPTY_PRODUCT = { name: '', article: '', collection: '', series: '', cost: 0, photoUrl: null as string | null, scaleDown: false, noMetallicProfile: true, kpName: '', panelWidthMm: null as number | null, panelHeightMm: null as number | null };
 
 // ── Shared product form fields (used inside modal and inline create) ──────────
 const COLLECTION_OPTIONS = ['All Wall', 'Legend'] as const;
@@ -566,7 +569,77 @@ function ProductFormFields({ form, setForm, seriesOptions, fileRef }: {
             Использовать металлический профиль на стыках
           </span>
         </label>
+
+        {/* Дополнительно — необязательные поля для КП */}
+        <ExtraFields form={form} setForm={setForm} />
       </div>
+    </div>
+  );
+}
+
+function ExtraFields({ form, setForm }: {
+  form: typeof EMPTY_PRODUCT;
+  setForm: React.Dispatch<React.SetStateAction<typeof EMPTY_PRODUCT>>;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border-t border-gray-100 pt-3">
+      <button type="button" onClick={() => setOpen(v => !v)}
+        className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-700 transition-colors w-full text-left">
+        <ChevronRight size={12} className={`transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />
+        <span className="font-semibold uppercase tracking-wide">Дополнительно для КП</span>
+        {(form.kpName || form.panelWidthMm || form.panelHeightMm) && (
+          <span className="ml-1 w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
+        )}
+      </button>
+      {open && (
+        <div className="mt-3 space-y-3">
+          <div>
+            <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">
+              Название в КП
+            </label>
+            <input
+              value={form.kpName}
+              onChange={e => setForm(f => ({ ...f, kpName: e.target.value }))}
+              placeholder="Как отображать в коммерческом предложении"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-black transition-colors"
+            />
+            <p className="text-[10px] text-gray-400 mt-1">Оставьте пустым — будет использоваться «Наименование»</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                Ширина панели, мм
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={form.panelWidthMm ?? ''}
+                onChange={e => setForm(f => ({ ...f, panelWidthMm: e.target.value ? parseInt(e.target.value) : null }))}
+                placeholder="1220"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-black transition-colors"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                Высота панели, мм
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={form.panelHeightMm ?? ''}
+                onChange={e => setForm(f => ({ ...f, panelHeightMm: e.target.value ? parseInt(e.target.value) : null }))}
+                placeholder="2800"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-black transition-colors"
+              />
+            </div>
+          </div>
+          <p className="text-[10px] text-gray-400 leading-relaxed">
+            Размеры влияют на количество панелей в расчёте КП.<br />
+            По умолчанию: 1220 × 2800 мм.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -631,6 +704,9 @@ function EditProductModal({ product, seriesOptions, onSave, onClose }: {
     photoUrl: product.photoUrl,
     scaleDown: product.scaleDown ?? false,
     noMetallicProfile: product.noMetallicProfile ?? true,
+    kpName: product.kpName ?? '',
+    panelWidthMm: product.panelWidthMm ?? null,
+    panelHeightMm: product.panelHeightMm ?? null,
   });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -715,6 +791,16 @@ function ProductCard({ product, onEdit, onDelete }: {
           )}
           {product.series && (
             <span className="text-[10px] bg-blue-50 text-blue-500 px-1.5 py-0.5 rounded-md">{product.series}</span>
+          )}
+          {(product.panelWidthMm || product.panelHeightMm) && (
+            <span className="text-[10px] bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded-md font-mono">
+              {product.panelWidthMm ?? 1220}×{product.panelHeightMm ?? 2800} мм
+            </span>
+          )}
+          {product.kpName && (
+            <span className="text-[10px] bg-purple-50 text-purple-500 px-1.5 py-0.5 rounded-md max-w-[100px] truncate" title={product.kpName}>
+              КП: {product.kpName}
+            </span>
           )}
         </div>
         <div className="text-xs font-bold text-[#7ec662] mt-0.5">{fmt(product.cost)}</div>
