@@ -223,7 +223,7 @@ const SERIES_ORDER_MAP = new Map<string, number>(); // series id → sort positi
   }));
 });
 
-type ApiProduct = { id: number; article: string; name: string; series: string | null; photoUrl: string | null };
+type ApiProduct = { id: number; article: string; name: string; series: string | null; photoUrl: string | null; scaleDown: boolean };
 
 /** Group API products into PanelSeries[], preserving hardcoded series order. */
 function buildCatalogSeries(products: ApiProduct[]): PanelSeries[] {
@@ -234,11 +234,13 @@ function buildCatalogSeries(products: ApiProduct[]): PanelSeries[] {
       ?? p.series.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
     if (!seriesMap.has(sId)) seriesMap.set(sId, { id: sId, name: p.series, panels: [] });
     const meta = PANEL_META_MAP.get(p.article);
+    // scaleDown от менеджера переопределяет значение из локального мета-каталога
+    const textureScale = p.scaleDown ? 8 : meta?.textureScale;
     seriesMap.get(sId)!.panels.push({
       id: p.article, article: p.article, name: p.name,
       color: meta?.color ?? '#888888',
       texture: p.photoUrl ?? meta?.texture ?? '',
-      textureScale: meta?.textureScale,
+      textureScale,
       textureStretch: meta?.textureStretch,
       slatOverlay: meta?.slatOverlay,
     });

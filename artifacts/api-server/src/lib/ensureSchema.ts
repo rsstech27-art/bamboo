@@ -52,5 +52,10 @@ export async function ensureSchema(): Promise<void> {
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS pdf_path TEXT
   `);
 
+  // 5. scale_down column on products (уменьшить масштаб текстуры в визуализаторе)
+  await db.execute(sql`
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS scale_down BOOLEAN NOT NULL DEFAULT FALSE
+  `);
+
   logger.info("Schema check complete.");
 }

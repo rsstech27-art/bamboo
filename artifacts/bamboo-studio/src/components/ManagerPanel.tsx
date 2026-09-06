@@ -25,6 +25,7 @@ interface Product {
   series: string | null;
   cost: number;
   photoUrl: string | null;
+  scaleDown: boolean;
   createdAt: string;
 }
 
@@ -427,7 +428,7 @@ function TabPrices({ panelOverrides, moldingOverrides, seriesNameOverrides, mold
 // ─────────────────────────────────────────────────────────────────────────────
 // Tab: Товары (Products)
 // ─────────────────────────────────────────────────────────────────────────────
-const EMPTY_PRODUCT = { name: '', article: '', collection: '', series: '', cost: 0, photoUrl: null as string | null };
+const EMPTY_PRODUCT = { name: '', article: '', collection: '', series: '', cost: 0, photoUrl: null as string | null, scaleDown: false };
 
 // ── Shared product form fields (used inside modal and inline create) ──────────
 const COLLECTION_OPTIONS = ['All Wall', 'Legend'] as const;
@@ -437,7 +438,8 @@ function ProductFormFields({ form, setForm, seriesOptions, fileRef }: {
   setForm: React.Dispatch<React.SetStateAction<typeof EMPTY_PRODUCT>>;
   seriesOptions: Array<{ name: string; price: number }>;
   fileRef: React.RefObject<HTMLInputElement | null>;
-}) {
+})
+ {
   const handlePhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -537,6 +539,19 @@ function ProductFormFields({ form, setForm, seriesOptions, fileRef }: {
             placeholder="5 200" type="number" min="0"
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-black transition-colors" />
         </div>
+
+        {/* Scale down checkbox */}
+        <label className="flex items-center gap-2.5 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={form.scaleDown}
+            onChange={e => setForm(f => ({ ...f, scaleDown: e.target.checked }))}
+            className="w-4 h-4 rounded border-gray-300 accent-black cursor-pointer"
+          />
+          <span className="text-sm text-gray-700">
+            Уменьшить масштаб текстуры в визуализаторе
+          </span>
+        </label>
       </div>
     </div>
   );
@@ -600,6 +615,7 @@ function EditProductModal({ product, seriesOptions, onSave, onClose }: {
     series: product.series ?? '',
     cost: product.cost,
     photoUrl: product.photoUrl,
+    scaleDown: product.scaleDown ?? false,
   });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
