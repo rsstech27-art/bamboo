@@ -10,6 +10,7 @@ import {
   getEffectiveMoldingName,
   type PriceMap,
   type SeriesNames,
+  type SeriesDefinition,
 } from '../hooks/useManagerPrices';
 import { managerLogin, managerLogout, checkManagerSession, managerFetch } from '../lib/managerApi';
 
@@ -268,15 +269,77 @@ function EditableRow({ defaultName, defaultPrice, nameOverride, priceOverride, o
   );
 }
 
-function TabPrices({ panelOverrides, moldingOverrides, seriesNameOverrides, moldingNameOverrides, onUpdatePanel, onUpdateMolding, onUpdateSeriesName, onUpdateMoldingName, onReset }: {
+function AddSeriesForm({ onAdd }: {
+  onAdd: (name: string, price: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [price, setPrice] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    try {
+      onAdd(name, Number(price));
+      setName('');
+      setPrice('');
+      setOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось добавить серию');
+    }
+  };
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)}
+        className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 hover:border-black text-gray-500 hover:text-black text-sm font-bold py-3 rounded-xl transition-colors">
+        <Plus size={15} /> Добавить серию
+      </button>
+    );
+  }
+
+  return (
+    <form onSubmit={submit} className="bg-white border border-gray-200 rounded-xl p-4 space-y-3 shadow-sm">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-black text-gray-900">Новая серия</span>
+        <button type="button" onClick={() => { setOpen(false); setError(null); }}
+          className="text-gray-400 hover:text-black"><X size={15} /></button>
+      </div>
+      <div className="grid grid-cols-[1fr_130px] gap-3">
+        <div>
+          <label className="block text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-1">Название</label>
+          <input value={name} onChange={e => setName(e.target.value)} autoFocus
+            placeholder="Название серии"
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-black" />
+        </div>
+        <div>
+          <label className="block text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-1">Цена, ₽/панель</label>
+          <input value={price} onChange={e => setPrice(e.target.value)}
+            type="number" min="1" placeholder="5000"
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-black" />
+        </div>
+      </div>
+      {error && <div className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</div>}
+      <button type="submit"
+        className="w-full flex items-center justify-center gap-2 bg-black text-white text-sm font-bold py-2.5 rounded-lg hover:bg-gray-800">
+        <Check size={14} /> Добавить
+      </button>
+    </form>
+  );
+}
+
+function TabPrices({ panelOverrides, moldingOverrides, seriesNameOverrides, moldingNameOverrides, customSeries, onUpdatePanel, onUpdateMolding, onUpdateSeriesName, onUpdateMoldingName, onAddSeries, onReset }: {
   panelOverrides: PriceMap;
   moldingOverrides: PriceMap;
   seriesNameOverrides: SeriesNames;
   moldingNameOverrides: SeriesNames;
+  customSeries: SeriesDefinition[];
   onUpdatePanel: (id: string, p: number) => void;
   onUpdateMolding: (id: string, p: number) => void;
   onUpdateSeriesName: (id: string, name: string) => void;
   onUpdateMoldingName: (id: string, name: string) => void;
+  onAddSeries: (name: string, price: number) => void;
   onReset: () => void;
 }) {
   const modifiedPrices =
@@ -289,7 +352,7 @@ function TabPrices({ panelOverrides, moldingOverrides, seriesNameOverrides, mold
     <div className="max-w-xl mx-auto space-y-6 py-6 px-4">
       {totalModified > 0 && (
         <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
-          <span className="text-sm text-green-700 font-medium">Изменено: {totalModified} — сохранено в браузере</span>
+          <span className="text-sm text-green-700 font-medium">Изменено: {totalModified} — сохранено</span>
           <button onClick={() => { if (confirm('Сбросить все цены и названия?')) onReset(); }}
             className="flex items-center gap-1.5 text-xs font-bold text-green-700 hover:text-green-900 border border-green-300 rounded-lg px-3 py-1.5 transition-colors bg-white">
             <RotateCcw size={11} /> Сбросить всё
@@ -317,6 +380,16 @@ function TabPrices({ panelOverrides, moldingOverrides, seriesNameOverrides, mold
               onPriceChange={price => onUpdatePanel(s.id, price)}
             />
           ))}
+          {customSeries.map(s => (
+            <div key={s.id} className="flex items-center gap-2 py-2.5 border-t border-gray-100">
+              <span className="flex-1 text-sm px-2 py-1.5 text-gray-700 font-semibold min-w-0 truncate">{s.name}</span>
+              <span className="text-[9px] font-bold uppercase tracking-wide text-[#5a9d43] bg-green-50 rounded-md px-2 py-1">Добавлена</span>
+              <span className="text-sm font-bold text-gray-700">{s.price.toLocaleString('ru-RU')} ₽</span>
+            </div>
+          ))}
+        </div>
+        <div className="mt-3">
+          <AddSeriesForm onAdd={onAddSeries} />
         </div>
       </section>
 
@@ -345,7 +418,7 @@ function TabPrices({ panelOverrides, moldingOverrides, seriesNameOverrides, mold
 
       <p className="text-xs text-gray-400 text-center pb-4">
         Клик по любому названию — редактировать. Очистите поле чтобы вернуть оригинал.
-        Хранится локально в браузере.
+        Изменения сохраняются и доступны менеджерам после обновления страницы.
       </p>
     </div>
   );
@@ -655,7 +728,7 @@ function TabProducts({ seriesOptions, onPhotoChange }: {
     if (!r.ok) throw new Error(await apiErrorText(r));
     setCreating(false);
     await reload();
-    if (form.photoUrl) onPhotoChange?.();
+    onPhotoChange?.();
   };
 
   const update = async (id: number, form: typeof EMPTY_PRODUCT) => {
@@ -675,6 +748,7 @@ function TabProducts({ seriesOptions, onPhotoChange }: {
     const r = await managerFetch(`/api/products/${id}`, { method: 'DELETE' });
     if (!r.ok) { alert(`Ошибка удаления: ${await apiErrorText(r)}`); return; }
     await reload();
+    onPhotoChange?.();
   };
 
   const seedCatalog = async () => {
@@ -1024,10 +1098,13 @@ interface Props {
   moldingOverrides: PriceMap;
   seriesNameOverrides: SeriesNames;
   moldingNameOverrides: SeriesNames;
+  customSeries: SeriesDefinition[];
+  seriesDefinitions: SeriesDefinition[];
   onUpdatePanel: (id: string, p: number) => void;
   onUpdateMolding: (id: string, p: number) => void;
   onUpdateSeriesName: (id: string, name: string) => void;
   onUpdateMoldingName: (id: string, name: string) => void;
+  onAddSeries: (name: string, price: number) => void;
   onReset: () => void;
   onClose: () => void;
   onPhotoChange?: () => void;
@@ -1035,8 +1112,9 @@ interface Props {
 
 export function ManagerPanel({
   panelOverrides, moldingOverrides, seriesNameOverrides, moldingNameOverrides,
+  customSeries, seriesDefinitions,
   onUpdatePanel, onUpdateMolding, onUpdateSeriesName, onUpdateMoldingName,
-  onReset, onClose, onPhotoChange,
+  onAddSeries, onReset, onClose, onPhotoChange,
 }: Props) {
   const [isAuth, setIsAuth] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
@@ -1051,9 +1129,9 @@ export function ManagerPanel({
   }, []);
 
   // Computed list of effective series names + prices for dropdown
-  const seriesOptions: Array<{ name: string; price: number }> = DEFAULT_SERIES_PRICES.map(s => ({
-    name: getEffectiveSeriesName(s.id, seriesNameOverrides),
-    price: panelOverrides[s.id] ?? s.defaultPrice,
+  const seriesOptions: Array<{ name: string; price: number }> = seriesDefinitions.map(s => ({
+    name: s.name,
+    price: s.price,
   }));
 
   const logout = async () => {
@@ -1128,10 +1206,12 @@ export function ManagerPanel({
                   moldingOverrides={moldingOverrides}
                   seriesNameOverrides={seriesNameOverrides}
                   moldingNameOverrides={moldingNameOverrides}
+                  customSeries={customSeries}
                   onUpdatePanel={onUpdatePanel}
                   onUpdateMolding={onUpdateMolding}
                   onUpdateSeriesName={onUpdateSeriesName}
                   onUpdateMoldingName={onUpdateMoldingName}
+                  onAddSeries={onAddSeries}
                   onReset={onReset}
                 />
               )}

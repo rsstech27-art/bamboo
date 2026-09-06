@@ -1,7 +1,12 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Upload, Layout, Eraser, RotateCcw, Download, Check, Columns, Undo2, Sun, Moon, FileText } from 'lucide-react';
 import { PANEL_H_MM, PANEL_W_MM, PANEL_AREA_M2, optimizedPanelCalc, packWidthRemainders, packProfileRuns, columnHiddenJoints, packWindowPieces, windowStdPieces, panelsWord, rowsWord } from './lib/panelCalc';
-import { useManagerPrices, getEffectiveSeriesName, getEffectiveMoldingName } from './hooks/useManagerPrices';
+import {
+  DEFAULT_SERIES_PRICES,
+  useManagerPrices,
+  getEffectiveSeriesName,
+  getEffectiveMoldingName,
+} from './hooks/useManagerPrices';
 import { ManagerPanel } from './components/ManagerPanel';
 
 const BASE = import.meta.env.BASE_URL;
@@ -519,8 +524,9 @@ const BambooStudio = () => {
   const [showManagerPanel, setShowManagerPanel] = useState(false);
   const {
     panelOverrides, moldingOverrides, seriesNameOverrides, moldingNameOverrides,
+    customSeries, seriesDefinitions,
     panelOverridesRef, moldingOverridesRef,
-    setPanelPrice, setMoldingPrice, setSeriesName, setMoldingName, resetPrices,
+    setPanelPrice, setMoldingPrice, setSeriesName, setMoldingName, addCustomSeries, resetPrices,
   } = useManagerPrices();
   const [panelCount, setPanelCount] = useState(5);
   // dividerPositions: array of N-1 values in (0,1), sorted ascending
@@ -1552,9 +1558,13 @@ const BambooStudio = () => {
   useEffect(() => {
     const panels = catalogSeries.flatMap(s => s.panels);
     catalogPanelsRef.current = panels;
-    // Keep _PANEL_SERIES_MAP in sync so noMetallicJoint works with dynamic data
+    // Keep series lookups in sync so joint rules and КП pricing work for
+    // products from manager-created series too.
     _PANEL_SERIES_MAP.clear();
-    catalogSeries.forEach(s => s.panels.forEach(p => _PANEL_SERIES_MAP.set(p.id, s.id)));
+    catalogSeries.forEach(s => s.panels.forEach(p => {
+      _PANEL_SERIES_MAP.set(p.id, s.id);
+      PANEL_TO_SERIES[p.id] = s.id;
+    }));
     panels.forEach(panel => {
       if (!panel.texture || textureCacheRef.current[panel.id]) return;
       const img = new Image();
@@ -1567,8 +1577,15 @@ const BambooStudio = () => {
     });
   }, [catalogSeries, drawFullScene]);
 
-  // Fetch full product catalog on mount: builds right-panel series list + photo override map
+  // Fetch full product catalog when series definitions change. Registering
+  // definitions first lets custom series resolve to their stable id and price.
   useEffect(() => {
+    seriesDefinitions.forEach((series, index) => {
+      SERIES_ID_MAP.set(series.name, series.id);
+      SERIES_ORDER_MAP.set(series.id, DEFAULT_SERIES_PRICES.length + index);
+      SERIES_PRICES[series.id] = series.price;
+    });
+
     fetch('/api/products')
       .then(r => r.ok ? r.json() : [])
       .then((products: ApiProduct[]) => {
@@ -1581,7 +1598,7 @@ const BambooStudio = () => {
         if (built.length > 0) setCatalogSeries(built);
       })
       .catch(() => { /* non-critical */ });
-  }, []);
+  }, [seriesDefinitions]);
 
   // When DB photo map changes, inject images into texture cache for matching panels
   useEffect(() => {
@@ -4329,10 +4346,13 @@ const BambooStudio = () => {
           moldingOverrides={moldingOverrides}
           seriesNameOverrides={seriesNameOverrides}
           moldingNameOverrides={moldingNameOverrides}
+          customSeries={customSeries}
+          seriesDefinitions={seriesDefinitions}
           onUpdatePanel={setPanelPrice}
           onUpdateMolding={setMoldingPrice}
           onUpdateSeriesName={setSeriesName}
           onUpdateMoldingName={setMoldingName}
+          onAddSeries={addCustomSeries}
           onReset={resetPrices}
           onClose={() => setShowManagerPanel(false)}
           onPhotoChange={() => {

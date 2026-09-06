@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { managerFetch } from '../lib/managerApi';
 
 // ── Default prices (mirrors module-level constants in App.tsx) ───────────────
@@ -28,12 +28,19 @@ export const DEFAULT_MOLDING_PRICES: Array<{ id: string; name: string; article: 
 
 export type PriceMap    = Record<string, number>;
 export type SeriesNames = Record<string, string>;
+export type SeriesDefinition = {
+  id: string;
+  name: string;
+  price: number;
+  custom?: boolean;
+};
 
 // ── localStorage keys (used only as optimistic cache) ────────────────────────
 const LS_PANEL_KEY         = 'aw_manager_panel_prices';
 const LS_MOLDING_KEY       = 'aw_manager_molding_prices';
 const LS_SERIES_NAMES_KEY  = 'aw_manager_series_names';
 const LS_MOLDING_NAMES_KEY = 'aw_manager_molding_names';
+const LS_CUSTOM_SERIES_KEY  = 'aw_manager_custom_series';
 
 function loadLS(key: string): Record<string, unknown> {
   try { const r = localStorage.getItem(key); return r ? JSON.parse(r) as Record<string, unknown> : {}; }
@@ -52,6 +59,7 @@ async function fetchSettings(): Promise<{
   molding_prices?: PriceMap;
   series_names?: SeriesNames;
   molding_names?: SeriesNames;
+  custom_series?: SeriesDefinition[];
 }> {
   try {
     const r = await fetch('/api/settings');
@@ -90,6 +98,14 @@ export function useManagerPrices() {
   const [moldingOverrides,     setMoldingOverrides]     = useState<PriceMap>(() => loadLS(LS_MOLDING_KEY) as PriceMap);
   const [seriesNameOverrides,  setSeriesNameOverrides]  = useState<SeriesNames>(() => loadLS(LS_SERIES_NAMES_KEY) as SeriesNames);
   const [moldingNameOverrides, setMoldingNameOverrides] = useState<SeriesNames>(() => loadLS(LS_MOLDING_NAMES_KEY) as SeriesNames);
+  const [customSeries, setCustomSeries] = useState<SeriesDefinition[]>(() => {
+    try {
+      const raw = localStorage.getItem(LS_CUSTOM_SERIES_KEY);
+      return raw ? JSON.parse(raw) as SeriesDefinition[] : [];
+    } catch {
+      return [];
+    }
+  });
 
   // Refs for use in callbacks without stale closures
   const panelOverridesRef   = useRef(panelOverrides);
@@ -104,6 +120,14 @@ export function useManagerPrices() {
       if (remote.molding_prices) { setMoldingOverrides(remote.molding_prices); saveLS(LS_MOLDING_KEY,      remote.molding_prices as Record<string, unknown>); }
       if (remote.series_names)   { setSeriesNameOverrides(remote.series_names); saveLS(LS_SERIES_NAMES_KEY, remote.series_names as Record<string, unknown>); }
       if (remote.molding_names)  { setMoldingNameOverrides(remote.molding_names); saveLS(LS_MOLDING_NAMES_KEY, remote.molding_names as Record<string, unknown>); }
+      if (Array.isArray(remote.custom_series)) {
+        const valid = remote.custom_series.filter(s =>
+          s && typeof s.id === 'string' && typeof s.name === 'string' &&
+          typeof s.price === 'number' && s.price > 0
+        );
+        setCustomSeries(valid);
+        try { localStorage.setItem(LS_CUSTOM_SERIES_KEY, JSON.stringify(valid)); } catch { /* ignore */ }
+      }
     });
   }, []);
 
@@ -149,6 +173,39 @@ export function useManagerPrices() {
     });
   }, []);
 
+  const addCustomSeries = useCallback((name: string, price: number) => {
+    const trimmed = name.trim();
+    if (!trimmed) throw new Error('Введите название серии');
+    if (!Number.isFinite(price) || price <= 0) throw new Error('Укажите стоимость больше нуля');
+
+    const allNames = [
+      ...DEFAULT_SERIES_PRICES.map(s => seriesNameOverrides[s.id] || s.name),
+      ...customSeries.map(s => s.name),
+    ];
+    if (allNames.some(n => n.localeCompare(trimmed, 'ru', { sensitivity: 'accent' }) === 0)) {
+      throw new Error('Серия с таким названием уже существует');
+    }
+
+    const slug = trimmed
+      .toLocaleLowerCase('ru')
+      .replace(/[^a-zа-яё0-9]+/gi, '-')
+      .replace(/^-+|-+$/g, '') || 'series';
+    const usedIds = new Set([
+      ...DEFAULT_SERIES_PRICES.map(s => s.id),
+      ...customSeries.map(s => s.id),
+    ]);
+    let id = `custom-${slug}`;
+    let suffix = 2;
+    while (usedIds.has(id)) id = `custom-${slug}-${suffix++}`;
+
+    const created: SeriesDefinition = { id, name: trimmed, price: Math.round(price), custom: true };
+    const next = [...customSeries, created];
+    setCustomSeries(next);
+    try { localStorage.setItem(LS_CUSTOM_SERIES_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+    void putSetting('custom_series', next as unknown as Record<string, unknown>);
+    return created;
+  }, [customSeries, seriesNameOverrides]);
+
   const resetPrices = useCallback(() => {
     setPanelOverrides({});
     setMoldingOverrides({});
@@ -162,6 +219,15 @@ export function useManagerPrices() {
     void deleteSetting('molding_names');
   }, []);
 
+  const seriesDefinitions = useMemo<SeriesDefinition[]>(() => [
+    ...DEFAULT_SERIES_PRICES.map(s => ({
+      id: s.id,
+      name: getEffectiveSeriesName(s.id, seriesNameOverrides),
+      price: panelOverrides[s.id] ?? s.defaultPrice,
+    })),
+    ...customSeries,
+  ], [panelOverrides, seriesNameOverrides, customSeries]);
+
   // Effective price lookup helpers (use refs so callbacks don't go stale)
   const effectivePanelPrice   = (seriesId: string, fallback: number) => panelOverridesRef.current[seriesId]   ?? fallback;
   const effectiveMoldingPrice = (styleId:  string, fallback: number) => moldingOverridesRef.current[styleId]  ?? fallback;
@@ -171,12 +237,15 @@ export function useManagerPrices() {
     moldingOverrides,
     seriesNameOverrides,
     moldingNameOverrides,
+    customSeries,
+    seriesDefinitions,
     panelOverridesRef,
     moldingOverridesRef,
     setPanelPrice,
     setMoldingPrice,
     setSeriesName,
     setMoldingName,
+    addCustomSeries,
     resetPrices,
     effectivePanelPrice,
     effectiveMoldingPrice,

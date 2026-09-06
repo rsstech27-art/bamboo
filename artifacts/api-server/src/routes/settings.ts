@@ -7,7 +7,13 @@ import { requireManagerSession } from "../middleware/managerAuth";
 const router: IRouter = Router();
 
 /** Known setting keys */
-const VALID_KEYS = new Set(["panel_prices", "molding_prices", "series_names", "molding_names"]);
+const VALID_KEYS = new Set([
+  "panel_prices",
+  "molding_prices",
+  "series_names",
+  "molding_names",
+  "custom_series",
+]);
 
 // GET /api/settings  — returns all four settings as one object
 router.get("/settings", async (_req, res) => {
@@ -34,6 +40,22 @@ router.put("/settings/:key", requireManagerSession, async (req, res) => {
   const value = req.body as unknown;
   if (value === undefined || value === null) {
     return void res.status(400).json({ error: "Body must be a JSON value" });
+  }
+  if (
+    key === "custom_series" &&
+    (!Array.isArray(value) || value.some(item => {
+      if (!item || typeof item !== "object") return true;
+      const series = item as Record<string, unknown>;
+      return (
+        typeof series.id !== "string" ||
+        typeof series.name !== "string" ||
+        typeof series.price !== "number" ||
+        !Number.isFinite(series.price) ||
+        series.price <= 0
+      );
+    }))
+  ) {
+    return void res.status(400).json({ error: "Invalid custom series list" });
   }
 
   try {
