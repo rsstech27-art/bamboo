@@ -57,5 +57,10 @@ export async function ensureSchema(): Promise<void> {
     ALTER TABLE products ADD COLUMN IF NOT EXISTS scale_down BOOLEAN NOT NULL DEFAULT FALSE
   `);
 
+  // 6. no_metallic_profile column on products (использовать металлический профиль на стыках)
+  await db.execute(sql`
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS no_metallic_profile BOOLEAN NOT NULL DEFAULT TRUE
+  `);
+
   logger.info("Schema check complete.");
 }

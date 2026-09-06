@@ -26,6 +26,7 @@ interface Product {
   cost: number;
   photoUrl: string | null;
   scaleDown: boolean;
+  noMetallicProfile: boolean;
   createdAt: string;
 }
 
@@ -428,7 +429,7 @@ function TabPrices({ panelOverrides, moldingOverrides, seriesNameOverrides, mold
 // ─────────────────────────────────────────────────────────────────────────────
 // Tab: Товары (Products)
 // ─────────────────────────────────────────────────────────────────────────────
-const EMPTY_PRODUCT = { name: '', article: '', collection: '', series: '', cost: 0, photoUrl: null as string | null, scaleDown: false };
+const EMPTY_PRODUCT = { name: '', article: '', collection: '', series: '', cost: 0, photoUrl: null as string | null, scaleDown: false, noMetallicProfile: true };
 
 // ── Shared product form fields (used inside modal and inline create) ──────────
 const COLLECTION_OPTIONS = ['All Wall', 'Legend'] as const;
@@ -552,6 +553,19 @@ function ProductFormFields({ form, setForm, seriesOptions, fileRef }: {
             Уменьшить масштаб текстуры в визуализаторе
           </span>
         </label>
+
+        {/* Metallic profile checkbox */}
+        <label className="flex items-center gap-2.5 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={form.noMetallicProfile}
+            onChange={e => setForm(f => ({ ...f, noMetallicProfile: e.target.checked }))}
+            className="w-4 h-4 rounded border-gray-300 accent-black cursor-pointer"
+          />
+          <span className="text-sm text-gray-700">
+            Использовать металлический профиль на стыках
+          </span>
+        </label>
       </div>
     </div>
   );
@@ -616,6 +630,7 @@ function EditProductModal({ product, seriesOptions, onSave, onClose }: {
     cost: product.cost,
     photoUrl: product.photoUrl,
     scaleDown: product.scaleDown ?? false,
+    noMetallicProfile: product.noMetallicProfile ?? true,
   });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);

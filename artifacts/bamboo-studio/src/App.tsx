@@ -199,7 +199,7 @@ const PANEL_SERIES = [
   },
 ];
 
-type Panel = { id: string; article: string; name: string; color: string; texture: string; textureScale?: number; textureStretch?: boolean; slatOverlay?: boolean };
+type Panel = { id: string; article: string; name: string; color: string; texture: string; textureScale?: number; textureStretch?: boolean; slatOverlay?: boolean; noMetallicProfile?: boolean };
 type PanelSeries = { id: string; name: string; panels: Panel[] };
 
 const BAMBOO_PANELS: Panel[] = (PANEL_SERIES as PanelSeries[]).flatMap(s => s.panels);
@@ -223,7 +223,7 @@ const SERIES_ORDER_MAP = new Map<string, number>(); // series id → sort positi
   }));
 });
 
-type ApiProduct = { id: number; article: string; name: string; series: string | null; photoUrl: string | null; scaleDown: boolean };
+type ApiProduct = { id: number; article: string; name: string; series: string | null; photoUrl: string | null; scaleDown: boolean; noMetallicProfile: boolean };
 
 /** Group API products into PanelSeries[], preserving hardcoded series order. */
 function buildCatalogSeries(products: ApiProduct[]): PanelSeries[] {
@@ -243,6 +243,7 @@ function buildCatalogSeries(products: ApiProduct[]): PanelSeries[] {
       textureScale,
       textureStretch: meta?.textureStretch,
       slatOverlay: meta?.slatOverlay,
+      noMetallicProfile: p.noMetallicProfile,
     });
   }
   return Array.from(seriesMap.values()).sort((a, b) =>
@@ -259,10 +260,12 @@ const _PANEL_SERIES_MAP = new Map<string, string>();
 const WOOD_FAMILY = new Set(['wood', 'reiki']);
 const isWoodFamilyId = (panelId: string) => WOOD_FAMILY.has(_PANEL_SERIES_MAP.get(panelId) ?? '');
 const isReikiId     = (panelId: string) => (_PANEL_SERIES_MAP.get(panelId) ?? '') === 'reiki';
-/** Returns true when no metallic profile is required at the joint between left and right. */
-const noMetallicJoint = (leftId: string, rightId: string) =>
-  isReikiId(leftId) || isReikiId(rightId) ||
-  (isWoodFamilyId(leftId) && isWoodFamilyId(rightId));
+/** Returns true when no metallic profile is required at the joint between left and right.
+ *  Per-panel override (noMetallicProfile === false) takes precedence over series rules. */
+const noMetallicJoint = (left: Panel, right: Panel) =>
+  left.noMetallicProfile === false || right.noMetallicProfile === false ||
+  isReikiId(left.id) || isReikiId(right.id) ||
+  (isWoodFamilyId(left.id) && isWoodFamilyId(right.id));
 
 type Point = { x: number; y: number };
 
@@ -2127,7 +2130,7 @@ const BambooStudio = () => {
           for (let j = 0; j < cfg.panelCount - 1; j++) {
             const left = cfg.sectorMaterials[j] ?? BAMBOO_PANELS[0];
             const right = cfg.sectorMaterials[j + 1] ?? BAMBOO_PANELS[0];
-            if (!noMetallicJoint(left.id, right.id)) internalCount++;
+            if (!noMetallicJoint(left, right)) internalCount++;
           }
           addRuns('metallic', hMm, outerEdges + internalCount);
         } else {
@@ -2154,7 +2157,7 @@ const BambooStudio = () => {
         for (let j = 0; j < totalJoints; j++) {
           const left = cfg.sectorMaterials[j] ?? BAMBOO_PANELS[0];
           const right = cfg.sectorMaterials[j + 1] ?? BAMBOO_PANELS[0];
-          if (!noMetallicJoint(left.id, right.id)) metalJoints++;
+          if (!noMetallicJoint(left, right)) metalJoints++;
         }
         if (metalJoints > 0) addRuns('metallic', hMm, metalJoints);
         if (isColumn) columnVisibleJoints += totalJoints; // column geometry uses all joints
@@ -3709,7 +3712,7 @@ const BambooStudio = () => {
                 {panelCount >= 2 && (() => {
                   const hasNoMetalAdj = Array.from({ length: panelCount - 1 }, (_, j) => j).some(j => {
                     const l = sectorMaterials[j], r = sectorMaterials[j + 1];
-                    return l && r && noMetallicJoint(l.id, r.id);
+                    return l && r && noMetallicJoint(l, r);
                   });
                   return hasNoMetalAdj ? (
                     <p className="text-[9px] text-amber-600 font-bold mt-1.5 leading-relaxed">

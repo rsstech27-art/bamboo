@@ -12,6 +12,8 @@ export const productsTable = pgTable("products", {
   photoUrl: text("photo_url"),
   /** Уменьшить масштаб текстуры в визуализаторе (textureScale = 8) */
   scaleDown: boolean("scale_down").notNull().default(false),
+  /** Использовать металлический профиль на стыках с этой панелью */
+  noMetallicProfile: boolean("no_metallic_profile").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => [
