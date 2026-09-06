@@ -14,7 +14,7 @@ function formatOrderNumber(prefix: string, n: number): string {
 }
 
 // GET /api/orders
-router.get("/orders", async (_req, res) => {
+router.get("/orders", requireManagerSession, async (_req, res) => {
   try {
     const orders = await db.select().from(ordersTable).orderBy(desc(ordersTable.createdAt));
     res.json(orders);
@@ -29,7 +29,7 @@ function parseId(raw: string | string[]): number {
 }
 
 // GET /api/orders/:id
-router.get("/orders/:id", async (req, res) => {
+router.get("/orders/:id", requireManagerSession, async (req, res) => {
   try {
     const id = parseId(req.params.id);
     if (isNaN(id)) return void res.status(400).json({ error: "Invalid id" });
@@ -128,8 +128,7 @@ router.post("/orders/:id/pdf-upload-url", async (req, res) => {
 });
 
 // PATCH /api/orders/:id/pdf — save the object path after a successful upload.
-// No manager session required: same client that created the order.
-router.patch("/orders/:id/pdf", async (req, res) => {
+router.patch("/orders/:id/pdf", requireManagerSession, async (req, res) => {
   try {
     const id = parseId(req.params.id);
     if (isNaN(id)) return void res.status(400).json({ error: "Invalid id" });
