@@ -538,6 +538,7 @@ const BambooStudio = () => {
     customSeries, seriesDefinitions,
     panelOverridesRef, moldingOverridesRef,
     setPanelPrice, setMoldingPrice, setSeriesName, setMoldingName, addCustomSeries, resetPrices,
+    reloadSettings,
   } = useManagerPrices();
   const [panelCount, setPanelCount] = useState(5);
   // dividerPositions: array of N-1 values in (0,1), sorted ascending
@@ -4369,6 +4370,7 @@ const BambooStudio = () => {
           onUpdateMoldingName={setMoldingName}
           onAddSeries={addCustomSeries}
           onReset={resetPrices}
+          onSettingsChange={reloadSettings}
           onClose={() => setShowManagerPanel(false)}
           onPhotoChange={() => {
             fetch('/api/products')

@@ -219,6 +219,24 @@ export function useManagerPrices() {
     void deleteSetting('molding_names');
   }, []);
 
+  // Reload all settings from the API and apply them to local state + LS.
+  // Called after a backup import so the UI reflects the restored values immediately.
+  const reloadSettings = useCallback(async () => {
+    const remote = await fetchSettings();
+    if (remote.panel_prices)   { setPanelOverrides(remote.panel_prices);     saveLS(LS_PANEL_KEY,         remote.panel_prices   as Record<string, unknown>); }
+    if (remote.molding_prices) { setMoldingOverrides(remote.molding_prices);  saveLS(LS_MOLDING_KEY,       remote.molding_prices  as Record<string, unknown>); }
+    if (remote.series_names)   { setSeriesNameOverrides(remote.series_names); saveLS(LS_SERIES_NAMES_KEY, remote.series_names   as Record<string, unknown>); }
+    if (remote.molding_names)  { setMoldingNameOverrides(remote.molding_names); saveLS(LS_MOLDING_NAMES_KEY, remote.molding_names as Record<string, unknown>); }
+    if (Array.isArray(remote.custom_series)) {
+      const valid = remote.custom_series.filter(s =>
+        s && typeof s.id === 'string' && typeof s.name === 'string' &&
+        typeof s.price === 'number' && s.price > 0
+      );
+      setCustomSeries(valid);
+      try { localStorage.setItem(LS_CUSTOM_SERIES_KEY, JSON.stringify(valid)); } catch { /* ignore */ }
+    }
+  }, []);
+
   const seriesDefinitions = useMemo<SeriesDefinition[]>(() => [
     ...DEFAULT_SERIES_PRICES.map(s => ({
       id: s.id,
@@ -247,6 +265,7 @@ export function useManagerPrices() {
     setMoldingName,
     addCustomSeries,
     resetPrices,
+    reloadSettings,
     effectivePanelPrice,
     effectiveMoldingPrice,
   };

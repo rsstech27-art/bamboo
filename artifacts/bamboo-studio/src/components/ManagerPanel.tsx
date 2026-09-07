@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   X, LogOut, Lock, ChevronRight, Package, ShoppingBag, Tag,
   Plus, Pencil, Trash2, RotateCcw, Image, Check, Loader2,
+  Download, Upload, HardDrive, AlertTriangle,
 } from 'lucide-react';
 import {
   DEFAULT_SERIES_PRICES,
@@ -819,11 +820,179 @@ function ProductCard({ product, onEdit, onDelete }: {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Backup / Restore
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface ImportResult { added: number; updated: number; settingsRestored: number }
+
+function ConfirmImportModal({ fileName, fileSizeMb, onConfirm, onCancel }: {
+  fileName: string; fileSizeMb: string; onConfirm: () => void; onCancel: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onCancel]);
+
+  return (
+    <>
+      <div className="fixed inset-0 z-[1200] bg-black/50 backdrop-blur-sm" onClick={onCancel} />
+      <div className="fixed inset-0 z-[1201] flex items-center justify-center p-4 pointer-events-none">
+        <div className="pointer-events-auto w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 space-y-4 animate-[slideInUp_0.18s_ease]">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
+              <AlertTriangle size={18} className="text-amber-600" />
+            </div>
+            <div>
+              <div className="text-sm font-black text-gray-900">Импорт из резервной копии</div>
+              <div className="text-xs text-gray-400 mt-0.5">Добавит и обновит товары по артикулу</div>
+            </div>
+          </div>
+          <div className="bg-gray-50 rounded-xl px-3 py-2.5 text-xs text-gray-600 space-y-1">
+            <div><span className="font-semibold">Файл:</span> {fileName}</div>
+            <div><span className="font-semibold">Размер:</span> {fileSizeMb} МБ</div>
+          </div>
+          <p className="text-xs text-gray-500 leading-relaxed">
+            Товары с совпадающим артикулом будут <b>обновлены</b>, отсутствующие — <b>добавлены</b>. Настройки серий заменятся значениями из архива.
+          </p>
+          <div className="flex gap-2">
+            <button onClick={onConfirm}
+              className="flex-1 flex items-center justify-center gap-2 bg-black text-white text-sm font-bold py-2.5 rounded-xl hover:bg-gray-800 active:scale-95 transition-all">
+              <Check size={14} /> Импортировать
+            </button>
+            <button onClick={onCancel}
+              className="px-4 py-2.5 border border-gray-200 text-sm text-gray-600 rounded-xl hover:bg-gray-50 transition-colors">
+              Отмена
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function BackupSection({ onImportSuccess }: { onImportSuccess: () => void }) {
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [result, setResult] = useState<ImportResult | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  const handleExport = async () => {
+    setExporting(true);
+    setResult(null);
+    setImportError(null);
+    try {
+      const r = await managerFetch('/api/backup/export');
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}) as { error?: string });
+        throw new Error((data as { error?: string }).error ?? `HTTP ${r.status}`);
+      }
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const cd = r.headers.get('Content-Disposition') ?? '';
+      const m = cd.match(/filename="([^"]+)"/);
+      a.download = m?.[1] ?? 'allwall-catalog-backup.zip';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setImportError(`Ошибка экспорта: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setResult(null);
+    setImportError(null);
+    setPendingFile(file);
+  };
+
+  const handleImportConfirm = async () => {
+    if (!pendingFile) return;
+    const file = pendingFile;
+    setPendingFile(null);
+    setImporting(true);
+    setResult(null);
+    setImportError(null);
+    try {
+      const buf = await file.arrayBuffer();
+      const r = await managerFetch('/api/backup/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/zip' },
+        body: buf,
+      });
+      const data = await r.json() as { ok?: boolean; added?: number; updated?: number; settingsRestored?: number; error?: string };
+      if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`);
+      setResult({ added: data.added ?? 0, updated: data.updated ?? 0, settingsRestored: data.settingsRestored ?? 0 });
+      onImportSuccess();
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm space-y-3">
+      <div className="flex items-center gap-2">
+        <HardDrive size={14} className="text-gray-400 shrink-0" />
+        <span className="text-sm font-black text-gray-800">Резервная копия каталога</span>
+      </div>
+      <p className="text-xs text-gray-500 leading-relaxed">
+        ZIP-архив с товарами, фото и настройками серий. Импорт <b>добавляет и обновляет</b> по артикулу — существующие данные не удаляются.
+      </p>
+
+      <div className="flex gap-2">
+        <button onClick={handleExport} disabled={exporting || importing}
+          className="flex-1 flex items-center justify-center gap-2 bg-black text-white text-xs font-bold py-2.5 rounded-xl hover:bg-gray-800 active:scale-95 transition-all disabled:opacity-60">
+          {exporting ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+          {exporting ? 'Формируется…' : 'Скачать копию'}
+        </button>
+        <button onClick={() => fileRef.current?.click()} disabled={importing || exporting}
+          className="flex-1 flex items-center justify-center gap-2 border border-gray-200 text-xs font-bold py-2.5 rounded-xl hover:border-gray-400 hover:bg-gray-50 text-gray-700 active:scale-95 transition-all disabled:opacity-60">
+          {importing ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+          {importing ? 'Импорт…' : 'Импортировать'}
+        </button>
+        <input ref={fileRef} type="file" accept=".zip,application/zip" className="hidden" onChange={handleFileSelect} />
+      </div>
+
+      {result && (
+        <div className="bg-green-50 border border-green-200 rounded-xl px-3 py-2 text-xs text-green-700">
+          ✓ Готово: добавлено {result.added}, обновлено {result.updated}, настроек восстановлено {result.settingsRestored}
+        </div>
+      )}
+      {importError && (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 text-xs text-red-600 break-words">{importError}</div>
+      )}
+
+      {pendingFile && (
+        <ConfirmImportModal
+          fileName={pendingFile.name}
+          fileSizeMb={(pendingFile.size / 1024 / 1024).toFixed(1)}
+          onConfirm={handleImportConfirm}
+          onCancel={() => setPendingFile(null)}
+        />
+      )}
+    </div>
+  );
+}
+
 const CATALOG_SIZE = 115;
 
-function TabProducts({ seriesOptions, onPhotoChange }: {
+function TabProducts({ seriesOptions, onPhotoChange, onSettingsChange }: {
   seriesOptions: Array<{ name: string; price: number }>;
   onPhotoChange?: () => void;
+  onSettingsChange?: () => void;
 }) {
   const { data, loading, error, reload } = useFetch<Product[]>('/api/products');
   const [creating, setCreating] = useState(false);
@@ -946,6 +1115,9 @@ function TabProducts({ seriesOptions, onPhotoChange }: {
               : <><Package size={13} /> Загрузить каталог</>}
         </button>
       </div>
+
+      {/* ── Backup / Restore ── */}
+      <BackupSection onImportSuccess={() => { void reload(); onPhotoChange?.(); onSettingsChange?.(); }} />
 
       {/* ── Add manually ── */}
       {!creating ? (
@@ -1275,13 +1447,14 @@ interface Props {
   onReset: () => void;
   onClose: () => void;
   onPhotoChange?: () => void;
+  onSettingsChange?: () => void;
 }
 
 export function ManagerPanel({
   panelOverrides, moldingOverrides, seriesNameOverrides, moldingNameOverrides,
   customSeries, seriesDefinitions,
   onUpdatePanel, onUpdateMolding, onUpdateSeriesName, onUpdateMoldingName,
-  onAddSeries, onReset, onClose, onPhotoChange,
+  onAddSeries, onReset, onClose, onPhotoChange, onSettingsChange,
 }: Props) {
   const [isAuth, setIsAuth] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
@@ -1386,6 +1559,7 @@ export function ManagerPanel({
                 <TabProducts
                   seriesOptions={seriesOptions}
                   onPhotoChange={onPhotoChange}
+                  onSettingsChange={onSettingsChange}
                 />
               )}
               {tab === 'orders' && <TabOrders />}

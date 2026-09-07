@@ -28,15 +28,14 @@ const allowedOrigins: Set<string> = rawOrigins.trim()
     )
   : new Set(["http://localhost:18141", "http://localhost:3000"]);
 
-function isAllowedOrigin(origin: string | undefined): boolean {
+export function isAllowedOrigin(origin: string | undefined): boolean {
   if (!origin) return false;
-  // Exact match or suffix match for *.replit.dev / *.replit.app
+  // Only accept explicitly configured origins and local development.
+  // We intentionally DO NOT accept broad *.replit.dev / *.replit.app wildcards:
+  // any sibling Replit-hosted app shares those suffixes and could send
+  // credentialed cross-origin requests carrying the manager session cookie.
   if (allowedOrigins.has(origin)) return true;
-  return (
-    /\.replit\.dev$/.test(origin) ||
-    /\.replit\.app$/.test(origin) ||
-    /^http:\/\/localhost(:\d+)?$/.test(origin)
-  );
+  return /^http:\/\/localhost(:\d+)?$/.test(origin);
 }
 
 // ── Session store: PostgreSQL via connect-pg-simple ───────────────────────────
