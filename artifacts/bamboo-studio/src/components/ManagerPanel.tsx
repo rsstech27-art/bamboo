@@ -1292,12 +1292,49 @@ function OrderCard({ order, expanded, onToggle }: {
   const items = (order.kpData.items as KPItem[] | undefined) ?? [];
   const total = (order.kpData.total as number | undefined) ?? 0;
   const beforePhotoUrl = (order.kpData.beforePhotoUrl as string | null | undefined) ?? null;
+  const [afterPhotoUrl, setAfterPhotoUrl] = useState<string | null>(
+    (order.kpData.afterPhotoUrl as string | null | undefined) ?? null,
+  );
+  const [afterUploading, setAfterUploading] = useState(false);
+  const afterInputRef = useRef<HTMLInputElement>(null);
+
   const date = new Date(order.createdAt).toLocaleDateString('ru-RU', {
     day: 'numeric', month: 'long', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
 
   const pdfUrl = order.pdfPath ? `/api/orders/${order.id}/pdf` : null;
+
+  const handleAfterPhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAfterUploading(true);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const r = await managerFetch(`/api/orders/${order.id}/after-photo`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ afterPhotoUrl: dataUrl }),
+      });
+      if (r.ok) setAfterPhotoUrl(dataUrl);
+    } catch { /* ignore */ } finally {
+      setAfterUploading(false);
+      if (afterInputRef.current) afterInputRef.current.value = '';
+    }
+  };
+
+  const DownloadIcon = () => (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+      <polyline points="7 10 12 15 17 10"/>
+      <line x1="12" y1="15" x2="12" y2="3"/>
+    </svg>
+  );
 
   return (
     <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
@@ -1329,30 +1366,68 @@ function OrderCard({ order, expanded, onToggle }: {
 
       {expanded && (
         <div className="px-5 pb-4 border-t border-gray-100">
-          {beforePhotoUrl && (
-            <div className="mt-3 mb-3">
-              <div className="flex items-center justify-between mb-1.5">
-                <div className="text-xs font-medium text-gray-400 uppercase tracking-wider">Фото до</div>
-                <a
-                  href={beforePhotoUrl}
-                  download={`photo-do-${order.orderNumber ?? order.id}.jpg`}
-                  onClick={e => e.stopPropagation()}
-                  title="Скачать фото"
-                  className="flex items-center gap-1 text-[10px] font-bold text-gray-400 hover:text-[#7ec662] transition-colors"
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                    <polyline points="7 10 12 15 17 10"/>
-                    <line x1="12" y1="15" x2="12" y2="3"/>
-                  </svg>
-                  Скачать
-                </a>
+          {/* Photo row: До и После side-by-side when both present, otherwise stacked */}
+          {(beforePhotoUrl || true) && (
+            <div className={`mt-3 mb-3 ${beforePhotoUrl && afterPhotoUrl ? 'grid grid-cols-2 gap-3' : 'flex flex-col gap-3'}`}>
+              {/* Фото До */}
+              {beforePhotoUrl && (
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="text-xs font-medium text-gray-400 uppercase tracking-wider">Фото до</div>
+                    <a href={beforePhotoUrl} download={`photo-do-${order.orderNumber ?? order.id}.jpg`}
+                      onClick={e => e.stopPropagation()}
+                      className="flex items-center gap-1 text-[10px] font-bold text-gray-400 hover:text-[#7ec662] transition-colors">
+                      <DownloadIcon /> Скачать
+                    </a>
+                  </div>
+                  <img src={beforePhotoUrl} alt="До"
+                    className="w-full max-h-48 rounded-lg border border-gray-100 object-contain bg-gray-50" />
+                </div>
+              )}
+
+              {/* Фото После */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="text-xs font-medium text-gray-400 uppercase tracking-wider">Фото после</div>
+                  <div className="flex items-center gap-2">
+                    {afterPhotoUrl && (
+                      <a href={afterPhotoUrl} download={`photo-posle-${order.orderNumber ?? order.id}.jpg`}
+                        onClick={e => e.stopPropagation()}
+                        className="flex items-center gap-1 text-[10px] font-bold text-gray-400 hover:text-[#7ec662] transition-colors">
+                        <DownloadIcon /> Скачать
+                      </a>
+                    )}
+                    <button
+                      onClick={e => { e.stopPropagation(); afterInputRef.current?.click(); }}
+                      disabled={afterUploading}
+                      className="flex items-center gap-1 text-[10px] font-bold text-gray-400 hover:text-black transition-colors disabled:opacity-40">
+                      {afterUploading
+                        ? <Loader2 size={10} className="animate-spin" />
+                        : <Upload size={10} />}
+                      {afterPhotoUrl ? 'Заменить' : 'Добавить'}
+                    </button>
+                  </div>
+                </div>
+                {afterPhotoUrl
+                  ? <img src={afterPhotoUrl} alt="После"
+                      className="w-full max-h-48 rounded-lg border border-gray-100 object-contain bg-gray-50" />
+                  : (
+                    <button
+                      onClick={e => { e.stopPropagation(); afterInputRef.current?.click(); }}
+                      disabled={afterUploading}
+                      className="w-full max-h-48 h-24 rounded-lg border-2 border-dashed border-gray-200 flex flex-col items-center justify-center gap-1.5 text-gray-300 hover:border-gray-400 hover:text-gray-400 transition-colors disabled:opacity-40">
+                      {afterUploading
+                        ? <Loader2 size={20} className="animate-spin" />
+                        : <Image size={20} />}
+                      <span className="text-[10px] font-bold uppercase tracking-wide">
+                        {afterUploading ? 'Загрузка...' : 'Фото после монтажа'}
+                      </span>
+                    </button>
+                  )
+                }
+                <input ref={afterInputRef} type="file" accept="image/*" className="hidden"
+                  onChange={handleAfterPhotoSelect} />
               </div>
-              <img
-                src={beforePhotoUrl}
-                alt="Фото помещения до обработки"
-                className="max-h-48 rounded-lg border border-gray-100 object-contain bg-gray-50"
-              />
             </div>
           )}
           {items.length > 0 && (

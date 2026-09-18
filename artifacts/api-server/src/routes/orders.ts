@@ -127,6 +127,33 @@ router.post("/orders/:id/pdf-upload-url", async (req, res) => {
   }
 });
 
+// PATCH /api/orders/:id/after-photo — save a base64 after-photo into kpData.
+router.patch("/orders/:id/after-photo", requireManagerSession, async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    if (isNaN(id)) return void res.status(400).json({ error: "Invalid id" });
+
+    const { afterPhotoUrl } = req.body as { afterPhotoUrl?: unknown };
+    if (typeof afterPhotoUrl !== "string" || !afterPhotoUrl.startsWith("data:image/")) {
+      return void res.status(400).json({ error: "afterPhotoUrl must be a data:image/ URL" });
+    }
+
+    const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, id));
+    if (!order) return void res.status(404).json({ error: "Order not found" });
+
+    const existingKpData =
+      order.kpData && typeof order.kpData === "object" ? (order.kpData as Record<string, unknown>) : {};
+    const updatedKpData = { ...existingKpData, afterPhotoUrl };
+
+    await db.update(ordersTable).set({ kpData: updatedKpData } as Record<string, unknown>).where(eq(ordersTable.id, id));
+
+    res.json({ ok: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: "Failed to save after photo", detail: msg });
+  }
+});
+
 // PATCH /api/orders/:id/pdf — save the object path after a successful upload.
 router.patch("/orders/:id/pdf", requireManagerSession, async (req, res) => {
   try {
