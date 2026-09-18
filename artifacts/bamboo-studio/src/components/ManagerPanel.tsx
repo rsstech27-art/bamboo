@@ -1217,6 +1217,7 @@ function OrderCard({ order, expanded, onToggle }: {
 }) {
   const items = (order.kpData.items as KPItem[] | undefined) ?? [];
   const total = (order.kpData.total as number | undefined) ?? 0;
+  const beforePhotoUrl = (order.kpData.beforePhotoUrl as string | null | undefined) ?? null;
   const date = new Date(order.createdAt).toLocaleDateString('ru-RU', {
     day: 'numeric', month: 'long', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
@@ -1252,34 +1253,46 @@ function OrderCard({ order, expanded, onToggle }: {
         <ChevronRight size={14} className={`shrink-0 text-gray-300 transition-transform ${expanded ? 'rotate-90' : ''}`} />
       </button>
 
-      {expanded && items.length > 0 && (
+      {expanded && (
         <div className="px-5 pb-4 border-t border-gray-100">
-          <table className="w-full text-xs mt-3">
-            <thead>
-              <tr className="text-gray-400 text-left">
-                <th className="pb-2 font-medium">Наименование</th>
-                <th className="pb-2 font-medium text-center w-12">Кол.</th>
-                <th className="pb-2 font-medium text-right w-24">Цена</th>
-                <th className="pb-2 font-medium text-right w-24">Сумма</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {items.map((it, i) => (
-                <tr key={i}>
-                  <td className="py-1.5 pr-2 text-gray-700">{it.name}</td>
-                  <td className="py-1.5 text-center text-gray-500">{it.qty}</td>
-                  <td className="py-1.5 text-right text-gray-500">{it.price.toLocaleString('ru-RU')}</td>
-                  <td className="py-1.5 text-right font-medium text-gray-700">{(it.qty * it.price).toLocaleString('ru-RU')}</td>
+          {beforePhotoUrl && (
+            <div className="mt-3 mb-3">
+              <div className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5">Фото до</div>
+              <img
+                src={beforePhotoUrl}
+                alt="Фото помещения до обработки"
+                className="max-h-48 rounded-lg border border-gray-100 object-contain bg-gray-50"
+              />
+            </div>
+          )}
+          {items.length > 0 && (
+            <table className="w-full text-xs mt-3">
+              <thead>
+                <tr className="text-gray-400 text-left">
+                  <th className="pb-2 font-medium">Наименование</th>
+                  <th className="pb-2 font-medium text-center w-12">Кол.</th>
+                  <th className="pb-2 font-medium text-right w-24">Цена</th>
+                  <th className="pb-2 font-medium text-right w-24">Сумма</th>
                 </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td colSpan={3} className="pt-3 text-right text-xs font-black text-gray-500 uppercase tracking-wider">Итого</td>
-                <td className="pt-3 text-right text-sm font-black text-gray-900">{fmt(total)}</td>
-              </tr>
-            </tfoot>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {items.map((it, i) => (
+                  <tr key={i}>
+                    <td className="py-1.5 pr-2 text-gray-700">{it.name}</td>
+                    <td className="py-1.5 text-center text-gray-500">{it.qty}</td>
+                    <td className="py-1.5 text-right text-gray-500">{it.price.toLocaleString('ru-RU')}</td>
+                    <td className="py-1.5 text-right font-medium text-gray-700">{(it.qty * it.price).toLocaleString('ru-RU')}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={3} className="pt-3 text-right text-xs font-black text-gray-500 uppercase tracking-wider">Итого</td>
+                  <td className="pt-3 text-right text-sm font-black text-gray-900">{fmt(total)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          )}
         </div>
       )}
     </div>
