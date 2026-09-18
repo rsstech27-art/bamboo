@@ -351,6 +351,7 @@ function TabPrices({ panelOverrides, moldingOverrides, seriesNameOverrides, mold
   extrasOverrides: PriceMap;
   onUpdateExtras: (id: string, price: number) => void;
 }) {
+  const [moldingsOpen, setMoldingsOpen] = useState(false);
   const [extrasOpen, setExtrasOpen] = useState(false);
   const modifiedPrices =
     Object.keys(panelOverrides).filter(k => panelOverrides[k] !== DEFAULT_SERIES_PRICES.find(s => s.id === k)?.defaultPrice).length +
@@ -405,26 +406,31 @@ function TabPrices({ panelOverrides, moldingOverrides, seriesNameOverrides, mold
       </section>
 
       <section>
-        <div className="flex items-center justify-between mb-3">
+        <button
+          onClick={() => setMoldingsOpen(v => !v)}
+          className="w-full flex items-center justify-between group mb-3"
+        >
           <div className="flex items-center gap-2">
-            <ChevronRight size={13} className="text-gray-400" />
-            <h3 className="text-xs font-black uppercase tracking-widest text-gray-500">Профили</h3>
+            <ChevronRight size={13} className={`text-gray-400 transition-transform ${moldingsOpen ? 'rotate-90' : ''}`} />
+            <h3 className="text-xs font-black uppercase tracking-widest text-gray-500 group-hover:text-gray-700 transition-colors">Профили</h3>
           </div>
           <span className="text-[10px] text-gray-400">Название · Цена (₽/3 м)</span>
-        </div>
-        <div className="bg-white border border-gray-100 rounded-xl px-4 shadow-sm">
-          {DEFAULT_MOLDING_PRICES.map(m => (
-            <EditableRow
-              key={m.id}
-              defaultName={m.name}
-              defaultPrice={m.defaultPrice}
-              nameOverride={moldingNameOverrides[m.id]}
-              priceOverride={moldingOverrides[m.id]}
-              onNameChange={name => onUpdateMoldingName(m.id, name)}
-              onPriceChange={price => onUpdateMolding(m.id, price)}
-            />
-          ))}
-        </div>
+        </button>
+        {moldingsOpen && (
+          <div className="bg-white border border-gray-100 rounded-xl px-4 shadow-sm">
+            {DEFAULT_MOLDING_PRICES.map(m => (
+              <EditableRow
+                key={m.id}
+                defaultName={m.name}
+                defaultPrice={m.defaultPrice}
+                nameOverride={moldingNameOverrides[m.id]}
+                priceOverride={moldingOverrides[m.id]}
+                onNameChange={name => onUpdateMoldingName(m.id, name)}
+                onPriceChange={price => onUpdateMolding(m.id, price)}
+              />
+            ))}
+          </div>
+        )}
       </section>
 
       {/* Дополнительно — доп. товары (клей и пр.) */}
@@ -1376,6 +1382,149 @@ const SORT_OPTIONS: { value: SortKey; label: string }[] = [
   { value: 'sum_asc',   label: 'По сумме ↑' },
 ];
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Tab: Интеграции (API)
+// ─────────────────────────────────────────────────────────────────────────────
+function TabIntegrations() {
+  const [apiKey, setApiKey] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const baseUrl = `${window.location.protocol}//${window.location.host}`;
+
+  useEffect(() => {
+    void fetch('/api/settings')
+      .then(r => r.json())
+      .then((s: Record<string, unknown>) => {
+        const val = s['api_key'] as Record<string, string> | null | undefined;
+        setApiKey(val?.key ?? null);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const generate = async () => {
+    setGenerating(true);
+    const key = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
+    try {
+      await managerFetch('/api/settings/api_key', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key }),
+      });
+      setApiKey(key);
+    } catch { /* ignore */ }
+    setGenerating(false);
+  };
+
+  const copy = (text: string) => {
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
+
+  return (
+    <div className="max-w-xl mx-auto space-y-6 py-6 px-4">
+      {/* API ключ */}
+      <section>
+        <div className="flex items-center gap-2 mb-3">
+          <ChevronRight size={13} className="text-gray-400" />
+          <h3 className="text-xs font-black uppercase tracking-widest text-gray-500">API ключ</h3>
+        </div>
+        <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm space-y-3">
+          {loading ? (
+            <div className="flex items-center gap-2 text-gray-400 text-sm"><Loader2 size={14} className="animate-spin" /> Загрузка…</div>
+          ) : apiKey ? (
+            <div>
+              <p className="text-[10px] text-gray-400 mb-1.5">Текущий ключ — передаётся в заголовке <code className="bg-gray-100 px-1 rounded">X-Api-Key</code></p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 font-mono break-all text-gray-700">{apiKey}</code>
+                <button onClick={() => copy(apiKey)}
+                  className="shrink-0 px-3 py-2 text-xs font-bold rounded-lg bg-black text-white hover:bg-gray-800 transition-colors">
+                  {copied ? <Check size={12} /> : 'Копировать'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500">Ключ не создан. Нажмите кнопку ниже.</p>
+          )}
+          <button onClick={generate} disabled={generating}
+            className="flex items-center gap-2 text-xs font-bold text-gray-600 hover:text-black border border-gray-200 rounded-lg px-3 py-2 transition-colors disabled:opacity-50">
+            {generating ? <Loader2 size={11} className="animate-spin" /> : <RotateCcw size={11} />}
+            {apiKey ? 'Перегенерировать ключ' : 'Создать ключ'}
+          </button>
+        </div>
+      </section>
+
+      {/* Эндпоинты */}
+      <section>
+        <div className="flex items-center gap-2 mb-3">
+          <ChevronRight size={13} className="text-gray-400" />
+          <h3 className="text-xs font-black uppercase tracking-widest text-gray-500">Эндпоинты</h3>
+        </div>
+        <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm space-y-4 text-sm">
+          {[
+            { method: 'GET', path: '/api/external/orders', desc: 'Список всех заказов (id, номер, зона, дата, сумма, наличие PDF, фото до)' },
+            { method: 'GET', path: '/api/external/orders/:id', desc: 'Полные данные одного заказа: состав КП, фото до, URL PDF' },
+            { method: 'GET', path: '/api/external/orders/:id/pdf', desc: 'Стрим PDF-файла КП' },
+          ].map(e => (
+            <div key={e.path} className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] font-black bg-[#7ec662] text-white rounded px-1.5 py-0.5">{e.method}</span>
+                <button onClick={() => copy(`${baseUrl}${e.path}`)}
+                  className="text-xs font-mono text-gray-700 hover:text-black bg-gray-50 border border-gray-200 rounded px-2 py-0.5 transition-colors text-left">
+                  {e.path}
+                </button>
+              </div>
+              <p className="text-[11px] text-gray-500 pl-12">{e.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Инструкция для AmoCRM */}
+      <section>
+        <div className="flex items-center gap-2 mb-3">
+          <ChevronRight size={13} className="text-gray-400" />
+          <h3 className="text-xs font-black uppercase tracking-widest text-gray-500">Подключение AmoCRM</h3>
+        </div>
+        <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm space-y-4 text-sm text-gray-700">
+          <ol className="space-y-4 list-none">
+            <li className="flex gap-3">
+              <span className="shrink-0 w-6 h-6 rounded-full bg-black text-white text-xs font-bold flex items-center justify-center">1</span>
+              <div>
+                <p className="font-semibold mb-1">Создайте API ключ</p>
+                <p className="text-[12px] text-gray-500">Нажмите «Создать ключ» выше и скопируйте его.</p>
+              </div>
+            </li>
+            <li className="flex gap-3">
+              <span className="shrink-0 w-6 h-6 rounded-full bg-black text-white text-xs font-bold flex items-center justify-center">2</span>
+              <div>
+                <p className="font-semibold mb-1">Настройте вебхук или виджет</p>
+                <p className="text-[12px] text-gray-500">В AmoCRM перейдите в <strong>Настройки → Интеграции → Webhook</strong>. Укажите URL вашего сервера и настройте запросы через прокси, добавив заголовок:</p>
+                <code className="block mt-1.5 text-[11px] bg-gray-50 border border-gray-200 rounded px-2 py-1.5 font-mono">X-Api-Key: &lt;ваш ключ&gt;</code>
+              </div>
+            </li>
+            <li className="flex gap-3">
+              <span className="shrink-0 w-6 h-6 rounded-full bg-black text-white text-xs font-bold flex items-center justify-center">3</span>
+              <div>
+                <p className="font-semibold mb-1">Получите данные заказа</p>
+                <p className="text-[12px] text-gray-500">Сделайте GET-запрос на <code className="bg-gray-100 px-1 rounded">{baseUrl}/api/external/orders</code> чтобы получить список заказов. По <code className="bg-gray-100 px-1 rounded">id</code> получите полные данные и PDF:</p>
+                <code className="block mt-1.5 text-[11px] bg-gray-50 border border-gray-200 rounded px-2 py-1.5 font-mono">GET {baseUrl}/api/external/orders/&#123;id&#125;/pdf</code>
+              </div>
+            </li>
+          </ol>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-[11px] text-blue-700">
+            <strong>Совет:</strong> Если AmoCRM не поддерживает произвольные заголовки, используйте промежуточный сервер (n8n, Make, Zapier) или встроенный виджет, который добавит заголовок <code className="bg-blue-100 rounded px-0.5">X-Api-Key</code> перед передачей запроса.
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function TabOrders() {
   const { data, loading, error } = useFetch<Order[]>('/api/orders');
   const [expandedId, setExpandedId]     = useState<number | null>(null);
@@ -1506,9 +1655,10 @@ function TabOrders() {
 // Root export
 // ─────────────────────────────────────────────────────────────────────────────
 const TABS = [
-  { id: 'prices',   label: 'Цены',             icon: Tag },
-  { id: 'products', label: 'Товары',            icon: Package },
-  { id: 'orders',   label: 'Заказы клиентов',   icon: ShoppingBag },
+  { id: 'prices',       label: 'Цены',        icon: Tag },
+  { id: 'products',     label: 'Товары',       icon: Package },
+  { id: 'orders',       label: 'Заказы',       icon: ShoppingBag },
+  { id: 'integrations', label: 'API',          icon: ChevronRight },
 ] as const;
 
 type TabId = typeof TABS[number]['id'];
@@ -1650,6 +1800,7 @@ export function ManagerPanel({
                 />
               )}
               {tab === 'orders' && <TabOrders />}
+              {tab === 'integrations' && <TabIntegrations />}
             </div>
           </>
         )}

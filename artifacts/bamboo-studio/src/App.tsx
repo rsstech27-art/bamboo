@@ -6,6 +6,7 @@ import {
   useManagerPrices,
   getEffectiveSeriesName,
   getEffectiveMoldingName,
+  DEFAULT_EXTRAS,
 } from './hooks/useManagerPrices';
 import { ManagerPanel } from './components/ManagerPanel';
 
@@ -421,26 +422,25 @@ const MOLDING_INFO: Record<string, { article: string; name: string; price: numbe
 const MeterInput = ({ valueMm, onChangeMm, placeholder }: {
   valueMm: number; onChangeMm: (mm: number) => void; placeholder?: string;
 }) => {
-  const [text, setText] = useState(valueMm > 0 ? String(valueMm / 1000).replace('.', ',') : '');
+  const [text, setText] = useState(valueMm > 0 ? String(Math.round(valueMm / 10)) : '');
   useEffect(() => {
     // Sync from the prop whenever it disagrees with what the current text means —
     // covers external resets/surface switches without clobbering in-progress typing
-    // (partial input like «0,» still parses to the same mm value, so it is kept)
     const parsed = parseFloat(text.replace(',', '.'));
-    const textMm = Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed * 1000) : 0;
+    const textMm = Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed * 10) : 0;
     if (valueMm !== textMm) {
-      setText(valueMm > 0 ? String(valueMm / 1000).replace('.', ',') : '');
+      setText(valueMm > 0 ? String(Math.round(valueMm / 10)) : '');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [valueMm]);
   return (
-    <input type="text" inputMode="decimal" placeholder={placeholder}
+    <input type="text" inputMode="numeric" placeholder={placeholder}
       value={text}
       onChange={(e) => {
         const t = e.target.value;
         setText(t);
         const v = parseFloat(t.replace(',', '.'));
-        const mm = Number.isFinite(v) && v > 0 ? Math.round(v * 1000) : 0;
+        const mm = Number.isFinite(v) && v > 0 ? Math.round(v * 10) : 0;
         onChangeMm(mm);
       }}
       className="w-full mt-0.5 px-2 py-1.5 text-[11px] font-bold border border-gray-200 rounded-lg focus:outline-none focus:border-[#7ec662]" />
@@ -2552,7 +2552,13 @@ const BambooStudio = () => {
     }
     const panelsTableCost = items.filter(it => panelArticles.has(it.article))
       .reduce((s, it) => s + it.qty * it.price, 0);
-    // Final total = the table itself (calculated panel quantities + 3 m profile pieces)
+    // Glue: 1 unit per panel, price from manager settings
+    if (panelsTableTotal > 0) {
+      const glueDef = DEFAULT_EXTRAS.find(e => e.id === 'glue');
+      const gluePrice = extrasOverrides['glue'] ?? glueDef?.defaultPrice ?? 0;
+      if (gluePrice > 0) addItem('AW-GLUE', 'Клей AllWall', panelsTableTotal, gluePrice);
+    }
+    // Final total = the table itself (calculated panel quantities + 3 m profile pieces + glue)
     const finalTotal = items.reduce((sum, it) => sum + it.qty * it.price, 0);
     void totalCalcCost; void totalProjCostDimWalls;
 
@@ -3822,12 +3828,12 @@ const BambooStudio = () => {
                 </div>
                 <div className="grid grid-cols-2 gap-2 mb-2">
                   <label className="block">
-                    <span className="text-[8px] font-bold text-gray-400 uppercase">Боковые (×2), м</span>
-                    <MeterInput placeholder="напр. 0,2" valueMm={tvSurfaceSideDepthMm} onChangeMm={(v) => { pushHistory(); setTvSurfaceSideDepthMm(v); }} />
+                    <span className="text-[8px] font-bold text-gray-400 uppercase">Боковые (×2), см</span>
+                    <MeterInput placeholder="напр. 20" valueMm={tvSurfaceSideDepthMm} onChangeMm={(v) => { pushHistory(); setTvSurfaceSideDepthMm(v); }} />
                   </label>
                   <label className="block">
-                    <span className="text-[8px] font-bold text-gray-400 uppercase">Верх/Низ (×2), м</span>
-                    <MeterInput placeholder="напр. 0,15" valueMm={tvSurfaceTopBottomDepthMm} onChangeMm={(v) => { pushHistory(); setTvSurfaceTopBottomDepthMm(v); }} />
+                    <span className="text-[8px] font-bold text-gray-400 uppercase">Верх/Низ (×2), см</span>
+                    <MeterInput placeholder="напр. 15" valueMm={tvSurfaceTopBottomDepthMm} onChangeMm={(v) => { pushHistory(); setTvSurfaceTopBottomDepthMm(v); }} />
                   </label>
                 </div>
                 <p className="text-[8px] font-bold text-gray-400 uppercase mb-1">Угловое соединение</p>
@@ -3872,24 +3878,24 @@ const BambooStudio = () => {
                 </div>
                 <div className="grid grid-cols-2 gap-2 mb-2">
                   {(columnShape === 'rect'
-                    ? ['Сторона A, м', 'Сторона B, м', 'Сторона C, м', 'Сторона D, м']
+                    ? ['Сторона A, см', 'Сторона B, см', 'Сторона C, см', 'Сторона D, см']
                     : columnShape === 'round'
-                    ? ['Диаметр 1, м', 'Диаметр 2, м (овал)']
-                    : ['Сторона A, м', 'Сторона B, м', 'Сторона C, м']
+                    ? ['Диаметр 1, см', 'Диаметр 2, см (овал)']
+                    : ['Сторона A, см', 'Сторона B, см', 'Сторона C, см']
                   ).map((label, idx) => (
                     <label key={label} className="block">
                       <span className="text-[8px] font-bold text-gray-400 uppercase">{label}</span>
-                      <MeterInput placeholder="0,40"
+                      <MeterInput placeholder="40"
                         valueMm={columnSides[idx]}
                         onChangeMm={(v) => setColumnSides(prev => { const next = [...prev]; next[idx] = v; return next; })} />
                     </label>
                   ))}
                   <label className="block">
-                    <span className="text-[8px] font-bold text-gray-400 uppercase">Высота, м</span>
-                    <MeterInput placeholder="напр. 2,7" valueMm={columnHeightMm} onChangeMm={setColumnHeightMm} />
+                    <span className="text-[8px] font-bold text-gray-400 uppercase">Высота, см</span>
+                    <MeterInput placeholder="напр. 270" valueMm={columnHeightMm} onChangeMm={setColumnHeightMm} />
                   </label>
                 </div>
-                <p className="text-[8px] text-gray-400 mb-1.5">Панель загибается вокруг колонны — расчёт по полному периметру (включая заднюю грань). Панель: 2,80 × 1,22 м.</p>
+                <p className="text-[8px] text-gray-400 mb-1.5">Панель загибается вокруг колонны — расчёт по полному периметру (включая заднюю грань). Панель: 280 × 122 см.</p>
                 {(() => {
                   const perMm = columnPerimeterMm(columnShape, columnSides);
                   if (perMm <= 0) return null;
@@ -3898,8 +3904,8 @@ const BambooStudio = () => {
                   const areaM2 = columnHeightMm > 0 ? (perMm / 1000) * (columnHeightMm / 1000) : 0;
                   return (
                     <div className="space-y-1">
-                      <p className="text-[9px] font-bold text-gray-600">Периметр: {(perMm / 1000).toFixed(2).replace('.', ',')} м{areaM2 > 0 ? ` · площадь: ${areaM2.toFixed(2).replace('.', ',')} м²` : ''}</p>
-                      <p className="text-[9px] font-bold text-[#5a9c3e]">Панелей всего: {opt.needed} (по периметру {perRow}, периметр ÷ 1,22 м, округление вверх)</p>
+                      <p className="text-[9px] font-bold text-gray-600">Периметр: {Math.round(perMm / 10)} см{areaM2 > 0 ? ` · площадь: ${areaM2.toFixed(2).replace('.', ',')} м²` : ''}</p>
+                      <p className="text-[9px] font-bold text-[#5a9c3e]">Панелей всего: {opt.needed} (по периметру {perRow}, периметр ÷ 122 см, округление вверх)</p>
                       {opt.donorPanels > 0 && columnHeightMm > PANEL_H_MM && (
                         <p className="text-[9px] font-bold text-amber-600">⚠ Высота больше 2,8 м — недостающие {(opt.remMm / 10).toFixed(0)} см докраиваются: {opt.donorPanels} {panelsWord(opt.donorPanels)} режется на полосы ({opt.stripsPerPanel} шт. из одной панели)</p>
                       )}
@@ -3941,16 +3947,16 @@ const BambooStudio = () => {
                 </div>
                 <div className="grid grid-cols-2 gap-2 mb-2">
                   <label className="block">
-                    <span className="text-[8px] font-bold text-gray-400 uppercase">Ширина окна, м</span>
-                    <MeterInput placeholder="напр. 1,4" valueMm={winWidthMm} onChangeMm={(v) => { pushHistory(); setWinWidthMm(v); }} />
+                    <span className="text-[8px] font-bold text-gray-400 uppercase">Ширина окна, см</span>
+                    <MeterInput placeholder="напр. 140" valueMm={winWidthMm} onChangeMm={(v) => { pushHistory(); setWinWidthMm(v); }} />
                   </label>
                   <label className="block">
-                    <span className="text-[8px] font-bold text-gray-400 uppercase">Высота окна, м</span>
-                    <MeterInput placeholder="напр. 1,5" valueMm={winHeightMm} onChangeMm={(v) => { pushHistory(); setWinHeightMm(v); }} />
+                    <span className="text-[8px] font-bold text-gray-400 uppercase">Высота окна, см</span>
+                    <MeterInput placeholder="напр. 150" valueMm={winHeightMm} onChangeMm={(v) => { pushHistory(); setWinHeightMm(v); }} />
                   </label>
                   <label className="block">
-                    <span className="text-[8px] font-bold text-gray-400 uppercase">Глубина откоса, м</span>
-                    <MeterInput placeholder="напр. 0,25" valueMm={winSlopeDepthMm} onChangeMm={(v) => { pushHistory(); setWinSlopeDepthMm(v); }} />
+                    <span className="text-[8px] font-bold text-gray-400 uppercase">Глубина откоса, см</span>
+                    <MeterInput placeholder="напр. 25" valueMm={winSlopeDepthMm} onChangeMm={(v) => { pushHistory(); setWinSlopeDepthMm(v); }} />
                   </label>
                   
                 </div>
@@ -4003,13 +4009,13 @@ const BambooStudio = () => {
                 </div>
                 <div className="grid grid-cols-3 gap-1.5 mb-3">
                   {([
-                    ['widthMm', 'Ширина, м'],
-                    ['heightMm', doorSelectedReveal === 'top' && doorType === 'with-transom' ? 'Фрамуга, м' : 'Высота, м'],
-                    ['depthMm', 'Глубина, м'],
+                    ['widthMm', 'Ширина, см'],
+                    ['heightMm', doorSelectedReveal === 'top' && doorType === 'with-transom' ? 'Фрамуга, см' : 'Высота, см'],
+                    ['depthMm', 'Глубина, см'],
                   ] as const).map(([key, label]) => (
                     <label key={key} className="min-w-0">
                       <span className="block text-[7px] font-bold text-gray-400 uppercase mb-0.5">{label}</span>
-                      <MeterInput placeholder="0,1" valueMm={doorRevealSizes[doorSelectedReveal][key]}
+                      <MeterInput placeholder="10" valueMm={doorRevealSizes[doorSelectedReveal][key]}
                         onChangeMm={(v) => { pushHistory(); updateDoorRevealSize(doorSelectedReveal, key, v); }} />
                     </label>
                   ))}
@@ -4058,15 +4064,15 @@ const BambooStudio = () => {
               </div>
               <div className="grid grid-cols-2 gap-2 mb-2">
                 <label className="block">
-                  <span className="text-[8px] font-bold text-gray-400 uppercase">Ширина, м</span>
-                  <MeterInput placeholder="напр. 3,6" valueMm={wallWidthMm} onChangeMm={(v) => { pushHistory(); setWallWidthMm(v); }} />
+                  <span className="text-[8px] font-bold text-gray-400 uppercase">Ширина, см</span>
+                  <MeterInput placeholder="напр. 360" valueMm={wallWidthMm} onChangeMm={(v) => { pushHistory(); setWallWidthMm(v); }} />
                 </label>
                 <label className="block">
-                  <span className="text-[8px] font-bold text-gray-400 uppercase">Высота, м</span>
-                  <MeterInput placeholder="напр. 2,7" valueMm={wallHeightMm} onChangeMm={(v) => { pushHistory(); setWallHeightMm(v); }} />
+                  <span className="text-[8px] font-bold text-gray-400 uppercase">Высота, см</span>
+                  <MeterInput placeholder="напр. 270" valueMm={wallHeightMm} onChangeMm={(v) => { pushHistory(); setWallHeightMm(v); }} />
                 </label>
               </div>
-              <p className="text-[8px] text-gray-400 mb-1.5">Панель: 2,80 × 1,22 м ({PANEL_AREA_M2.toFixed(2).replace('.', ',')} м²)</p>
+              <p className="text-[8px] text-gray-400 mb-1.5">Панель: 280 × 122 см ({PANEL_AREA_M2.toFixed(2).replace('.', ',')} м²)</p>
               {wallWidthMm > 0 && wallHeightMm > 0 && (() => {
                 const areaM2 = (wallWidthMm / 1000) * (wallHeightMm / 1000);
                 const cols = Math.ceil(wallWidthMm / PANEL_W_MM);
@@ -4094,7 +4100,7 @@ const BambooStudio = () => {
                           : `⚠ Высота стены больше 2,8 м — ${opt.fullRows} ${rowsWord(opt.fullRows)} по высоте, всего ${opt.needed} ${panelsWord(opt.needed)} (в расчёте КП учтено)`}
                       </p>
                     )}
-                    <p className="text-[8px] text-gray-400">Ширина панели в проекте: {(wallWidthMm / panelCount / 1000).toFixed(2).replace('.', ',')} м (макс. 1,22 м)</p>
+                    <p className="text-[8px] text-gray-400">Ширина панели в проекте: {Math.round(wallWidthMm / panelCount / 10)} см (макс. 122 см)</p>
                   </div>
                 );
               })()}
@@ -4139,12 +4145,12 @@ const BambooStudio = () => {
                 {tvCutoutInputMode === 'size' && (
                   <div className="grid grid-cols-2 gap-2 mb-2">
                     <label className="block">
-                      <span className="text-[8px] font-bold text-gray-400 uppercase">Ширина выреза, м</span>
-                      <MeterInput placeholder="напр. 1,2" valueMm={tvCutoutWidthMm} onChangeMm={(v) => { pushHistory(); setTvCutoutWidthMm(v); }} />
+                      <span className="text-[8px] font-bold text-gray-400 uppercase">Ширина выреза, см</span>
+                      <MeterInput placeholder="напр. 120" valueMm={tvCutoutWidthMm} onChangeMm={(v) => { pushHistory(); setTvCutoutWidthMm(v); }} />
                     </label>
                     <label className="block">
-                      <span className="text-[8px] font-bold text-gray-400 uppercase">Высота выреза, м</span>
-                      <MeterInput placeholder="напр. 0,7" valueMm={tvCutoutHeightMm} onChangeMm={(v) => { pushHistory(); setTvCutoutHeightMm(v); }} />
+                      <span className="text-[8px] font-bold text-gray-400 uppercase">Высота выреза, см</span>
+                      <MeterInput placeholder="напр. 70" valueMm={tvCutoutHeightMm} onChangeMm={(v) => { pushHistory(); setTvCutoutHeightMm(v); }} />
                     </label>
                   </div>
                 )}
@@ -4152,8 +4158,8 @@ const BambooStudio = () => {
                 {/* Depth — always */}
                 <div className="mb-2">
                   <label className="block">
-                    <span className="text-[8px] font-bold text-gray-400 uppercase">Глубина выреза, м</span>
-                    <MeterInput placeholder="напр. 0,15" valueMm={tvCutoutDepthMm} onChangeMm={(v) => { pushHistory(); setTvCutoutDepthMm(v); }} />
+                    <span className="text-[8px] font-bold text-gray-400 uppercase">Глубина выреза, см</span>
+                    <MeterInput placeholder="напр. 15" valueMm={tvCutoutDepthMm} onChangeMm={(v) => { pushHistory(); setTvCutoutDepthMm(v); }} />
                   </label>
                 </div>
 

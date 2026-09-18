@@ -13,6 +13,8 @@ const VALID_KEYS = new Set([
   "series_names",
   "molding_names",
   "custom_series",
+  "extras_prices",
+  "api_key",
 ]);
 
 // GET /api/settings  — returns all four settings as one object
