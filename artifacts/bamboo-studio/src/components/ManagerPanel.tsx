@@ -7,6 +7,7 @@ import {
 import {
   DEFAULT_SERIES_PRICES,
   DEFAULT_MOLDING_PRICES,
+  DEFAULT_EXTRAS,
   getEffectiveSeriesName,
   getEffectiveMoldingName,
   type PriceMap,
@@ -335,7 +336,7 @@ function AddSeriesForm({ onAdd }: {
   );
 }
 
-function TabPrices({ panelOverrides, moldingOverrides, seriesNameOverrides, moldingNameOverrides, customSeries, onUpdatePanel, onUpdateMolding, onUpdateSeriesName, onUpdateMoldingName, onAddSeries, onReset }: {
+function TabPrices({ panelOverrides, moldingOverrides, seriesNameOverrides, moldingNameOverrides, customSeries, onUpdatePanel, onUpdateMolding, onUpdateSeriesName, onUpdateMoldingName, onAddSeries, onReset, extrasOverrides, onUpdateExtras }: {
   panelOverrides: PriceMap;
   moldingOverrides: PriceMap;
   seriesNameOverrides: SeriesNames;
@@ -347,12 +348,16 @@ function TabPrices({ panelOverrides, moldingOverrides, seriesNameOverrides, mold
   onUpdateMoldingName: (id: string, name: string) => void;
   onAddSeries: (name: string, price: number) => void;
   onReset: () => void;
+  extrasOverrides: PriceMap;
+  onUpdateExtras: (id: string, price: number) => void;
 }) {
+  const [extrasOpen, setExtrasOpen] = useState(false);
   const modifiedPrices =
     Object.keys(panelOverrides).filter(k => panelOverrides[k] !== DEFAULT_SERIES_PRICES.find(s => s.id === k)?.defaultPrice).length +
     Object.keys(moldingOverrides).filter(k => moldingOverrides[k] !== DEFAULT_MOLDING_PRICES.find(m => m.id === k)?.defaultPrice).length;
   const modifiedNames = Object.keys(seriesNameOverrides).length + Object.keys(moldingNameOverrides).length;
-  const totalModified = modifiedPrices + modifiedNames;
+  const modifiedExtras = Object.keys(extrasOverrides).filter(k => extrasOverrides[k] !== DEFAULT_EXTRAS.find(e => e.id === k)?.defaultPrice).length;
+  const totalModified = modifiedPrices + modifiedNames + modifiedExtras;
 
   return (
     <div className="max-w-xl mx-auto space-y-6 py-6 px-4">
@@ -420,6 +425,38 @@ function TabPrices({ panelOverrides, moldingOverrides, seriesNameOverrides, mold
             />
           ))}
         </div>
+      </section>
+
+      {/* Дополнительно — доп. товары (клей и пр.) */}
+      <section>
+        <button
+          onClick={() => setExtrasOpen(v => !v)}
+          className="w-full flex items-center justify-between group mb-3"
+        >
+          <div className="flex items-center gap-2">
+            <ChevronRight size={13} className={`text-gray-400 transition-transform ${extrasOpen ? 'rotate-90' : ''}`} />
+            <h3 className="text-xs font-black uppercase tracking-widest text-gray-500 group-hover:text-gray-700 transition-colors">Дополнительно</h3>
+            {modifiedExtras > 0 && (
+              <span className="text-[9px] font-bold bg-green-100 text-green-700 rounded-md px-1.5 py-0.5">{modifiedExtras} изм.</span>
+            )}
+          </div>
+          <span className="text-[10px] text-gray-400">Цена за единицу</span>
+        </button>
+        {extrasOpen && (
+          <div className="bg-white border border-gray-100 rounded-xl px-4 shadow-sm">
+            {DEFAULT_EXTRAS.map(e => (
+              <EditableRow
+                key={e.id}
+                defaultName={e.name}
+                defaultPrice={e.defaultPrice}
+                priceOverride={extrasOverrides[e.id]}
+                onNameChange={() => {/* имя не редактируется */}}
+                onPriceChange={price => onUpdateExtras(e.id, price)}
+                unitLabel={e.unit}
+              />
+            ))}
+          </div>
+        )}
       </section>
 
       <p className="text-xs text-gray-400 text-center pb-4">
@@ -989,10 +1026,11 @@ function BackupSection({ onImportSuccess }: { onImportSuccess: () => void }) {
 
 const CATALOG_SIZE = 115;
 
-function TabProducts({ seriesOptions, onPhotoChange, onSettingsChange }: {
+function TabProducts({ seriesOptions, onPhotoChange, onSettingsChange, extrasOverrides }: {
   seriesOptions: Array<{ name: string; price: number }>;
   onPhotoChange?: () => void;
   onSettingsChange?: () => void;
+  extrasOverrides?: PriceMap;
 }) {
   const { data, loading, error, reload } = useFetch<Product[]>('/api/products');
   const [creating, setCreating] = useState(false);
@@ -1194,6 +1232,36 @@ function TabProducts({ seriesOptions, onPhotoChange, onSettingsChange }: {
           onDelete={() => del(p.id)}
         />
       ))}
+
+      {/* ── Дополнительные товары (клей и пр.) ── */}
+      {extrasOverrides !== undefined && DEFAULT_EXTRAS.length > 0 && (
+        <div className="mt-4">
+          <div className="flex items-center gap-2 mb-3">
+            <ChevronRight size={13} className="text-gray-400" />
+            <span className="text-xs font-black uppercase tracking-widest text-gray-500">Дополнительные товары</span>
+            <span className="text-[10px] text-gray-400">— цена задаётся в разделе Цены</span>
+          </div>
+          <div className="space-y-2">
+            {DEFAULT_EXTRAS.map(e => {
+              const price = extrasOverrides[e.id] ?? e.defaultPrice;
+              return (
+                <div key={e.id} className="bg-white border border-gray-100 rounded-2xl px-4 py-3 flex items-center gap-4 shadow-sm">
+                  <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
+                    <Package size={18} className="text-gray-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-bold text-gray-900">{e.name}</div>
+                    <div className="text-xs text-gray-400 mt-0.5">{e.article}</div>
+                  </div>
+                  <div className="shrink-0 text-sm font-bold text-[#7ec662]">
+                    {price > 0 ? `${price.toLocaleString('ru-RU')} ₽` : <span className="text-gray-400 font-normal">не задана</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1458,6 +1526,8 @@ interface Props {
   onUpdateMoldingName: (id: string, name: string) => void;
   onAddSeries: (name: string, price: number) => void;
   onReset: () => void;
+  extrasOverrides: PriceMap;
+  onUpdateExtras: (id: string, price: number) => void;
   onClose: () => void;
   onPhotoChange?: () => void;
   onSettingsChange?: () => void;
@@ -1468,6 +1538,7 @@ export function ManagerPanel({
   customSeries, seriesDefinitions,
   onUpdatePanel, onUpdateMolding, onUpdateSeriesName, onUpdateMoldingName,
   onAddSeries, onReset, onClose, onPhotoChange, onSettingsChange,
+  extrasOverrides, onUpdateExtras,
 }: Props) {
   const [isAuth, setIsAuth] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
@@ -1566,6 +1637,8 @@ export function ManagerPanel({
                   onUpdateMoldingName={onUpdateMoldingName}
                   onAddSeries={onAddSeries}
                   onReset={onReset}
+                  extrasOverrides={extrasOverrides}
+                  onUpdateExtras={onUpdateExtras}
                 />
               )}
               {tab === 'products' && (
@@ -1573,6 +1646,7 @@ export function ManagerPanel({
                   seriesOptions={seriesOptions}
                   onPhotoChange={onPhotoChange}
                   onSettingsChange={onSettingsChange}
+                  extrasOverrides={extrasOverrides}
                 />
               )}
               {tab === 'orders' && <TabOrders />}

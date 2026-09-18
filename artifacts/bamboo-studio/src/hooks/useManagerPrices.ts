@@ -26,6 +26,11 @@ export const DEFAULT_MOLDING_PRICES: Array<{ id: string; name: string; article: 
   { id: 'brass',    article: 'PR-BRASS', name: 'Профиль латунь',   defaultPrice: 990 },
 ];
 
+/** Дополнительные товары — не являются панелями или профилями */
+export const DEFAULT_EXTRAS: Array<{ id: string; article: string; name: string; defaultPrice: number; unit: string }> = [
+  { id: 'glue', article: 'AW-GLUE', name: 'Клей AllWall', defaultPrice: 590, unit: '₽/уп.' },
+];
+
 export type PriceMap    = Record<string, number>;
 export type SeriesNames = Record<string, string>;
 export type SeriesDefinition = {
@@ -41,6 +46,7 @@ const LS_MOLDING_KEY       = 'aw_manager_molding_prices';
 const LS_SERIES_NAMES_KEY  = 'aw_manager_series_names';
 const LS_MOLDING_NAMES_KEY = 'aw_manager_molding_names';
 const LS_CUSTOM_SERIES_KEY  = 'aw_manager_custom_series';
+const LS_EXTRAS_KEY        = 'aw_manager_extras_prices';
 
 function loadLS(key: string): Record<string, unknown> {
   try { const r = localStorage.getItem(key); return r ? JSON.parse(r) as Record<string, unknown> : {}; }
@@ -60,6 +66,7 @@ async function fetchSettings(): Promise<{
   series_names?: SeriesNames;
   molding_names?: SeriesNames;
   custom_series?: SeriesDefinition[];
+  extras_prices?: PriceMap;
 }> {
   try {
     const r = await fetch('/api/settings');
@@ -98,6 +105,7 @@ export function useManagerPrices() {
   const [moldingOverrides,     setMoldingOverrides]     = useState<PriceMap>(() => loadLS(LS_MOLDING_KEY) as PriceMap);
   const [seriesNameOverrides,  setSeriesNameOverrides]  = useState<SeriesNames>(() => loadLS(LS_SERIES_NAMES_KEY) as SeriesNames);
   const [moldingNameOverrides, setMoldingNameOverrides] = useState<SeriesNames>(() => loadLS(LS_MOLDING_NAMES_KEY) as SeriesNames);
+  const [extrasOverrides,      setExtrasOverrides]      = useState<PriceMap>(() => loadLS(LS_EXTRAS_KEY) as PriceMap);
   const [customSeries, setCustomSeries] = useState<SeriesDefinition[]>(() => {
     try {
       const raw = localStorage.getItem(LS_CUSTOM_SERIES_KEY);
@@ -120,6 +128,7 @@ export function useManagerPrices() {
       if (remote.molding_prices) { setMoldingOverrides(remote.molding_prices); saveLS(LS_MOLDING_KEY,      remote.molding_prices as Record<string, unknown>); }
       if (remote.series_names)   { setSeriesNameOverrides(remote.series_names); saveLS(LS_SERIES_NAMES_KEY, remote.series_names as Record<string, unknown>); }
       if (remote.molding_names)  { setMoldingNameOverrides(remote.molding_names); saveLS(LS_MOLDING_NAMES_KEY, remote.molding_names as Record<string, unknown>); }
+      if (remote.extras_prices)  { setExtrasOverrides(remote.extras_prices);      saveLS(LS_EXTRAS_KEY,        remote.extras_prices as Record<string, unknown>); }
       if (Array.isArray(remote.custom_series)) {
         const valid = remote.custom_series.filter(s =>
           s && typeof s.id === 'string' && typeof s.name === 'string' &&
@@ -206,6 +215,15 @@ export function useManagerPrices() {
     return created;
   }, [customSeries, seriesNameOverrides]);
 
+  const setExtrasPrice = useCallback((id: string, price: number) => {
+    setExtrasOverrides(prev => {
+      const next = { ...prev, [id]: price };
+      saveLS(LS_EXTRAS_KEY, next as Record<string, unknown>);
+      void putSetting('extras_prices', next as Record<string, unknown>);
+      return next;
+    });
+  }, []);
+
   const resetPrices = useCallback(() => {
     setPanelOverrides({});
     setMoldingOverrides({});
@@ -227,6 +245,7 @@ export function useManagerPrices() {
     if (remote.molding_prices) { setMoldingOverrides(remote.molding_prices);  saveLS(LS_MOLDING_KEY,       remote.molding_prices  as Record<string, unknown>); }
     if (remote.series_names)   { setSeriesNameOverrides(remote.series_names); saveLS(LS_SERIES_NAMES_KEY, remote.series_names   as Record<string, unknown>); }
     if (remote.molding_names)  { setMoldingNameOverrides(remote.molding_names); saveLS(LS_MOLDING_NAMES_KEY, remote.molding_names as Record<string, unknown>); }
+    if (remote.extras_prices)  { setExtrasOverrides(remote.extras_prices);      saveLS(LS_EXTRAS_KEY,        remote.extras_prices as Record<string, unknown>); }
     if (Array.isArray(remote.custom_series)) {
       const valid = remote.custom_series.filter(s =>
         s && typeof s.id === 'string' && typeof s.name === 'string' &&
@@ -257,6 +276,7 @@ export function useManagerPrices() {
     moldingNameOverrides,
     customSeries,
     seriesDefinitions,
+    extrasOverrides,
     panelOverridesRef,
     moldingOverridesRef,
     setPanelPrice,
@@ -264,6 +284,7 @@ export function useManagerPrices() {
     setSeriesName,
     setMoldingName,
     addCustomSeries,
+    setExtrasPrice,
     resetPrices,
     reloadSettings,
     effectivePanelPrice,
