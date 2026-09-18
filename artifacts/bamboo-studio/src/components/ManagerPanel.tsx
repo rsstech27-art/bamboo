@@ -1331,7 +1331,23 @@ function OrderCard({ order, expanded, onToggle }: {
         <div className="px-5 pb-4 border-t border-gray-100">
           {beforePhotoUrl && (
             <div className="mt-3 mb-3">
-              <div className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5">Фото до</div>
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="text-xs font-medium text-gray-400 uppercase tracking-wider">Фото до</div>
+                <a
+                  href={beforePhotoUrl}
+                  download={`photo-do-${order.orderNumber ?? order.id}.jpg`}
+                  onClick={e => e.stopPropagation()}
+                  title="Скачать фото"
+                  className="flex items-center gap-1 text-[10px] font-bold text-gray-400 hover:text-[#7ec662] transition-colors"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                  </svg>
+                  Скачать
+                </a>
+              </div>
               <img
                 src={beforePhotoUrl}
                 alt="Фото помещения до обработки"
