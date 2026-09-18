@@ -334,7 +334,7 @@ function makeEqualDividers(count: number): number[] {
   return dividers;
 }
 
-type MoldingStyle = 'none' | 'gold' | 'black' | 'metallic' | 'brass';
+type MoldingStyle = 'none' | 'gold' | 'black' | 'metallic' | 'brass' | 'gap' | 'light';
 type SurfaceConfig = {
   panelCount: number;
   dividerPositions: number[];
@@ -411,10 +411,13 @@ const getPanelPrice = (panelId: string) => SERIES_PRICES[PANEL_TO_SERIES[panelId
 // Panel cut-optimization math lives in lib/panelCalc.ts (unit-tested).
 
 const MOLDING_INFO: Record<string, { article: string; name: string; price: number }> = {
-  gold:     { article: 'PR-GOLD',  name: 'Профиль золото',        price: 990 },
-  black:    { article: 'PR-BLACK', name: 'Профиль чёрный',        price: 890 },
-  metallic: { article: 'PR-METAL', name: 'Профиль металлик',      price: 940 },
-  brass:    { article: 'PR-BRASS', name: 'Профиль латунь',        price: 990 },
+  gold:     { article: 'PR-GOLD',  name: 'Профиль золото',          price: 990  },
+  black:    { article: 'PR-BLACK', name: 'Профиль чёрный',          price: 890  },
+  metallic: { article: 'PR-METAL', name: 'Профиль металлик',        price: 940  },
+  brass:    { article: 'PR-BRASS', name: 'Профиль латунь',          price: 990  },
+  gap:      { article: 'PR-GAP',   name: 'Профиль с разрывом',      price: 1090 },
+  light:    { article: 'PR-LIGHT', name: 'Профиль с подсветкой',    price: 1490 },
+  edge:     { article: 'PR-EDGE',  name: 'Профиль торцевой',        price: 790  },
 };
 
 // Meter input that keeps its own text while typing — a controlled type="number"
@@ -551,9 +554,10 @@ const BambooStudio = () => {
   const [isDrawing, setIsDrawing] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [isDraggingDivider, setIsDraggingDivider] = useState(false);
-  const [moldingStyle, setMoldingStyle] = useState<'none' | 'gold' | 'black' | 'metallic' | 'brass'>('none');
+  const [moldingStyle, setMoldingStyle] = useState<MoldingStyle>('none');
   const [moldingWidth, setMoldingWidth] = useState(1);
-  const [hMoldingStyle, setHMoldingStyle] = useState<'none' | 'gold' | 'black' | 'metallic' | 'brass'>('none');
+  const [hMoldingStyle, setHMoldingStyle] = useState<MoldingStyle>('none');
+  const [edgeProfileSides, setEdgeProfileSides] = useState({ top: false, bottom: false, left: false, right: false });
   const [hMoldingCount, setHMoldingCount] = useState(1);
   const [hMoldingWidth, setHMoldingWidth] = useState(1);
   const [hMoldingPositions, setHMoldingPositions] = useState<number[]>([0.5]);
@@ -613,9 +617,10 @@ const BambooStudio = () => {
   const isErasingRef = useRef(false);
   const draggingDividerIndexRef = useRef<number | null>(null);
   const forExportRef = useRef(false);
-  const moldingStyleRef = useRef<'none' | 'gold' | 'black' | 'metallic' | 'brass'>('none');
+  const moldingStyleRef = useRef<MoldingStyle>('none');
   const moldingWidthRef = useRef(1);
-  const hMoldingStyleRef = useRef<'none' | 'gold' | 'black' | 'metallic' | 'brass'>('none');
+  const hMoldingStyleRef = useRef<MoldingStyle>('none');
+  const edgeProfileSidesRef = useRef({ top: false, bottom: false, left: false, right: false });
   const hMoldingCountRef = useRef(1);
   const hMoldingWidthRef = useRef(1);
   const hMoldingPositionsRef = useRef<number[]>([0.5]);
@@ -644,13 +649,14 @@ const BambooStudio = () => {
     wrapJunctions: boolean[];
     wallWidthMm: number;
     wallHeightMm: number;
-    moldingStyle: 'none' | 'gold' | 'black' | 'metallic' | 'brass';
+    moldingStyle: MoldingStyle;
     moldingWidth: number;
-    hMoldingStyle: 'none' | 'gold' | 'black' | 'metallic' | 'brass';
+    hMoldingStyle: MoldingStyle;
     hMoldingCount: number;
     hMoldingWidth: number;
     hMoldingPositions: number[];
     panelOrientation: 'vertical' | 'horizontal';
+    edgeProfileSides: { top: boolean; bottom: boolean; left: boolean; right: boolean };
   };
   const historyRef = useRef<HistorySnapshot[]>([]);
   // Mirrors historyRef.current.length so the «Отменить» button can show enabled/disabled state
@@ -673,6 +679,7 @@ const BambooStudio = () => {
       hMoldingWidth: hMoldingWidthRef.current,
       hMoldingPositions: [...hMoldingPositionsRef.current],
       panelOrientation: panelOrientationRef.current,
+      edgeProfileSides: { ...edgeProfileSidesRef.current },
     });
     if (historyRef.current.length > 50) historyRef.current.shift();
     setHistoryLen(historyRef.current.length);
@@ -682,9 +689,10 @@ const BambooStudio = () => {
     if (historyRef.current.length === 0) return;
     const prev = historyRef.current.pop()!;
     setHistoryLen(historyRef.current.length);
-    // Corner/wrap settings are global — always restore
+    // Corner/wrap/edge settings are global — always restore
     setCornerTypes(prev.cornerTypes);
     setWrapJunctions(prev.wrapJunctions);
+    setEdgeProfileSides(prev.edgeProfileSides);
     if (prev.surfaceIndex === activeSurfaceRef.current) {
       // Snapshot belongs to the active surface — restore via live state
       setSectorMaterials(prev.sectorMaterials);
@@ -737,6 +745,7 @@ const BambooStudio = () => {
   useEffect(() => { hMoldingWidthRef.current = hMoldingWidth; }, [hMoldingWidth]);
   useEffect(() => { hMoldingPositionsRef.current = hMoldingPositions; }, [hMoldingPositions]);
   useEffect(() => { panelOrientationRef.current = panelOrientation; }, [panelOrientation]);
+  useEffect(() => { edgeProfileSidesRef.current = edgeProfileSides; }, [edgeProfileSides]);
   useEffect(() => { lightModeRef.current = lightMode; }, [lightMode]);
   useEffect(() => { cylHighlightPosRef.current = cylHighlightPos; }, [cylHighlightPos]);
   // Auto-shift cylinder highlight when the light mode changes:
@@ -1237,12 +1246,33 @@ const BambooStudio = () => {
             grad.addColorStop(0.65, '#c49a27');
             grad.addColorStop(0.85, '#7a5918');
             grad.addColorStop(1,    '#2c1f00');
+          } else if (curMoldingStyle === 'gap') {
+            // Silver/chrome profile with visible dark slot (разрыв)
+            grad.addColorStop(0,    '#3a3a3a');
+            grad.addColorStop(0.2,  '#aaaaaa');
+            grad.addColorStop(0.42, '#d8d8d8');
+            grad.addColorStop(0.46, '#111111');
+            grad.addColorStop(0.54, '#111111');
+            grad.addColorStop(0.58, '#d8d8d8');
+            grad.addColorStop(0.8,  '#aaaaaa');
+            grad.addColorStop(1,    '#3a3a3a');
+          } else if (curMoldingStyle === 'light') {
+            // Warm white glow — gradient acts as core; shadowBlur adds halo
+            grad.addColorStop(0,   'rgba(255,160,50,0)');
+            grad.addColorStop(0.3, 'rgba(255,220,100,0.85)');
+            grad.addColorStop(0.5, '#fffde0');
+            grad.addColorStop(0.7, 'rgba(255,220,100,0.85)');
+            grad.addColorStop(1,   'rgba(255,160,50,0)');
           }
 
           tCtx.save();
           tCtx.strokeStyle = grad;
-          tCtx.lineWidth = curMoldingWidth;
+          tCtx.lineWidth = curMoldingStyle === 'gap' ? Math.max(curMoldingWidth * 2, 4) : curMoldingWidth;
           tCtx.lineCap = 'butt';
+          if (curMoldingStyle === 'light') {
+            tCtx.shadowColor = 'rgba(255,210,80,0.85)';
+            tCtx.shadowBlur = curMoldingWidth * 10;
+          }
           tCtx.beginPath();
           tCtx.moveTo(topX, topY);
           tCtx.lineTo(botX, botY);
@@ -1309,12 +1339,31 @@ const BambooStudio = () => {
             hGrad.addColorStop(0.65, '#c49a27');
             hGrad.addColorStop(0.85, '#7a5918');
             hGrad.addColorStop(1,    '#2c1f00');
+          } else if (curHMoldingStyle === 'gap') {
+            hGrad.addColorStop(0,    '#3a3a3a');
+            hGrad.addColorStop(0.2,  '#aaaaaa');
+            hGrad.addColorStop(0.42, '#d8d8d8');
+            hGrad.addColorStop(0.46, '#111111');
+            hGrad.addColorStop(0.54, '#111111');
+            hGrad.addColorStop(0.58, '#d8d8d8');
+            hGrad.addColorStop(0.8,  '#aaaaaa');
+            hGrad.addColorStop(1,    '#3a3a3a');
+          } else if (curHMoldingStyle === 'light') {
+            hGrad.addColorStop(0,   'rgba(255,160,50,0)');
+            hGrad.addColorStop(0.3, 'rgba(255,220,100,0.85)');
+            hGrad.addColorStop(0.5, '#fffde0');
+            hGrad.addColorStop(0.7, 'rgba(255,220,100,0.85)');
+            hGrad.addColorStop(1,   'rgba(255,160,50,0)');
           }
 
           tCtx.save();
           tCtx.strokeStyle = hGrad;
-          tCtx.lineWidth = curHMoldingWidth;
+          tCtx.lineWidth = curHMoldingStyle === 'gap' ? Math.max(curHMoldingWidth * 2, 4) : curHMoldingWidth;
           tCtx.lineCap = 'butt';
+          if (curHMoldingStyle === 'light') {
+            tCtx.shadowColor = 'rgba(255,210,80,0.85)';
+            tCtx.shadowBlur = curHMoldingWidth * 10;
+          }
           tCtx.beginPath();
           tCtx.moveTo(lx, ly);
           tCtx.lineTo(rx, ry);
@@ -1464,6 +1513,49 @@ const BambooStudio = () => {
         tCtx.lineTo(cBotX, cBotY);
         tCtx.stroke();
         tCtx.restore();
+      }
+
+      // Edge profiles: draw tortsevoy profile on selected sides of the active quad
+      {
+        const ep = edgeProfileSidesRef.current;
+        const hasEdge = ep.top || ep.bottom || ep.left || ep.right;
+        if (hasEdge) {
+          const aq = pts.slice(curActiveSurf * 4, curActiveSurf * 4 + 4);
+          if (aq.length === 4) {
+            // qp[0]=top-left, qp[1]=top-right, qp[2]=bottom-right, qp[3]=bottom-left
+            const edgeSideDefs: Array<[boolean, typeof aq[0], typeof aq[0]]> = [
+              [ep.top,    aq[0], aq[1]],
+              [ep.right,  aq[1], aq[2]],
+              [ep.bottom, aq[3], aq[2]],
+              [ep.left,   aq[0], aq[3]],
+            ];
+            edgeSideDefs.forEach(([active, p1, p2]) => {
+              if (!active) return;
+              const dx = p2.x - p1.x, dy = p2.y - p1.y;
+              const len = Math.sqrt(dx * dx + dy * dy) || 1;
+              const px = -dy / len, py = dx / len;
+              const mX = (p1.x + p2.x) / 2, mY = (p1.y + p2.y) / 2;
+              const hw = 5;
+              const eGrad = tCtx.createLinearGradient(mX + px * hw, mY + py * hw, mX - px * hw, mY - py * hw);
+              eGrad.addColorStop(0,    '#2a2a2a');
+              eGrad.addColorStop(0.2,  '#aaaaaa');
+              eGrad.addColorStop(0.45, '#e8e8e8');
+              eGrad.addColorStop(0.5,  '#ffffff');
+              eGrad.addColorStop(0.55, '#e8e8e8');
+              eGrad.addColorStop(0.8,  '#aaaaaa');
+              eGrad.addColorStop(1,    '#2a2a2a');
+              tCtx.save();
+              tCtx.strokeStyle = eGrad;
+              tCtx.lineWidth = 10;
+              tCtx.lineCap = 'butt';
+              tCtx.beginPath();
+              tCtx.moveTo(p1.x, p1.y);
+              tCtx.lineTo(p2.x, p2.y);
+              tCtx.stroke();
+              tCtx.restore();
+            });
+          }
+        }
       }
 
       // Active surface outline (only with multiple surfaces, hidden on export)
@@ -2281,6 +2373,23 @@ const BambooStudio = () => {
         addItem(info.article + '-3M', `${getEffectiveMoldingName(style, moldingNameOverrides)} (3 м, раскрой оптимизирован)`, pieces, getEffectiveMoldingPrice(style));
       }
     }
+    // Торцевой профиль: selected sides × wall dimension, packed into 3 m pieces
+    {
+      const ep = edgeProfileSidesRef.current;
+      const mainCfg = kpCfgs[0];
+      if (mainCfg) {
+        const edgeLengths: number[] = [];
+        if (ep.top    && mainCfg.wallWidthMm  > 0) edgeLengths.push(mainCfg.wallWidthMm);
+        if (ep.bottom && mainCfg.wallWidthMm  > 0) edgeLengths.push(mainCfg.wallWidthMm);
+        if (ep.left   && mainCfg.wallHeightMm > 0) edgeLengths.push(mainCfg.wallHeightMm);
+        if (ep.right  && mainCfg.wallHeightMm > 0) edgeLengths.push(mainCfg.wallHeightMm);
+        if (edgeLengths.length > 0) {
+          const edgePieces = packProfileRuns(edgeLengths);
+          const edgeInfo = MOLDING_INFO['edge'];
+          addItem(edgeInfo.article + '-3M', `${getEffectiveMoldingName('edge', moldingNameOverrides)} (3 м)`, edgePieces, getEffectiveMoldingPrice('edge'));
+        }
+      }
+    }
 
     const total = items.reduce((sum, it) => sum + it.qty * it.price, 0);
     const fmt = (n: number) => n.toLocaleString('ru-RU') + ' ₽';
@@ -3053,16 +3162,19 @@ const BambooStudio = () => {
   // Compact molding style selector used in both v/h molding panels
   const MoldingStyleRow = ({
     value, onChange, vertical,
-  }: { value: string; onChange: (v: 'none'|'gold'|'black'|'metallic'|'brass') => void; vertical: boolean }) => {
-    const opts = [
+  }: { value: string; onChange: (v: MoldingStyle) => void; vertical: boolean }) => {
+    const dir = vertical ? 'to-r' : 'to-b';
+    const opts: Array<{ id: MoldingStyle; label: string; preview: string }> = [
       { id: 'none',     label: 'Нет',  preview: 'bg-gray-100' },
-      { id: 'gold',     label: 'Злт',  preview: vertical ? 'bg-gradient-to-r from-yellow-900 via-yellow-300 to-yellow-900' : 'bg-gradient-to-b from-yellow-900 via-yellow-300 to-yellow-900' },
-      { id: 'black',    label: 'Чрн',  preview: vertical ? 'bg-gradient-to-r from-black via-gray-600 to-black'            : 'bg-gradient-to-b from-black via-gray-600 to-black' },
-      { id: 'metallic', label: 'Мтл',  preview: vertical ? 'bg-gradient-to-r from-gray-500 via-white to-gray-500'         : 'bg-gradient-to-b from-gray-500 via-white to-gray-500' },
-      { id: 'brass',    label: 'Лтн',  preview: vertical ? 'bg-gradient-to-r from-yellow-950 via-yellow-500 to-yellow-950' : 'bg-gradient-to-b from-yellow-950 via-yellow-500 to-yellow-950' },
-    ] as const;
+      { id: 'gold',     label: 'Злт',  preview: `bg-gradient-${dir} from-yellow-900 via-yellow-300 to-yellow-900` },
+      { id: 'black',    label: 'Чрн',  preview: `bg-gradient-${dir} from-black via-gray-600 to-black` },
+      { id: 'metallic', label: 'Мтл',  preview: `bg-gradient-${dir} from-gray-500 via-white to-gray-500` },
+      { id: 'brass',    label: 'Лтн',  preview: `bg-gradient-${dir} from-yellow-950 via-yellow-500 to-yellow-950` },
+      { id: 'gap',      label: 'Рзр',  preview: `bg-gradient-${dir} from-gray-600 via-gray-200 to-gray-600` },
+      { id: 'light',    label: 'Свт',  preview: `bg-gradient-${dir} from-amber-200 via-yellow-50 to-amber-200` },
+    ];
     return (
-      <div className="grid grid-cols-5 gap-1">
+      <div className="grid grid-cols-7 gap-1">
         {opts.map(o => (
           <button key={o.id} onClick={() => onChange(o.id)}
             className={`flex flex-col items-center gap-1 transition-all ${value === o.id ? 'opacity-100' : 'opacity-40'}`}>
@@ -3788,6 +3900,40 @@ const BambooStudio = () => {
                       className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
                   </div>
                 </div>
+              )}
+            </div>
+
+            {/* Торцевой профиль */}
+            <div className="bg-white rounded-2xl p-3.5 shadow-sm">
+              <div className="flex items-center gap-1.5 mb-2">
+                <div className="w-3.5 h-3.5 border-[2.5px] border-gray-400 rounded-sm"/>
+                <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Торцевой профиль</span>
+              </div>
+              <p className="text-[8px] text-gray-400 mb-2 leading-relaxed">Закрывает внешние торцы стены. Выберите нужные стороны:</p>
+              <div className="grid grid-cols-2 gap-1.5 mb-2">
+                {([['top', 'Верх'], ['bottom', 'Низ'], ['left', 'Лево'], ['right', 'Право']] as const).map(([side, label]) => (
+                  <button key={side}
+                    onClick={() => { pushHistory(); setEdgeProfileSides(prev => ({ ...prev, [side]: !prev[side] })); }}
+                    className={`py-2 rounded-xl text-[9px] font-bold uppercase tracking-wide transition-all active:scale-95 ${edgeProfileSides[side] ? 'bg-black text-white' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {Object.values(edgeProfileSides).some(Boolean) && (
+                (() => {
+                  const totalMm =
+                    (edgeProfileSides.top    ? wallWidthMm  : 0) +
+                    (edgeProfileSides.bottom ? wallWidthMm  : 0) +
+                    (edgeProfileSides.left   ? wallHeightMm : 0) +
+                    (edgeProfileSides.right  ? wallHeightMm : 0);
+                  if (totalMm === 0) return <p className="text-[8px] text-amber-500">Укажите размеры стены для расчёта</p>;
+                  const pieces = Math.ceil(totalMm / 3000);
+                  return (
+                    <p className="text-[9px] font-bold text-[#5a9c3e]">
+                      ≈ {(totalMm / 1000).toFixed(1).replace('.', ',')} м → {pieces} шт. по 3 м
+                    </p>
+                  );
+                })()
               )}
             </div>
 

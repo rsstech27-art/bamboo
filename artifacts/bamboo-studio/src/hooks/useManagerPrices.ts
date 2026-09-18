@@ -20,10 +20,15 @@ export const DEFAULT_SERIES_PRICES: Array<{ id: string; name: string; defaultPri
 ];
 
 export const DEFAULT_MOLDING_PRICES: Array<{ id: string; name: string; article: string; defaultPrice: number }> = [
-  { id: 'gold',     article: 'PR-GOLD',  name: 'Профиль золото',    defaultPrice: 990 },
-  { id: 'black',    article: 'PR-BLACK', name: 'Профиль чёрный',   defaultPrice: 890 },
-  { id: 'metallic', article: 'PR-METAL', name: 'Профиль металлик', defaultPrice: 940 },
-  { id: 'brass',    article: 'PR-BRASS', name: 'Профиль латунь',   defaultPrice: 990 },
+  { id: 'gold',     article: 'PR-GOLD',  name: 'Профиль золото',           defaultPrice: 990  },
+  { id: 'black',    article: 'PR-BLACK', name: 'Профиль чёрный',          defaultPrice: 890  },
+  { id: 'metallic', article: 'PR-METAL', name: 'Профиль металлик',        defaultPrice: 940  },
+  { id: 'brass',    article: 'PR-BRASS', name: 'Профиль латунь',          defaultPrice: 990  },
+  // Соединительные: с разрывом и с подсветкой
+  { id: 'gap',      article: 'PR-GAP',   name: 'Профиль с разрывом',      defaultPrice: 1090 },
+  { id: 'light',    article: 'PR-LIGHT', name: 'Профиль с подсветкой',    defaultPrice: 1490 },
+  // Торцевой профиль
+  { id: 'edge',     article: 'PR-EDGE',  name: 'Профиль торцевой',        defaultPrice: 790  },
 ];
 
 /** Дополнительные товары — не являются панелями или профилями */
