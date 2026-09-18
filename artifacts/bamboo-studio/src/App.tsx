@@ -1536,17 +1536,9 @@ const BambooStudio = () => {
               const px = -dy / len, py = dx / len;
               const mX = (p1.x + p2.x) / 2, mY = (p1.y + p2.y) / 2;
               const hw = 5;
-              const eGrad = tCtx.createLinearGradient(mX + px * hw, mY + py * hw, mX - px * hw, mY - py * hw);
-              eGrad.addColorStop(0,    '#2a2a2a');
-              eGrad.addColorStop(0.2,  '#aaaaaa');
-              eGrad.addColorStop(0.45, '#e8e8e8');
-              eGrad.addColorStop(0.5,  '#ffffff');
-              eGrad.addColorStop(0.55, '#e8e8e8');
-              eGrad.addColorStop(0.8,  '#aaaaaa');
-              eGrad.addColorStop(1,    '#2a2a2a');
               tCtx.save();
-              tCtx.strokeStyle = eGrad;
-              tCtx.lineWidth = 10;
+              tCtx.strokeStyle = 'rgba(0,0,0,0.82)';
+              tCtx.lineWidth = 3;
               tCtx.lineCap = 'butt';
               tCtx.beginPath();
               tCtx.moveTo(p1.x, p1.y);
@@ -2812,11 +2804,7 @@ const BambooStudio = () => {
         `Панель 280 × 122 см (${PANEL_AREA_M2.toFixed(2).replace('.', ',')} м²) · общая площадь стен: ${totalWallArea.toFixed(2).replace('.', ',')} м²`,
         60, y + 8, W - 120);
       y += 26;
-      c.fillStyle = '#111111';
-      c.fillText(
-        `Расчётная стоимость панелей по размерам стен: ${fmt(Math.round(panelsTableCost))}`,
-        60, y + 8);
-      y += 30;
+      y += 4;
     }
 
     // Column block: shape, sizes, perimeter, area, panels, cost
@@ -3024,14 +3012,6 @@ const BambooStudio = () => {
         y += 30;
       }
       y += 8;
-    }
-    // Calculated material quantities: panels (calc if dimensions given, else project) + 3 m profile pieces
-    {
-      c.fillStyle = '#111111'; c.font = 'bold 16px sans-serif';
-      c.fillText(
-        `Расчётное количество материалов: панели — ${panelsTableTotal} ${panelsWord(panelsTableTotal)} · профили — ${profilePiecesTotal} шт. (хлысты по 3 м)`,
-        60, y + 8);
-      y += 32;
     }
 
     // Total
