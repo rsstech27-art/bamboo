@@ -389,10 +389,10 @@ const columnPerimeterMm = (shape: ColumnShape, sides: number[]): number => {
   return (sides[0] || 0) + (sides[1] || 0) + (sides[2] || 0);
 };
 const columnSizesText = (shape: ColumnShape, sides: number[]): string => {
-  const m = (v: number) => (v / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 });
-  if (shape === 'rect') return `стороны ${m(sides[0]||0)} × ${m(sides[1]||0)} × ${m(sides[2]||0)} × ${m(sides[3]||0)} м`;
-  if (shape === 'round') return (sides[1]||0) > 0 ? `диаметры ${m(sides[0]||0)} × ${m(sides[1]||0)} м` : `диаметр ${m(sides[0]||0)} м`;
-  return `стороны ${m(sides[0]||0)} × ${m(sides[1]||0)} × ${m(sides[2]||0)} м`;
+  const cm = (v: number) => `${Math.round(v / 10)}`;
+  if (shape === 'rect') return `стороны ${cm(sides[0]||0)} × ${cm(sides[1]||0)} × ${cm(sides[2]||0)} × ${cm(sides[3]||0)} см`;
+  if (shape === 'round') return (sides[1]||0) > 0 ? `диаметры ${cm(sides[0]||0)} × ${cm(sides[1]||0)} см` : `диаметр ${cm(sides[0]||0)} см`;
+  return `стороны ${cm(sides[0]||0)} × ${cm(sides[1]||0)} × ${cm(sides[2]||0)} см`;
 };
 
 // Retail price (RUB per panel) by series — placeholder pricing, editable
@@ -2668,8 +2668,8 @@ const BambooStudio = () => {
       c.font = '16px sans-serif';
       let totalWallArea = 0;
       wallCalcs.forEach(({ cfg, q, opt, fullPerRow, remW, ownPanels, calcCost }) => {
-        const wM = cfg.wallWidthMm / 1000, hM = cfg.wallHeightMm / 1000;
-        const area = wM * hM;
+        const wCm = Math.round(cfg.wallWidthMm / 10), hCm = Math.round(cfg.wallHeightMm / 10);
+        const area = (wCm / 100) * (hCm / 100);
         totalWallArea += area;
         const heightNote = opt.donorPanels > 0
           ? ` · докрой по высоте: ${opt.donorPanels} ${panelsWord(opt.donorPanels)} режется на полосы ${(opt.remMm / 10).toFixed(0)} см (${opt.stripsPerPanel} шт. из панели)`
@@ -2679,7 +2679,7 @@ const BambooStudio = () => {
           : ` · целых панелей: ${ownPanels}`;
         c.fillStyle = '#333333';
         c.fillText(
-          `Стена ${q + 1}: ${wM.toLocaleString('ru-RU')} × ${hM.toLocaleString('ru-RU')} м · ${area.toFixed(2).replace('.', ',')} м² · панелей в проекте: ${cfg.panelCount}${widthNote}${heightNote} · расчётная стоимость: ${fmt(calcCost)}`,
+          `Стена ${q + 1}: ${wCm} × ${hCm} см · ${area.toFixed(2).replace('.', ',')} м² · панелей в проекте: ${cfg.panelCount}${widthNote}${heightNote} · расчётная стоимость: ${fmt(calcCost)}`,
           60, y + 8, W - 120);
         y += 28;
       });
@@ -2693,7 +2693,7 @@ const BambooStudio = () => {
       }
       c.fillStyle = '#555555'; c.font = 'bold 16px sans-serif';
       c.fillText(
-        `Панель 2,8 × 1,22 м (${PANEL_AREA_M2.toFixed(2).replace('.', ',')} м²) · общая площадь стен: ${totalWallArea.toFixed(2).replace('.', ',')} м²`,
+        `Панель 280 × 122 см (${PANEL_AREA_M2.toFixed(2).replace('.', ',')} м²) · общая площадь стен: ${totalWallArea.toFixed(2).replace('.', ',')} м²`,
         60, y + 8, W - 120);
       y += 26;
       c.fillStyle = '#111111';
@@ -2711,11 +2711,11 @@ const BambooStudio = () => {
       y += 34;
       c.font = '16px sans-serif'; c.fillStyle = '#333333';
         c.fillText(
-        `Форма: ${COLUMN_SHAPE_LABELS[columnShape]} · ${columnSizesText(columnShape, columnSides)}${columnHeightMm > 0 ? ` · высота ${(columnHeightMm / 1000).toLocaleString('ru-RU')} м` : ''}`,
+        `Форма: ${COLUMN_SHAPE_LABELS[columnShape]} · ${columnSizesText(columnShape, columnSides)}${columnHeightMm > 0 ? ` · высота ${Math.round(columnHeightMm / 10)} см` : ''}`,
           60, y + 8, W - 120);
       y += 28;
       c.fillText(
-        `Периметр: ${(colPerMm / 1000).toFixed(2).replace('.', ',')} м${columnCalc.areaM2 > 0 ? ` · площадь: ${columnCalc.areaM2.toFixed(2).replace('.', ',')} м²` : ''} · панелей: ${columnCalc.needed} (по периметру ${columnCalc.perRow}, вкл. заднюю грань)`,
+        `Периметр: ${(colPerMm / 10).toFixed(0)} см${columnCalc.areaM2 > 0 ? ` · площадь: ${columnCalc.areaM2.toFixed(2).replace('.', ',')} м²` : ''} · панелей: ${columnCalc.needed} (по периметру ${columnCalc.perRow}, вкл. заднюю грань)`,
         60, y + 8, W - 120);
       y += 28;
       if (columnCalc.opt.donorPanels > 0) {
@@ -2752,7 +2752,7 @@ const BambooStudio = () => {
       y += 34;
       c.font = '16px sans-serif'; c.fillStyle = '#333333';
       c.fillText(
-        `${isWindowPan ? 'Панорамное окно' : 'Окно'}: ${(winWidthMm / 1000).toLocaleString('ru-RU')} × ${(winHeightMm / 1000).toLocaleString('ru-RU')} м · откос ${(winSlopeDepthMm / 1000).toLocaleString('ru-RU')} м${isWindowPan ? ' (подоконник отсутствует)' : ''}`,
+        `${isWindowPan ? 'Панорамное окно' : 'Окно'}: ${Math.round(winWidthMm / 10)} × ${Math.round(winHeightMm / 10)} см · откос ${Math.round(winSlopeDepthMm / 10)} см${isWindowPan ? ' (подоконник отсутствует)' : ''}`,
         60, y + 8, W - 120);
       y += 28;
       c.fillText(
@@ -2761,7 +2761,7 @@ const BambooStudio = () => {
       y += 28;
       c.fillText(
         winJoint === 'profile'
-          ? `Соединение на углах: через профиль — 2 вертикальных (${(winHeightMm / 1000).toLocaleString('ru-RU')} м) + 1 горизонтальный (${(winWidthMm / 1000).toLocaleString('ru-RU')} м), хлысты 3 м`
+          ? `Соединение на углах: через профиль — 2 вертикальных (${Math.round(winHeightMm / 10)} см) + 1 горизонтальный (${Math.round(winWidthMm / 10)} см), хлысты 3 м`
           : 'Соединение на углах: загиб панели — профили не требуются',
         60, y + 8, W - 120);
       y += 28;
@@ -2777,21 +2777,22 @@ const BambooStudio = () => {
       c.fillText('Встроенный ТВ — загибы внутри выреза', 60, y + 10);
       y += 34;
       c.font = '16px sans-serif'; c.fillStyle = '#333333';
-      const cW = tvCutoutWidthMm / 1000, cH = tvCutoutHeightMm / 1000, cD = tvCutoutDepthMm / 1000;
+      const cW = Math.round(tvCutoutWidthMm / 10), cH = Math.round(tvCutoutHeightMm / 10), cD = Math.round(tvCutoutDepthMm / 10);
+      const cWm = cW / 100, cHm = cH / 100, cDm = cD / 100;
       c.fillText(
-        `Вырез: ${cW.toLocaleString('ru-RU')} × ${cH.toLocaleString('ru-RU')} м · глубина ${cD.toLocaleString('ru-RU')} м`,
+        `Вырез: ${cW} × ${cH} см · глубина ${cD} см`,
         60, y + 8);
       y += 28;
       c.fillText(
-        `Боковые загибы (×2): ${cD.toLocaleString('ru-RU')} × ${cH.toLocaleString('ru-RU')} м · площадь: ${(2 * cD * cH).toFixed(2).replace('.', ',')} м²`,
+        `Боковые загибы (×2): ${cD} × ${cH} см · площадь: ${(2 * cDm * cHm).toFixed(2).replace('.', ',')} м²`,
         60, y + 8);
       y += 28;
       c.fillText(
-        `Верхний загиб: ${cD.toLocaleString('ru-RU')} × ${cW.toLocaleString('ru-RU')} м · площадь: ${(cD * cW).toFixed(2).replace('.', ',')} м²`,
+        `Верхний загиб: ${cD} × ${cW} см · площадь: ${(cDm * cWm).toFixed(2).replace('.', ',')} м²`,
         60, y + 8);
       y += 28;
       c.fillText(
-        `Нижний загиб: ${cD.toLocaleString('ru-RU')} × ${cW.toLocaleString('ru-RU')} м · площадь: ${(cD * cW).toFixed(2).replace('.', ',')} м²`,
+        `Нижний загиб: ${cD} × ${cW} см · площадь: ${(cDm * cWm).toFixed(2).replace('.', ',')} м²`,
         60, y + 8);
       y += 28;
       c.fillText(
@@ -2800,9 +2801,9 @@ const BambooStudio = () => {
       y += 28;
       if (tvCutoutJoint === 'profile') {
         const cutPieces = packProfileRuns([tvCutoutHeightMm, tvCutoutHeightMm, tvCutoutWidthMm, tvCutoutWidthMm]);
-        const cWp = tvCutoutWidthMm / 1000, cHp = tvCutoutHeightMm / 1000;
+        const cWp = Math.round(tvCutoutWidthMm / 10), cHp = Math.round(tvCutoutHeightMm / 10);
         c.fillText(
-          `Профили по периметру стыков: бок. 2×${cHp.toLocaleString('ru-RU')} м + гориз. 2×${cWp.toLocaleString('ru-RU')} м · хлыстов 3 м: ${cutPieces} (остатки используются повторно, если хватает на целый прогон)`,
+          `Профили по периметру стыков: бок. 2×${cHp} см + гориз. 2×${cWp} см · хлыстов 3 м: ${cutPieces} (остатки используются повторно, если хватает на целый прогон)`,
           60, y + 8);
       } else {
         c.fillText('Стыки: загиб панели — профили не требуются', 60, y + 8);
@@ -2814,9 +2815,9 @@ const BambooStudio = () => {
         c.fillText('Наружные грани короба ТВ (видимые торцы)', 60, y + 10);
         y += 28;
         c.font = '16px sans-serif'; c.fillStyle = '#333333';
-        const cWo = tvCutoutWidthMm / 1000, cHo = tvCutoutHeightMm / 1000, cDo = tvCutoutDepthMm / 1000;
+        const cWo = Math.round(tvCutoutWidthMm / 10), cHo = Math.round(tvCutoutHeightMm / 10), cDo = Math.round(tvCutoutDepthMm / 10);
         c.fillText(
-          `Бок. ×2: ${cDo.toLocaleString('ru-RU')} × ${cHo.toLocaleString('ru-RU')} м · верх/низ: ${cDo.toLocaleString('ru-RU')} × ${cWo.toLocaleString('ru-RU')} м`,
+          `Бок. ×2: ${cDo} × ${cHo} см · верх/низ: ${cDo} × ${cWo} см`,
           60, y + 8);
         y += 28;
         c.fillText(
@@ -2830,21 +2831,24 @@ const BambooStudio = () => {
     if (tvSurfaceCut) {
       const faceW = kpCfgs[0]?.wallWidthMm ?? 0;
       const faceH = kpCfgs[0]?.wallHeightMm ?? 0;
+      const faceWcm = Math.round(faceW / 10), faceHcm = Math.round(faceH / 10);
       y += 18;
       c.fillStyle = '#111111'; c.font = 'bold 18px sans-serif';
       c.fillText('ТВ-зона накладная — расчёт материала', 60, y + 10);
       y += 34;
       c.font = '16px sans-serif'; c.fillStyle = '#333333';
       c.fillText(
-        `Лицевая плоскость: ${(faceW / 1000).toLocaleString('ru-RU')} × ${(faceH / 1000).toLocaleString('ru-RU')} м · площадь: ${((faceW / 1000) * (faceH / 1000)).toFixed(2).replace('.', ',')} м²`,
+        `Лицевая плоскость: ${faceWcm} × ${faceHcm} см · площадь: ${((faceWcm / 100) * (faceHcm / 100)).toFixed(2).replace('.', ',')} м²`,
         60, y + 8);
       y += 28;
       if (tvSurfaceSideDepthMm > 0) {
-        c.fillText(`Боковые (×2): ${(tvSurfaceSideDepthMm / 1000).toLocaleString('ru-RU')} × ${(faceH / 1000).toLocaleString('ru-RU')} м · площадь: ${(2 * (tvSurfaceSideDepthMm / 1000) * (faceH / 1000)).toFixed(2).replace('.', ',')} м²`, 60, y + 8);
+        const sdCm = Math.round(tvSurfaceSideDepthMm / 10);
+        c.fillText(`Боковые (×2): ${sdCm} × ${faceHcm} см · площадь: ${(2 * (sdCm / 100) * (faceHcm / 100)).toFixed(2).replace('.', ',')} м²`, 60, y + 8);
         y += 28;
       }
       if (tvSurfaceTopBottomDepthMm > 0) {
-        c.fillText(`Верх/Низ (×2): ${(faceW / 1000).toLocaleString('ru-RU')} × ${(tvSurfaceTopBottomDepthMm / 1000).toLocaleString('ru-RU')} м · площадь: ${(2 * (faceW / 1000) * (tvSurfaceTopBottomDepthMm / 1000)).toFixed(2).replace('.', ',')} м²`, 60, y + 8);
+        const tbCm = Math.round(tvSurfaceTopBottomDepthMm / 10);
+        c.fillText(`Верх/Низ (×2): ${faceWcm} × ${tbCm} см · площадь: ${(2 * (faceWcm / 100) * (tbCm / 100)).toFixed(2).replace('.', ',')} м²`, 60, y + 8);
         y += 28;
       }
       c.fillText(`Угловое соединение: ${tvSurfaceJoint === 'profile' ? 'через профиль' : 'загиб панелей'}`, 60, y + 8);
@@ -2870,16 +2874,16 @@ const BambooStudio = () => {
       const dLeft = doorRevealSizes.left, dRight = doorRevealSizes.right, dTop = doorRevealSizes.top;
       const printReveal = (name: string, depthMm: number, lengthMm: number) => {
         if (depthMm <= 0 || lengthMm <= 0) return;
-        const d = depthMm / 1000, l = lengthMm / 1000;
-        c.fillText(`${name}: ${d.toLocaleString('ru-RU')} × ${l.toLocaleString('ru-RU')} м · площадь: ${(d * l).toFixed(2).replace('.', ',')} м²`, 60, y + 8);
+        const dCm = Math.round(depthMm / 10), lCm = Math.round(lengthMm / 10);
+        c.fillText(`${name}: ${dCm} × ${lCm} см · площадь: ${((dCm / 100) * (lCm / 100)).toFixed(2).replace('.', ',')} м²`, 60, y + 8);
         y += 28;
       };
       printReveal('Левый откос', dLeft.depthMm, dLeft.heightMm);
       printReveal('Правый откос', dRight.depthMm, dRight.heightMm);
       printReveal('Верхний откос', dTop.depthMm, dTop.widthMm);
       if (doorType === 'with-transom' && dTop.heightMm > 0 && dTop.widthMm > 0) {
-        const dW = dTop.widthMm / 1000, dT = dTop.heightMm / 1000;
-        c.fillText(`Фальшфрамуга: ${dW.toLocaleString('ru-RU')} × ${dT.toLocaleString('ru-RU')} м · площадь: ${(dW * dT).toFixed(2).replace('.', ',')} м²`, 60, y + 8);
+        const dWcm = Math.round(dTop.widthMm / 10), dTcm = Math.round(dTop.heightMm / 10);
+        c.fillText(`Фальшфрамуга: ${dWcm} × ${dTcm} см · площадь: ${((dWcm / 100) * (dTcm / 100)).toFixed(2).replace('.', ',')} м²`, 60, y + 8);
         y += 28;
       }
       if (doorCut) {
@@ -2887,15 +2891,15 @@ const BambooStudio = () => {
         y += 28;
         if (doorJoint === 'profile') {
           c.fillText(
-            `Профили откосов: лев. ${(dLeft.heightMm / 1000).toLocaleString('ru-RU')} м + прав. ${(dRight.heightMm / 1000).toLocaleString('ru-RU')} м + верх. ${(dTop.widthMm / 1000).toLocaleString('ru-RU')} м · хлыстов 3 м: ${packProfileRuns([dLeft.heightMm, dRight.heightMm, dTop.widthMm])}`,
+            `Профили откосов: лев. ${Math.round(dLeft.heightMm / 10)} см + прав. ${Math.round(dRight.heightMm / 10)} см + верх. ${Math.round(dTop.widthMm / 10)} см · хлыстов 3 м: ${packProfileRuns([dLeft.heightMm, dRight.heightMm, dTop.widthMm])}`,
             60, y + 8);
           y += 28;
         }
         if (doorType === 'with-transom' && dTop.heightMm > 0) {
-          const hM = (dTop.heightMm / 1000).toLocaleString('ru-RU');
+          const hCm = Math.round(dTop.heightMm / 10);
           const pcs = packProfileRuns([dTop.heightMm, dTop.heightMm]);
           c.fillText(
-            `Профили фальшфрамуги (стыки с боковыми панелями): 2 × ${hM} м · хлыстов 3 м: ${pcs}`,
+            `Профили фальшфрамуги (стыки с боковыми панелями): 2 × ${hCm} см · хлыстов 3 м: ${pcs}`,
             60, y + 8);
           y += 28;
         }
@@ -2921,12 +2925,6 @@ const BambooStudio = () => {
     c.fillStyle = '#111111'; c.font = 'bold 24px sans-serif'; c.textAlign = 'right';
     c.fillText(`Итого${columnCalc ? ' (по периметру колонны)' : windowCut ? ' (по расчёту оконного проёма)' : tvSurfaceCut ? ' (по расчётным размерам ТВ-зоны накладной)' : wallCalcs.length > 0 ? (wallZone === 'tv' ? ' (по расчётным размерам ТВ-зоны)' : wallZone === 'door' ? ' (по расчётным размерам дверной зоны)' : ' (по расчётным размерам стен)') : ''}: ${fmt(finalTotal)}`, W - 60, y + 12);
     c.textAlign = 'left';
-    if ((wallCalcs.length > 0 || columnCalc || windowCut || tvSurfaceCut) && finalTotal !== total) {
-      y += 26;
-      c.fillStyle = '#888888'; c.font = '15px sans-serif'; c.textAlign = 'right';
-      c.fillText(`Стоимость по визуализации проекта: ${fmt(total)}`, W - 60, y + 12);
-      c.textAlign = 'left';
-    }
     y += 60;
     c.fillStyle = '#888888'; c.font = '14px sans-serif';
     c.fillText('Предложение носит информационный характер и не является публичной офертой.', 60, y);
