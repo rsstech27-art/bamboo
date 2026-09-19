@@ -964,6 +964,46 @@ const BambooStudio = () => {
       woodCanvas.height = height;
       const wCtx = woodCanvas.getContext('2d')!;
 
+      // ── Shared helper: stroke a profile line with gradient for a given molding style ──
+      // Available to both renderQuad (inner joints) and the column corner pass below.
+      const drawMoldLine = (
+        x1: number, y1: number, x2: number, y2: number,
+        style: Exclude<MoldingStyle, 'none'>, lw: number,
+      ) => {
+        const ddx = x2 - x1, ddy = y2 - y1, ll = Math.sqrt(ddx * ddx + ddy * ddy);
+        if (ll < 1) return;
+        const ppx = -ddy / ll, ppy = ddx / ll, hhw = lw / 2;
+        const mmx = (x1 + x2) / 2, mmy = (y1 + y2) / 2;
+        const g = tCtx.createLinearGradient(mmx + ppx * hhw, mmy + ppy * hhw, mmx - ppx * hhw, mmy - ppy * hhw);
+        if (style === 'gold') {
+          g.addColorStop(0, '#5a3d00'); g.addColorStop(0.15, '#b8860b'); g.addColorStop(0.35, '#ffd700');
+          g.addColorStop(0.5, '#fff8c0'); g.addColorStop(0.65, '#ffd700'); g.addColorStop(0.85, '#b8860b'); g.addColorStop(1, '#5a3d00');
+        } else if (style === 'black') {
+          g.addColorStop(0, '#0a0a0a'); g.addColorStop(0.25, '#1c1c1c'); g.addColorStop(0.5, '#383838');
+          g.addColorStop(0.75, '#1c1c1c'); g.addColorStop(1, '#0a0a0a');
+        } else if (style === 'metallic') {
+          g.addColorStop(0, '#4a4a4a'); g.addColorStop(0.2, '#9a9a9a'); g.addColorStop(0.45, '#e8e8e8');
+          g.addColorStop(0.5, '#ffffff'); g.addColorStop(0.55, '#e8e8e8'); g.addColorStop(0.8, '#9a9a9a'); g.addColorStop(1, '#4a4a4a');
+        } else if (style === 'brass') {
+          g.addColorStop(0, '#2c1f00'); g.addColorStop(0.15, '#7a5918'); g.addColorStop(0.35, '#c49a27');
+          g.addColorStop(0.5, '#e8c95a'); g.addColorStop(0.65, '#c49a27'); g.addColorStop(0.85, '#7a5918'); g.addColorStop(1, '#2c1f00');
+        } else if (style === 'gap') {
+          g.addColorStop(0, '#3a3a3a'); g.addColorStop(0.2, '#aaaaaa'); g.addColorStop(0.42, '#d8d8d8');
+          g.addColorStop(0.46, '#111111'); g.addColorStop(0.54, '#111111'); g.addColorStop(0.58, '#d8d8d8');
+          g.addColorStop(0.8, '#aaaaaa'); g.addColorStop(1, '#3a3a3a');
+        } else { // light
+          g.addColorStop(0, 'rgba(255,160,50,0)'); g.addColorStop(0.3, 'rgba(255,220,100,0.85)');
+          g.addColorStop(0.5, '#fffde0'); g.addColorStop(0.7, 'rgba(255,220,100,0.85)'); g.addColorStop(1, 'rgba(255,160,50,0)');
+        }
+        tCtx.save();
+        tCtx.strokeStyle = g;
+        tCtx.lineWidth = style === 'gap' ? Math.max(lw * 2, 4) : lw;
+        tCtx.lineCap = 'butt';
+        if (style === 'light') { tCtx.shadowColor = 'rgba(255,210,80,0.85)'; tCtx.shadowBlur = lw * 10; }
+        tCtx.beginPath(); tCtx.moveTo(x1, y1); tCtx.lineTo(x2, y2); tCtx.stroke();
+        tCtx.restore();
+      };
+
       // Helper: render one 4-point quad with panels, dividers, and moldings
       const renderQuad = (qp: Point[], cfg: SurfaceConfig, isActive: boolean, overrideFirstMaterial?: Panel) => {
         const bounds = getSectorBounds(cfg.dividerPositions, cfg.panelCount);
@@ -1191,45 +1231,6 @@ const BambooStudio = () => {
       // Draw moldings on tempCanvas BEFORE mask so eraser can erase through them
       const curMoldingStyle = cfg.moldingStyle;
       const curMoldingWidth = cfg.moldingWidth;
-
-      // ── Shared helper: stroke a profile line with gradient for a given molding style ──
-      const drawMoldLine = (
-        x1: number, y1: number, x2: number, y2: number,
-        style: Exclude<MoldingStyle, 'none'>, lw: number,
-      ) => {
-        const ddx = x2 - x1, ddy = y2 - y1, ll = Math.sqrt(ddx * ddx + ddy * ddy);
-        if (ll < 1) return;
-        const ppx = -ddy / ll, ppy = ddx / ll, hhw = lw / 2;
-        const mmx = (x1 + x2) / 2, mmy = (y1 + y2) / 2;
-        const g = tCtx.createLinearGradient(mmx + ppx * hhw, mmy + ppy * hhw, mmx - ppx * hhw, mmy - ppy * hhw);
-        if (style === 'gold') {
-          g.addColorStop(0, '#5a3d00'); g.addColorStop(0.15, '#b8860b'); g.addColorStop(0.35, '#ffd700');
-          g.addColorStop(0.5, '#fff8c0'); g.addColorStop(0.65, '#ffd700'); g.addColorStop(0.85, '#b8860b'); g.addColorStop(1, '#5a3d00');
-        } else if (style === 'black') {
-          g.addColorStop(0, '#0a0a0a'); g.addColorStop(0.25, '#1c1c1c'); g.addColorStop(0.5, '#383838');
-          g.addColorStop(0.75, '#1c1c1c'); g.addColorStop(1, '#0a0a0a');
-        } else if (style === 'metallic') {
-          g.addColorStop(0, '#4a4a4a'); g.addColorStop(0.2, '#9a9a9a'); g.addColorStop(0.45, '#e8e8e8');
-          g.addColorStop(0.5, '#ffffff'); g.addColorStop(0.55, '#e8e8e8'); g.addColorStop(0.8, '#9a9a9a'); g.addColorStop(1, '#4a4a4a');
-        } else if (style === 'brass') {
-          g.addColorStop(0, '#2c1f00'); g.addColorStop(0.15, '#7a5918'); g.addColorStop(0.35, '#c49a27');
-          g.addColorStop(0.5, '#e8c95a'); g.addColorStop(0.65, '#c49a27'); g.addColorStop(0.85, '#7a5918'); g.addColorStop(1, '#2c1f00');
-        } else if (style === 'gap') {
-          g.addColorStop(0, '#3a3a3a'); g.addColorStop(0.2, '#aaaaaa'); g.addColorStop(0.42, '#d8d8d8');
-          g.addColorStop(0.46, '#111111'); g.addColorStop(0.54, '#111111'); g.addColorStop(0.58, '#d8d8d8');
-          g.addColorStop(0.8, '#aaaaaa'); g.addColorStop(1, '#3a3a3a');
-        } else { // light
-          g.addColorStop(0, 'rgba(255,160,50,0)'); g.addColorStop(0.3, 'rgba(255,220,100,0.85)');
-          g.addColorStop(0.5, '#fffde0'); g.addColorStop(0.7, 'rgba(255,220,100,0.85)'); g.addColorStop(1, 'rgba(255,160,50,0)');
-        }
-        tCtx.save();
-        tCtx.strokeStyle = g;
-        tCtx.lineWidth = style === 'gap' ? Math.max(lw * 2, 4) : lw;
-        tCtx.lineCap = 'butt';
-        if (style === 'light') { tCtx.shadowColor = 'rgba(255,210,80,0.85)'; tCtx.shadowBlur = lw * 10; }
-        tCtx.beginPath(); tCtx.moveTo(x1, y1); tCtx.lineTo(x2, y2); tCtx.stroke();
-        tCtx.restore();
-      };
 
       // User-set vertical profile joints at divider positions
       if (curMoldingStyle !== 'none' && cfg.dividerPositions.length > 0) {
@@ -1463,6 +1464,60 @@ const BambooStudio = () => {
         tCtx.restore();
       }
 
+
+      // Column corner moldings: draw profile at each junction between visible faces
+      // and at the outer edges of the first/last face (where hidden faces connect).
+      if (wallZoneRef.current === 'column' && nQuads > 0) {
+        const isRound = columnShapeRef.current === 'round';
+        // Helper: pick molding style from two adjacent configs (prefer non-none)
+        const pickStyle = (a: SurfaceConfig, b?: SurfaceConfig): Exclude<MoldingStyle, 'none'> | null => {
+          const s = a.moldingStyle !== 'none' ? a.moldingStyle : (b && b.moldingStyle !== 'none') ? b.moldingStyle : null;
+          return s ? s as Exclude<MoldingStyle, 'none'> : null;
+        };
+        const pickWidth = (a: SurfaceConfig, b?: SurfaceConfig) =>
+          a.moldingStyle !== 'none' ? a.moldingWidth : b?.moldingStyle !== 'none' ? b!.moldingWidth : 4;
+
+        // Junction edges between visible faces
+        if (!isRound) {
+          for (let j = 0; j < nQuads - 1; j++) {
+            const jExternal = (cornerTypesRef.current[j] ?? 'external') === 'external';
+            const jWrap = jExternal && (wrapJunctionsRef.current[j] ?? false);
+            if (jWrap) continue;                 // загиб — no seam profile
+            const style = pickStyle(quadCfgs[j], quadCfgs[j + 1]);
+            if (!style) continue;
+            const lw = pickWidth(quadCfgs[j], quadCfgs[j + 1]);
+            const e1 = pts[(j) * 4 + 1], e2 = pts[(j) * 4 + 2];
+            drawMoldLine(e1.x, e1.y, e2.x, e2.y, style, lw);
+          }
+        }
+
+        // Outer left edge of face 0 (border with hidden face, if no wrap on that side)
+        {
+          const wrapLeft0 = nQuads > 1 &&
+            (wrapJunctionsRef.current[0] ?? false) &&
+            (cornerTypesRef.current[0] ?? 'external') === 'external' &&
+            false; // face 0 left side is never a right-side wrap of anything
+          const style = pickStyle(quadCfgs[0]);
+          if (style && !isRound) {
+            const lw = pickWidth(quadCfgs[0]);
+            const t = pts[0], b = pts[3];
+            drawMoldLine(t.x, t.y, b.x, b.y, style, lw);
+          }
+        }
+        // Outer right edge of last face
+        {
+          const lastQ = nQuads - 1;
+          const wrapRight = nQuads > 1 &&
+            (wrapJunctionsRef.current[lastQ - 1] ?? false) &&
+            (cornerTypesRef.current[lastQ - 1] ?? 'external') === 'external';
+          const style = pickStyle(quadCfgs[lastQ]);
+          if (style && !wrapRight && !isRound) {
+            const lw = pickWidth(quadCfgs[lastQ]);
+            const t = pts[lastQ * 4 + 1], b = pts[lastQ * 4 + 2];
+            drawMoldLine(t.x, t.y, b.x, b.y, style, lw);
+          }
+        }
+      }
       // Edge profiles: draw tortsevoy profile on selected sides of the active quad
       {
         const ep = edgeProfileSidesRef.current;
