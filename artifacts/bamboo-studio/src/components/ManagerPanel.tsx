@@ -733,8 +733,7 @@ function ExtraFields({ form, setForm }: {
             </div>
           </div>
           <p className="text-[10px] text-gray-400 leading-relaxed">
-            Размеры влияют на количество панелей в расчёте КП.<br />
-            По умолчанию: 1220 × 2800 мм.
+            Размеры влияют на количество панелей в расчёте КП и на визуал стыков.
           </p>
         </div>
       )}

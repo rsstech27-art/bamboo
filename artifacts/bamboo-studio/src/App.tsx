@@ -1414,17 +1414,20 @@ const BambooStudio = () => {
 
 
       // Auto-mandatory vertical joints: physical panel boundaries within sectors wider than one panel.
-      // Vertical panels: one column = PANEL_W_MM (1220 mm).
-      // Horizontal TV panels: one column = PANEL_H_MM (2800 mm).
+      // Vertical panels: one column = panel width (default 1220 mm, or custom from product).
+      // Horizontal TV panels: one column = panel height (default 2800 mm, or custom from product).
       {
         const isHorizTvV = wallZoneRef.current === 'tv' && isHoriz;
-        const colStepV = isHorizTvV ? PANEL_H_MM : PANEL_W_MM;
         const autoVStyle: Exclude<MoldingStyle, 'none'> =
           curMoldingStyle !== 'none' ? curMoldingStyle as Exclude<MoldingStyle, 'none'> : 'black';
         const autoVWidth = curMoldingStyle !== 'none' ? curMoldingWidth : 2;
         if (cfg.wallWidthMm > 0) {
           const secBounds = getSectorBounds(cfg.dividerPositions, cfg.panelCount);
-          secBounds.forEach(({ start: sR, end: eR }) => {
+          secBounds.forEach(({ start: sR, end: eR }, secIdx) => {
+            const mat = cfg.sectorMaterials[secIdx];
+            const colStepV = isHorizTvV
+              ? (mat?.panelHeightMm ?? PANEL_H_MM)
+              : (mat?.panelWidthMm ?? PANEL_W_MM);
             const sectorMm = cfg.wallWidthMm * (eR - sR);
             if (sectorMm <= colStepV) return;
             const nJoints = Math.floor(sectorMm / colStepV);
@@ -1501,11 +1504,14 @@ const BambooStudio = () => {
       }
 
       // Auto-mandatory horizontal row joints: when wall is taller than one panel row.
-      // Vertical panels: row height = PANEL_H_MM (2800 mm = 280 cm).
-      // Horizontal TV panels: row height = PANEL_W_MM (1220 mm).
+      // Vertical panels: row height = panel height (default 2800 mm, or custom from product).
+      // Horizontal TV panels: row height = panel width (default 1220 mm, or custom from product).
       {
         const isHorizTvH = wallZoneRef.current === 'tv' && isHoriz;
-        const singleRowH = isHorizTvH ? PANEL_W_MM : PANEL_H_MM;
+        const primaryMatH = cfg.sectorMaterials[0];
+        const singleRowH = isHorizTvH
+          ? (primaryMatH?.panelWidthMm ?? PANEL_W_MM)
+          : (primaryMatH?.panelHeightMm ?? PANEL_H_MM);
         const autoHStyle: Exclude<MoldingStyle, 'none'> =
           curHMoldingStyle !== 'none' ? curHMoldingStyle as Exclude<MoldingStyle, 'none'> :
           curMoldingStyle !== 'none' ? curMoldingStyle as Exclude<MoldingStyle, 'none'> : 'black';
@@ -4088,13 +4094,26 @@ const BambooStudio = () => {
                   <MeterInput placeholder="напр. 270" valueMm={wallHeightMm} onChangeMm={(v) => { pushHistory(); setWallHeightMm(v); }} />
                 </label>
               </div>
-              <p className="text-[8px] text-gray-400 mb-1.5">Панель: 280 × 122 см ({PANEL_AREA_M2.toFixed(2).replace('.', ',')} м²)</p>
+              {(() => {
+                const pMat = sectorMaterials[0];
+                const pW = pMat?.panelWidthMm ?? PANEL_W_MM;
+                const pH = pMat?.panelHeightMm ?? PANEL_H_MM;
+                const pAreaM2 = (pW * pH) / 1e6;
+                return (
+                  <p className="text-[8px] text-gray-400 mb-1.5">
+                    Панель: {(pH / 10).toFixed(0)} × {(pW / 10).toFixed(0)} см ({pAreaM2.toFixed(2).replace('.', ',')} м²)
+                  </p>
+                );
+              })()}
               {wallWidthMm > 0 && wallHeightMm > 0 && (() => {
+                const pMat = sectorMaterials[0];
+                const pW = pMat?.panelWidthMm ?? PANEL_W_MM;
+                const pH = pMat?.panelHeightMm ?? PANEL_H_MM;
                 const areaM2 = (wallWidthMm / 1000) * (wallHeightMm / 1000);
-                const cols = Math.ceil(wallWidthMm / PANEL_W_MM);
-                const opt = optimizedPanelCalc(cols, wallHeightMm);
+                const cols = Math.ceil(wallWidthMm / pW);
+                const opt = optimizedPanelCalc(cols, wallHeightMm, pH);
                 const enough = panelCount >= cols;
-                const tooTall = wallHeightMm > PANEL_H_MM;
+                const tooTall = wallHeightMm > pH;
                 return (
                   <div className="space-y-1">
                     <p className="text-[9px] font-bold text-gray-600">Площадь стены: {areaM2.toFixed(2).replace('.', ',')} м²</p>
