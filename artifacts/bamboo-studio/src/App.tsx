@@ -3516,8 +3516,8 @@ const BambooStudio = () => {
           ) : step === 'zone' ? (
             <div className="flex flex-col items-center justify-center w-full h-full rounded-3xl bg-white border-2 border-dashed border-gray-200 p-10">
               <div className="text-center mb-8">
-                <h3 className="text-xl font-black text-gray-900 mb-1.5">Выберите тип зоны</h3>
-                <p className="text-sm text-gray-400">Какой участок стены вы хотите оформить?</p>
+                <h3 className="text-xl font-normal text-gray-900 mb-1.5" style={{fontFamily:'Manrope, sans-serif'}}>Выберите тип зоны</h3>
+                <p className="text-sm font-normal text-gray-400" style={{fontFamily:'Manrope, sans-serif'}}>Какой участок стены вы хотите оформить?</p>
               </div>
               <div className="grid grid-cols-3 gap-3 w-full max-w-3xl px-2">
                 {([
