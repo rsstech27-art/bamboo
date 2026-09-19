@@ -1513,23 +1513,21 @@ const BambooStudio = () => {
 
         if (!allNoProfile && cfg.wallHeightMm > singleRowH) {
           const rowCount = Math.ceil(cfg.wallHeightMm / singleRowH);
-          for (let ri = 1; ri < rowCount; ri++) {
-            const naturalRatio = (ri * singleRowH) / cfg.wallHeightMm;
-            if (naturalRatio >= 1) continue;
-            // Skip if a user hMolding already covers this position
-            if (curHPositions.some(p => Math.abs(p - naturalRatio) < 0.005)) continue;
-            const isFirst = ri === 1;
-            const isLast  = ri === rowCount - 1;
-            // first seam = 'top' extension boundary, last seam = 'bottom' extension boundary
-            if (isFirst && isLast) {
-              if (hasTop || hasBottom) drawHSeam(naturalRatio);
-            } else if (isFirst) {
-              if (hasTop) drawHSeam(naturalRatio);
-            } else if (isLast) {
-              if (hasBottom) drawHSeam(naturalRatio);
-            } else {
-              drawHSeam(naturalRatio); // middle seams always drawn
-            }
+          // cutH = height of the partial panel at the extension end
+          const cutH = cfg.wallHeightMm - (rowCount - 1) * singleRowH;
+          // "bottom" seam: full panels stacked from top, cut piece at bottom
+          //   → seam is one full panel height from the bottom = (rowCount-1)*singleRowH from top
+          const bottomSeamRatio = (rowCount - 1) * singleRowH / cfg.wallHeightMm;
+          // "top" seam: symmetric — same distance from top as "bottom" is from the bottom
+          //   → seam is cutH from top
+          const topSeamRatio = cutH / cfg.wallHeightMm;
+
+          if (hasTop)    drawHSeam(topSeamRatio);
+          if (hasBottom) drawHSeam(bottomSeamRatio);
+
+          // Middle seams: interior full-panel row boundaries, always drawn
+          for (let ri = 1; ri <= rowCount - 2; ri++) {
+            drawHSeam((ri * singleRowH) / cfg.wallHeightMm);
           }
         }
       }
