@@ -1100,20 +1100,8 @@ const BambooStudio = () => {
               wCtx.drawImage(cachedTex, dX, dY, dW, dH);
               wCtx.restore();
             } else {
-              // Wood panels: tile at 80% panel size so grain appears 20% smaller
-              const WOOD_SCALE = 0.8;
-              const tileW = Math.max(1, Math.ceil(dW * WOOD_SCALE));
-              const tileH = Math.max(1, Math.ceil(dH * WOOD_SCALE));
-              const tileCanvas = document.createElement('canvas');
-              tileCanvas.width = tileW; tileCanvas.height = tileH;
-              const tileCtx = tileCanvas.getContext('2d')!;
-              tileCtx.drawImage(cachedTex, 0, 0, tileW, tileH);
-              const woodPattern = tCtx.createPattern(tileCanvas, 'repeat');
-              if (woodPattern) {
-                woodPattern.setTransform(new DOMMatrix().translate(dX, dY));
-                tCtx.fillStyle = woodPattern;
-                tCtx.fillRect(dX - 1, dY - 1, dW + 2, dH + 2);
-              }
+              // Wood panels: stretch to fill panel seamlessly (no tiling)
+              tCtx.drawImage(cachedTex, dX, dY, dW, dH);
               // Also draw to woodCanvas for extra opacity boost
               wCtx.save();
               wCtx.beginPath();
@@ -1121,20 +1109,16 @@ const BambooStudio = () => {
               wCtx.lineTo(p3.x, p3.y); wCtx.lineTo(p4.x, p4.y);
               wCtx.closePath(); wCtx.clip();
               if (isHoriz) { wCtx.translate(cx, cy); wCtx.rotate(-Math.PI / 2); wCtx.translate(-cx, -cy); }
-              const woodPattern2 = wCtx.createPattern(tileCanvas, 'repeat');
-              if (woodPattern2) {
-                woodPattern2.setTransform(new DOMMatrix().translate(dX, dY));
-                wCtx.fillStyle = woodPattern2;
-                wCtx.fillRect(dX - 1, dY - 1, dW + 2, dH + 2);
-              }
+              wCtx.drawImage(cachedTex, dX, dY, dW, dH);
               wCtx.restore();
             }
           } else {
             const ts = material.textureScale ?? 1;
-            // If textureScale set: shrink tile to 1/ts (realistic repeat), else auto-fit
+            // If textureScale set explicitly: use 1/ts (artistic repeat scale).
+            // Otherwise scale so the texture covers the full panel height (no seam).
             const scale = ts > 1
               ? 1 / ts
-              : Math.max(1, dH / (cachedTex.height * 3));
+              : (isHoriz ? dW / cachedTex.width : dH / cachedTex.height);
             const pattern = tCtx.createPattern(cachedTex, 'repeat');
             if (pattern) {
               const m = new DOMMatrix();
