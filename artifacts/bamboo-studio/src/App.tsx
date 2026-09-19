@@ -365,9 +365,9 @@ const defaultSurfaceConfig = (): SurfaceConfig => ({
   moldingStyle: 'black',
   moldingWidth: 1,
   hMoldingStyle: 'black',
-  hMoldingCount: 1,
+  hMoldingCount: 0,
   hMoldingWidth: 1,
-  hMoldingPositions: [0.5],
+  hMoldingPositions: [],
   vMoldingPositions: [],
   vMoldingCount: 1,
   wallWidthMm: 0,
@@ -583,9 +583,9 @@ const BambooStudio = () => {
   const [edgeProfileSides, setEdgeProfileSides] = useState({ top: false, bottom: false, left: false, right: false });
   const [edgeProfileColor, setEdgeProfileColor] = useState<'black' | 'metallic' | 'bronze'>('black');
   const edgeProfileColorRef = useRef<'black' | 'metallic' | 'bronze'>('black');
-  const [hMoldingCount, setHMoldingCount] = useState(1);
+  const [hMoldingCount, setHMoldingCount] = useState(0);
   const [hMoldingWidth, setHMoldingWidth] = useState(1);
-  const [hMoldingPositions, setHMoldingPositions] = useState<number[]>([0.5]);
+  const [hMoldingPositions, setHMoldingPositions] = useState<number[]>([]);
   const [vMoldingPositions, setVMoldingPositions] = useState<number[]>([]);
   const [vMoldingCount, setVMoldingCount] = useState(1);
   const [openSeries, setOpenSeries] = useState<Set<string>>(() => new Set(['metall-25']));
@@ -1572,10 +1572,13 @@ const BambooStudio = () => {
             .every(m => m?.noMetallicProfile === true);
 
         // Draw one horizontal seam at ratio r (0–1 of quad height).
-        // Skips positions already covered by a user hMolding.
+        // Skips positions already covered by a user hMolding that is actually visible (style ≠ 'none').
         const drawHSeam = (r: number) => {
           if (r <= 0 || r >= 1) return;
-          if (curHPositions.some(p => Math.abs(p - r) < 0.005)) return;
+          if (curHPositions.some((p, idx) => {
+            const hStyle = cfg.hMoldingStyleOverrides?.[idx] ?? curHMoldingStyle;
+            return Math.abs(p - r) < 0.005 && hStyle !== 'none';
+          })) return;
           const lx = qp[0].x + (qp[3].x - qp[0].x) * r;
           const ly = qp[0].y + (qp[3].y - qp[0].y) * r;
           const rx = qp[1].x + (qp[2].x - qp[1].x) * r;
@@ -4452,12 +4455,12 @@ const BambooStudio = () => {
                         <span className="text-[9px] text-gray-400 font-bold">Кол-во</span>
                         <span className="text-[9px] font-bold">{hMoldingPositions.length}</span>
                       </div>
-                      <input type="range" min="1" max="5" value={hMoldingCount}
+                      <input type="range" min="0" max="5" value={hMoldingCount}
                         onPointerDown={pushHistory}
                         onChange={(e) => {
                           const n = parseInt(e.target.value);
                           setHMoldingCount(n);
-                          setHMoldingPositions(Array.from({length:n},(_,i)=>(i+1)/(n+1)));
+                          setHMoldingPositions(n === 0 ? [] : Array.from({length:n},(_,i)=>(i+1)/(n+1)));
                         }}
                         className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
                       <button onClick={() => setHMoldingPositions(Array.from({length:hMoldingCount},(_,i)=>(i+1)/(hMoldingCount+1)))}
