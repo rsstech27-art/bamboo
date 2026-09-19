@@ -1494,6 +1494,11 @@ const BambooStudio = () => {
         const hasTop    = jpp.includes('top');
         const hasBottom = jpp.includes('bottom');
 
+        // Skip horizontal seam entirely if ALL sector materials join without profile.
+        const allNoProfile = cfg.panelCount > 0 &&
+          Array.from({ length: cfg.panelCount }, (_, i) => cfg.sectorMaterials[i])
+            .every(m => m?.noMetallicProfile === true);
+
         // Draw one horizontal seam at ratio r (0–1 of quad height).
         // Skips positions already covered by a user hMolding.
         const drawHSeam = (r: number) => {
@@ -1506,20 +1511,18 @@ const BambooStudio = () => {
           drawMoldLine(lx, ly, rx, ry, autoHStyle, autoHWidth);
         };
 
-        if (cfg.wallHeightMm > singleRowH) {
+        if (!allNoProfile && cfg.wallHeightMm > singleRowH) {
           const rowCount = Math.ceil(cfg.wallHeightMm / singleRowH);
           for (let ri = 1; ri < rowCount; ri++) {
             const naturalRatio = (ri * singleRowH) / cfg.wallHeightMm;
             if (naturalRatio >= 1) continue;
+            // Skip if a user hMolding already covers this position
+            if (curHPositions.some(p => Math.abs(p - naturalRatio) < 0.005)) continue;
             const isFirst = ri === 1;
             const isLast  = ri === rowCount - 1;
-
+            // first seam = 'top' extension boundary, last seam = 'bottom' extension boundary
             if (isFirst && isLast) {
-              // Exactly 2 rows → one seam; shift its position by checkbox:
-              // top-only → upper third, bottom-only → lower third, both → both.
-              if (hasTop && hasBottom) { drawHSeam(1 / 3); drawHSeam(2 / 3); }
-              else if (hasTop)         drawHSeam(1 / 3);
-              else if (hasBottom)      drawHSeam(2 / 3);
+              if (hasTop || hasBottom) drawHSeam(naturalRatio);
             } else if (isFirst) {
               if (hasTop) drawHSeam(naturalRatio);
             } else if (isLast) {
@@ -1528,11 +1531,6 @@ const BambooStudio = () => {
               drawHSeam(naturalRatio); // middle seams always drawn
             }
           }
-        } else if (hasTop || hasBottom) {
-          // Single row or height not set: draw indicative seam(s) by checkbox.
-          if (hasTop && hasBottom) { drawHSeam(1 / 3); drawHSeam(2 / 3); }
-          else if (hasTop)    drawHSeam(1 / 3);
-          else                drawHSeam(2 / 3);
         }
       }
       }; // end renderQuad
