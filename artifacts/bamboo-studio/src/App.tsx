@@ -4152,32 +4152,55 @@ const BambooStudio = () => {
                   if (owner) setOpenSeries(new Set([owner.id]));
                 }}
               />
-              {/* Uniform texture scale slider */}
-              {activeSector !== null &&
-               sectorMaterials[activeSector]?.texture &&
-               !sectorMaterials[activeSector]?.textureStretch && (() => {
-                const mat = sectorMaterials[activeSector]!;
+              {/* Uniform texture scale slider — always visible when any panel has a texture */}
+              {(() => {
+                // Prefer the active sector's material; fall back to any textured panel
+                const mat = activeSector !== null
+                  ? sectorMaterials[activeSector]
+                  : Object.values(sectorMaterials).find(m => m?.texture && !m?.textureStretch);
+                if (!mat?.texture || mat?.textureStretch) return null;
                 const defaultScale = mat.textureScale ?? 1;
                 const ts = mat.textureScaleX ?? mat.textureScaleY ?? defaultScale;
                 const isCustom = mat.textureScaleX != null || mat.textureScaleY != null;
+                const label = activeSector !== null ? `Панель №${activeSector + 1}` : 'Все панели';
                 return (
                   <div className="mt-3 space-y-1.5 border-t border-gray-100 pt-3">
                     <div className="flex justify-between items-center">
-                      <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Масштаб текстуры</p>
-                      <span className="text-[9px] font-mono text-gray-400">{ts}×</span>
+                      <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Масштаб рисунка</p>
+                      <span className="text-[9px] font-mono text-gray-400">{label} · {ts}×</span>
                     </div>
                     <input type="range" min={1} max={20} step={1}
                       value={ts}
                       onChange={e => {
                         const v = Number(e.target.value);
                         pushHistory();
-                        setSectorMaterials({ ...sectorMaterials, [activeSector]: { ...mat, textureScaleX: v, textureScaleY: v } });
+                        if (activeSector !== null) {
+                          setSectorMaterials({ ...sectorMaterials, [activeSector]: { ...mat, textureScaleX: v, textureScaleY: v } });
+                        } else {
+                          // Apply to every textured panel in the current surface
+                          const updated = { ...sectorMaterials };
+                          for (const [k, m] of Object.entries(updated)) {
+                            if (m?.texture && !m?.textureStretch) updated[Number(k)] = { ...m, textureScaleX: v, textureScaleY: v };
+                          }
+                          setSectorMaterials(updated);
+                        }
                       }}
                       className="w-full h-1.5 accent-[#7ec662] cursor-pointer"
                     />
                     {isCustom && (
                       <button
-                        onClick={() => { pushHistory(); setSectorMaterials({ ...sectorMaterials, [activeSector]: { ...mat, textureScaleX: undefined, textureScaleY: undefined } }); }}
+                        onClick={() => {
+                          pushHistory();
+                          if (activeSector !== null) {
+                            setSectorMaterials({ ...sectorMaterials, [activeSector]: { ...mat, textureScaleX: undefined, textureScaleY: undefined } });
+                          } else {
+                            const updated = { ...sectorMaterials };
+                            for (const [k, m] of Object.entries(updated)) {
+                              if (m?.texture) updated[Number(k)] = { ...m, textureScaleX: undefined, textureScaleY: undefined };
+                            }
+                            setSectorMaterials(updated);
+                          }
+                        }}
                         className="text-[8px] text-gray-400 hover:text-red-400 font-bold transition-colors"
                       >
                         ↺ Сбросить масштаб
