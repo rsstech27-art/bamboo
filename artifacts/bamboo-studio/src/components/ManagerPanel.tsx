@@ -892,46 +892,15 @@ const EMPTY_MOLDING = {
   size: '',
   color: '',
   cost: 0,
-  photoUrl: null as string | null,
 };
 
-function MoldingFormFields({ form, setForm, seriesOptions, fileRef }: {
+function MoldingFormFields({ form, setForm, seriesOptions }: {
   form: typeof EMPTY_MOLDING;
   setForm: React.Dispatch<React.SetStateAction<typeof EMPTY_MOLDING>>;
   seriesOptions: Array<{ name: string }>;
-  fileRef: React.RefObject<HTMLInputElement | null>;
 }) {
-  const handlePhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setForm(f => ({ ...f, photoUrl: reader.result as string }));
-    reader.readAsDataURL(file);
-  };
-
   return (
     <div className="space-y-4">
-      {/* Photo */}
-      <div className="flex items-center gap-4">
-        <div className="relative shrink-0">
-          <button type="button" onClick={() => fileRef.current?.click()}
-            className="w-20 h-20 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center hover:border-black transition-colors overflow-hidden bg-gray-50">
-            {form.photoUrl
-              ? <img src={form.photoUrl} className="w-full h-full object-cover" alt="" />
-              : <div className="flex flex-col items-center gap-1 text-gray-300"><Image size={20} /><span className="text-[10px]">Фото</span></div>}
-          </button>
-          {form.photoUrl && (
-            <button type="button" onClick={() => setForm(f => ({ ...f, photoUrl: null }))} title="Удалить фото"
-              className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center shadow transition-colors">
-              <X size={10} />
-            </button>
-          )}
-        </div>
-        <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handlePhoto} />
-        <div className="flex-1 text-xs text-gray-400">Фото профиля (необязательно)</div>
-      </div>
-
-      {/* Fields */}
       <div className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -990,7 +959,6 @@ function MoldingCreateForm({ seriesOptions, onSave, onCancel }: {
   const [form, setForm] = useState({ ...EMPTY_MOLDING });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement | null>(null);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1007,7 +975,7 @@ function MoldingCreateForm({ seriesOptions, onSave, onCancel }: {
         <span className="text-sm font-black text-gray-900">Новый товар (профиль)</span>
         <button type="button" onClick={onCancel} className="text-gray-400 hover:text-gray-700 transition-colors"><X size={16} /></button>
       </div>
-      <MoldingFormFields form={form} setForm={setForm} seriesOptions={seriesOptions} fileRef={fileRef} />
+      <MoldingFormFields form={form} setForm={setForm} seriesOptions={seriesOptions} />
       {saveError && <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{saveError}</div>}
       <div className="flex gap-2 pt-1">
         <button type="submit" disabled={saving}
@@ -1035,11 +1003,9 @@ function EditMoldingModal({ product, seriesOptions, onSave, onClose }: {
     size: product.size ?? '',
     color: product.color ?? '',
     cost: product.cost,
-    photoUrl: product.photoUrl,
   });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -1073,7 +1039,7 @@ function EditMoldingModal({ product, seriesOptions, onSave, onClose }: {
               <X size={15} />
             </button>
           </div>
-          <MoldingFormFields form={form} setForm={setForm} seriesOptions={seriesOptions} fileRef={fileRef} />
+          <MoldingFormFields form={form} setForm={setForm} seriesOptions={seriesOptions} />
           {saveError && <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{saveError}</div>}
           <div className="flex gap-2 pt-1">
             <button type="submit" disabled={saving}
@@ -1560,48 +1526,6 @@ function TabProducts({
       {/* ── Профили ── */}
       {(seriesFilter === null || seriesFilter === '__profiles__') && (
         <div className="mt-4 space-y-4">
-
-          {/* Серии профилей (цены) */}
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <ChevronRight size={13} className="text-gray-400" />
-              <span className="text-xs font-black uppercase tracking-widest text-gray-500">Серии профилей</span>
-              <span className="text-[10px] text-gray-400">— название и цена</span>
-            </div>
-            <div className="bg-white border border-gray-100 rounded-xl px-4 shadow-sm">
-              {DEFAULT_MOLDING_PRICES
-                .filter(m => !(hiddenMoldingIds ?? []).includes(m.id))
-                .map(m => (
-                  <EditableRow
-                    key={m.id}
-                    defaultName={m.name}
-                    defaultPrice={m.defaultPrice}
-                    nameOverride={(moldingNameOverrides ?? {})[m.id]}
-                    priceOverride={(moldingOverrides ?? {})[m.id]}
-                    onNameChange={name => onUpdateMoldingName?.(m.id, name)}
-                    onPriceChange={price => onUpdateMolding?.(m.id, price)}
-                    unitLabel="₽/3 м"
-                    onDelete={() => onHideMolding?.(m.id)}
-                  />
-                ))}
-              {(customMoldings ?? []).map(m => (
-                <CustomItemRow
-                  key={m.id}
-                  item={m}
-                  onUpdate={(name, price) => onUpdateCustomMolding?.(m.id, name, price)}
-                  onDelete={() => onDeleteMolding?.(m.id)}
-                  unitLabel="₽/3 м"
-                />
-              ))}
-            </div>
-            {onAddMolding && (
-              <div className="mt-3">
-                <AddItemForm onAdd={onAddMolding} buttonLabel="Добавить серию профиля" formTitle="Новая серия профиля"
-                  namePlaceholder="Название серии" priceLabel="Цена, ₽/3 м" pricePlaceholder="990"
-                  errorFallback="Не удалось добавить" />
-              </div>
-            )}
-          </div>
 
           {/* Товары-профили (каталог) */}
           <div>
