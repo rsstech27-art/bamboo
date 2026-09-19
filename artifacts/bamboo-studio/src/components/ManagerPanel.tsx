@@ -1449,8 +1449,7 @@ function TabProducts({
   ];
 
   return (
-    <div className="max-w-2xl mx-auto py-6 px-4 space-y-4">
-
+    <div className="py-6 px-4">
       {/* ── Modals ── */}
       {editingProduct && (
         <EditProductModal
@@ -1469,209 +1468,211 @@ function TabProducts({
         />
       )}
 
-      {/* ── Seed banner ── */}
-      <div className={`rounded-2xl border px-4 py-3.5 flex items-center justify-between gap-3 transition-colors
-        ${alreadyFull ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
-        <div className="min-w-0">
-          <div className="text-sm font-bold text-gray-800">Каталог ALL WALL</div>
-          <div className="text-xs text-gray-500 mt-0.5">
-            {loading ? 'Загрузка…'
-              : alreadyFull
-                ? `${currentCount} из ${CATALOG_SIZE} позиций загружено`
-                : `${currentCount} из ${CATALOG_SIZE} — заполните одним нажатием`}
-          </div>
-          {seedResult && seedResult.skipped !== -1 && (
-            <div className="text-xs text-green-600 font-medium mt-1">
-              {seedResult.inserted > 0
-                ? `✓ Добавлено ${seedResult.inserted} новых, пропущено ${seedResult.skipped}`
-                : `Все ${seedResult.skipped} позиций уже есть`}
+      {/* ── Two-column grid ── */}
+      <div className="flex gap-6 items-start max-w-5xl mx-auto">
+
+        {/* ════════════════════ LEFT — product list ════════════════════ */}
+        <div className="flex-1 min-w-0 space-y-4">
+
+          {/* Add buttons */}
+          {!creating && !creatingMolding && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setCreating(true); setCreatingMolding(false); setPanelsOpen(true); }}
+                className="flex-1 flex items-center justify-center gap-2 bg-black text-white text-sm font-bold py-3 rounded-2xl hover:bg-gray-800 active:scale-95 transition-all shadow-sm">
+                <Plus size={15} /> Добавить панель
+              </button>
+              <button
+                onClick={() => { setCreatingMolding(true); setCreating(false); setProfilesOpen(true); }}
+                className="flex-1 flex items-center justify-center gap-2 border-2 border-gray-200 text-gray-700 text-sm font-bold py-3 rounded-2xl hover:border-black hover:text-black transition-colors">
+                <Plus size={15} /> Добавить профиль
+              </button>
             </div>
           )}
-          {seedResult && seedResult.skipped === -1 && (
-            <div className="text-xs text-red-500 mt-1">Ошибка при загрузке</div>
+
+          {creating && (
+            <ProductCreateForm seriesOptions={seriesOptions} onSave={create} onCancel={() => setCreating(false)} />
           )}
-        </div>
-        <button onClick={seedCatalog} disabled={seeding}
-          className={`shrink-0 flex items-center gap-2 text-xs font-bold px-4 py-2.5 rounded-xl transition-all active:scale-95 disabled:opacity-60
-            ${alreadyFull
-              ? 'bg-green-100 text-green-700 hover:bg-green-200 border border-green-300'
-              : 'bg-black text-white hover:bg-gray-800 shadow-sm'}`}>
-          {seeding
-            ? <><Loader2 size={13} className="animate-spin" /> Загрузка…</>
-            : alreadyFull
-              ? <><RotateCcw size={13} /> Обновить</>
-              : <><Package size={13} /> Загрузить каталог</>}
-        </button>
-      </div>
+          {creatingMolding && (
+            <MoldingCreateForm seriesOptions={moldingSeriesOptions} onSave={createMolding} onCancel={() => setCreatingMolding(false)} />
+          )}
 
-      {/* ── Backup / Restore ── */}
-      <BackupSection onImportSuccess={() => { void reload(); onPhotoChange?.(); onSettingsChange?.(); }} />
+          {loading && (
+            <div className="flex items-center justify-center py-12 gap-2 text-gray-400">
+              <Loader2 size={18} className="animate-spin" /> Загрузка…
+            </div>
+          )}
+          {error && <div className="text-sm text-red-500 text-center py-8">Ошибка: {error}</div>}
 
-      {/* ── Add panel product manually ── */}
-      {!creating ? (
-        <button onClick={() => { setCreating(true); setCreatingMolding(false); }}
-          className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 hover:border-black text-gray-500 hover:text-black text-sm font-bold py-3.5 rounded-2xl transition-colors">
-          <Plus size={16} /> Добавить панель
-        </button>
-      ) : (
-        <ProductCreateForm
-          seriesOptions={seriesOptions}
-          onSave={create}
-          onCancel={() => setCreating(false)}
-        />
-      )}
-
-      {loading && (
-        <div className="flex items-center justify-center py-12 gap-2 text-gray-400">
-          <Loader2 size={18} className="animate-spin" /> Загрузка…
-        </div>
-      )}
-      {error && <div className="text-sm text-red-500 text-center py-8">Ошибка: {error}</div>}
-
-      {/* ── Фильтр по сериям ── */}
-      {!loading && availableSeries.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          <button onClick={() => setSeriesFilter(null)}
-            className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
-              seriesFilter === null ? 'bg-black text-white border-black' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400 hover:text-gray-800'}`}>
-            Все
-          </button>
-          {availableSeries.map(s => (
-            <button key={s} onClick={() => setSeriesFilter(seriesFilter === s ? null : s)}
-              className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
-                seriesFilter === s ? 'bg-black text-white border-black' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400 hover:text-gray-800'}`}>
-              {s}
-              <span className={`ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                seriesFilter === s ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-400'}`}>
-                {panelProducts.filter(p => p.series === s).length}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* ── Панели ── */}
-      <section>
-        <button onClick={() => setPanelsOpen(v => !v)}
-          className="w-full flex items-center justify-between group mb-3">
-          <div className="flex items-center gap-2">
-            <ChevronRight size={13} className={`text-gray-400 transition-transform ${panelsOpen ? 'rotate-90' : ''}`} />
-            <h3 className="text-xs font-black uppercase tracking-widest text-gray-500 group-hover:text-gray-700 transition-colors">
-              Панели
-            </h3>
-            {panelProducts.length > 0 && (
-              <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">
-                {panelProducts.length}
-              </span>
-            )}
-          </div>
-        </button>
-        {panelsOpen && (
-          <div className="space-y-3">
-            {/* Форма добавления */}
-            {!creating ? (
-              <button onClick={() => { setCreating(true); setCreatingMolding(false); }}
-                className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 hover:border-black text-gray-500 hover:text-black text-sm font-bold py-3 rounded-2xl transition-colors">
-                <Plus size={14} /> Добавить панель
+          {/* Фильтр по сериям */}
+          {!loading && availableSeries.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => setSeriesFilter(null)}
+                className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
+                  seriesFilter === null ? 'bg-black text-white border-black' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400 hover:text-gray-800'}`}>
+                Все
               </button>
-            ) : (
-              <ProductCreateForm seriesOptions={seriesOptions} onSave={create} onCancel={() => setCreating(false)} />
-            )}
-
-            {!loading && panelProducts.length === 0 && !creating && (
-              <div className="text-center py-6 text-gray-400">
-                <Package size={32} className="mx-auto mb-2 opacity-30" />
-                <p className="text-sm">Нажмите «Загрузить каталог» или добавьте панель вручную</p>
-              </div>
-            )}
-
-            {visibleProducts.length === 0 && !loading && seriesFilter && (
-              <div className="text-center py-6 text-gray-400 text-sm">В серии «{seriesFilter}» нет товаров</div>
-            )}
-            <div className="space-y-2">
-              {visibleProducts.map(p => (
-                <ProductCard key={p.id} product={p}
-                  onEdit={() => { setEditingProduct(p); setCreating(false); }}
-                  onDelete={() => del(p.id)} />
+              {availableSeries.map(s => (
+                <button key={s} onClick={() => setSeriesFilter(seriesFilter === s ? null : s)}
+                  className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
+                    seriesFilter === s ? 'bg-black text-white border-black' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400 hover:text-gray-800'}`}>
+                  {s}
+                  <span className={`ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                    seriesFilter === s ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-400'}`}>
+                    {panelProducts.filter(p => p.series === s).length}
+                  </span>
+                </button>
               ))}
             </div>
-          </div>
-        )}
-      </section>
+          )}
 
-      {/* ── Профили ── */}
-      <section>
-        <button onClick={() => setProfilesOpen(v => !v)}
-          className="w-full flex items-center justify-between group mb-3">
-          <div className="flex items-center gap-2">
-            <ChevronRight size={13} className={`text-gray-400 transition-transform ${profilesOpen ? 'rotate-90' : ''}`} />
-            <h3 className="text-xs font-black uppercase tracking-widest text-gray-500 group-hover:text-gray-700 transition-colors">
-              Профили
-            </h3>
-            {moldingProducts.length > 0 && (
-              <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">
-                {moldingProducts.length}
-              </span>
-            )}
-          </div>
-        </button>
-        {profilesOpen && (
-          <div className="space-y-2">
-            {!creatingMolding ? (
-              <button onClick={() => { setCreatingMolding(true); setCreating(false); }}
-                className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 hover:border-black text-gray-500 hover:text-black text-sm font-bold py-3 rounded-2xl transition-colors">
-                <Plus size={14} /> Добавить профиль
-              </button>
-            ) : (
-              <MoldingCreateForm seriesOptions={moldingSeriesOptions} onSave={createMolding} onCancel={() => setCreatingMolding(false)} />
-            )}
-            {moldingProducts.length === 0 && !creatingMolding && (
-              <div className="text-center py-6 text-gray-400 text-sm">
-                <Package size={28} className="mx-auto mb-2 opacity-30" />
-                Нет добавленных профилей
+          {/* Панели */}
+          <section>
+            <button onClick={() => setPanelsOpen(v => !v)}
+              className="w-full flex items-center justify-between group mb-3">
+              <div className="flex items-center gap-2">
+                <ChevronRight size={13} className={`text-gray-400 transition-transform ${panelsOpen ? 'rotate-90' : ''}`} />
+                <h3 className="text-xs font-black uppercase tracking-widest text-gray-500 group-hover:text-gray-700 transition-colors">
+                  Панели
+                </h3>
+                {panelProducts.length > 0 && (
+                  <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">
+                    {panelProducts.length}
+                  </span>
+                )}
+              </div>
+            </button>
+            {panelsOpen && (
+              <div className="space-y-3">
+                {!loading && panelProducts.length === 0 && !creating && (
+                  <div className="text-center py-6 text-gray-400">
+                    <Package size={32} className="mx-auto mb-2 opacity-30" />
+                    <p className="text-sm">Нажмите «Загрузить каталог» или добавьте панель вручную</p>
+                  </div>
+                )}
+                {visibleProducts.length === 0 && !loading && seriesFilter && (
+                  <div className="text-center py-6 text-gray-400 text-sm">В серии «{seriesFilter}» нет товаров</div>
+                )}
+                <div className="space-y-2">
+                  {visibleProducts.map(p => (
+                    <ProductCard key={p.id} product={p}
+                      onEdit={() => { setEditingProduct(p); setCreating(false); }}
+                      onDelete={() => del(p.id)} />
+                  ))}
+                </div>
               </div>
             )}
-            {moldingProducts.map(p => (
-              <MoldingCard key={p.id} product={p}
-                onEdit={() => { setEditingMolding(p); setCreatingMolding(false); }}
-                onDelete={() => delMolding(p.id)} />
-            ))}
-          </div>
-        )}
-      </section>
+          </section>
 
-      {/* ── Клей и доп. товары ── */}
-      {DEFAULT_EXTRAS.length > 0 && (
-        <section>
-          <button onClick={() => setExtrasOpen(v => !v)}
-            className="w-full flex items-center justify-between group mb-3">
-            <div className="flex items-center gap-2">
-              <ChevronRight size={13} className={`text-gray-400 transition-transform ${extrasOpen ? 'rotate-90' : ''}`} />
-              <h3 className="text-xs font-black uppercase tracking-widest text-gray-500 group-hover:text-gray-700 transition-colors">
-                Клей и доп. товары
-              </h3>
-            </div>
-          </button>
-          {extrasOpen && (
-            <div className="bg-white border border-gray-100 rounded-xl px-4 shadow-sm">
-              {DEFAULT_EXTRAS
-                .filter(e => !(hiddenExtrasIds ?? []).includes(e.id))
-                .map(e => (
-                  <EditableRow
-                    key={e.id}
-                    defaultName={e.name}
-                    defaultPrice={e.defaultPrice}
-                    priceOverride={(extrasOverrides ?? {})[e.id]}
-                    onNameChange={() => {/* имя не редактируется */}}
-                    onPriceChange={price => onUpdateExtras?.(e.id, price)}
-                    unitLabel={e.unit}
-                    onDelete={() => onHideExtra?.(e.id)}
-                  />
+          {/* Профили */}
+          <section>
+            <button onClick={() => setProfilesOpen(v => !v)}
+              className="w-full flex items-center justify-between group mb-3">
+              <div className="flex items-center gap-2">
+                <ChevronRight size={13} className={`text-gray-400 transition-transform ${profilesOpen ? 'rotate-90' : ''}`} />
+                <h3 className="text-xs font-black uppercase tracking-widest text-gray-500 group-hover:text-gray-700 transition-colors">
+                  Профили
+                </h3>
+                {moldingProducts.length > 0 && (
+                  <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">
+                    {moldingProducts.length}
+                  </span>
+                )}
+              </div>
+            </button>
+            {profilesOpen && (
+              <div className="space-y-2">
+                {moldingProducts.length === 0 && !creatingMolding && (
+                  <div className="text-center py-6 text-gray-400 text-sm">
+                    <Package size={28} className="mx-auto mb-2 opacity-30" />
+                    Нет добавленных профилей
+                  </div>
+                )}
+                {moldingProducts.map(p => (
+                  <MoldingCard key={p.id} product={p}
+                    onEdit={() => { setEditingMolding(p); setCreatingMolding(false); }}
+                    onDelete={() => delMolding(p.id)} />
                 ))}
-            </div>
+              </div>
+            )}
+          </section>
+
+          {/* Клей и доп. товары */}
+          {DEFAULT_EXTRAS.length > 0 && (
+            <section>
+              <button onClick={() => setExtrasOpen(v => !v)}
+                className="w-full flex items-center justify-between group mb-3">
+                <div className="flex items-center gap-2">
+                  <ChevronRight size={13} className={`text-gray-400 transition-transform ${extrasOpen ? 'rotate-90' : ''}`} />
+                  <h3 className="text-xs font-black uppercase tracking-widest text-gray-500 group-hover:text-gray-700 transition-colors">
+                    Клей и доп. товары
+                  </h3>
+                </div>
+              </button>
+              {extrasOpen && (
+                <div className="bg-white border border-gray-100 rounded-xl px-4 shadow-sm">
+                  {DEFAULT_EXTRAS
+                    .filter(e => !(hiddenExtrasIds ?? []).includes(e.id))
+                    .map(e => (
+                      <EditableRow
+                        key={e.id}
+                        defaultName={e.name}
+                        defaultPrice={e.defaultPrice}
+                        priceOverride={(extrasOverrides ?? {})[e.id]}
+                        onNameChange={() => {/* имя не редактируется */}}
+                        onPriceChange={price => onUpdateExtras?.(e.id, price)}
+                        unitLabel={e.unit}
+                        onDelete={() => onHideExtra?.(e.id)}
+                      />
+                    ))}
+                </div>
+              )}
+            </section>
           )}
-        </section>
-      )}
+        </div>
+
+        {/* ════════════════════ RIGHT — sidebar ════════════════════ */}
+        <div className="w-72 shrink-0 space-y-3">
+
+          {/* Обновить каталог */}
+          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm space-y-3">
+            <div className="flex items-center gap-2">
+              <Package size={14} className="text-gray-400 shrink-0" />
+              <span className="text-sm font-black text-gray-800">Каталог ALL WALL</span>
+            </div>
+            <div className="text-xs text-gray-500 leading-relaxed">
+              {loading ? 'Загрузка…'
+                : alreadyFull
+                  ? `${currentCount} из ${CATALOG_SIZE} позиций загружено`
+                  : `${currentCount} из ${CATALOG_SIZE} — заполните одним нажатием`}
+            </div>
+            {seedResult && seedResult.skipped !== -1 && (
+              <div className="text-xs text-green-600 font-medium">
+                {seedResult.inserted > 0
+                  ? `✓ Добавлено ${seedResult.inserted} новых, пропущено ${seedResult.skipped}`
+                  : `Все ${seedResult.skipped} позиций уже есть`}
+              </div>
+            )}
+            {seedResult && seedResult.skipped === -1 && (
+              <div className="text-xs text-red-500">Ошибка при загрузке</div>
+            )}
+            <button onClick={seedCatalog} disabled={seeding}
+              className={`w-full flex items-center justify-center gap-2 text-xs font-bold py-2.5 rounded-xl transition-all active:scale-95 disabled:opacity-60
+                ${alreadyFull
+                  ? 'bg-green-100 text-green-700 hover:bg-green-200 border border-green-300'
+                  : 'bg-black text-white hover:bg-gray-800 shadow-sm'}`}>
+              {seeding
+                ? <><Loader2 size={13} className="animate-spin" /> Загрузка…</>
+                : alreadyFull
+                  ? <><RotateCcw size={13} /> Обновить каталог</>
+                  : <><Package size={13} /> Загрузить каталог</>}
+            </button>
+          </div>
+
+          {/* Резервная копия */}
+          <BackupSection onImportSuccess={() => { void reload(); onPhotoChange?.(); onSettingsChange?.(); }} />
+        </div>
+      </div>
     </div>
   );
 }
