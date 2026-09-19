@@ -355,6 +355,7 @@ type SurfaceConfig = {
   wallHeightMm: number;  // 0 = not specified
   panelOrientation: 'vertical' | 'horizontal';
   jointProfilePosition: ('bottom' | 'top')[];
+  dividerStyleOverrides?: Record<number, MoldingStyle>; // per-divider style override
 };
 const defaultSurfaceConfig = (): SurfaceConfig => ({
   panelCount: 5,
@@ -372,6 +373,7 @@ const defaultSurfaceConfig = (): SurfaceConfig => ({
   wallHeightMm: 0,
   panelOrientation: 'vertical',
   jointProfilePosition: ['bottom'],
+  dividerStyleOverrides: {},
 });
 
 const SURFACE_LABELS = ['Стена 1 · Основная', 'Стена 2', 'Стена 3'];
@@ -652,6 +654,10 @@ const BambooStudio = () => {
   const vMoldingCountRef = useRef(1);
   const [panelOrientation, setPanelOrientation] = useState<'vertical' | 'horizontal'>('vertical');
   const panelOrientationRef = useRef<'vertical' | 'horizontal'>('vertical');
+  const [dividerStyleOverrides, setDividerStyleOverrides] = useState<Record<number, MoldingStyle>>({});
+  const dividerStyleOverridesRef = useRef<Record<number, MoldingStyle>>({});
+  const [selectedDividerIdx, setSelectedDividerIdx] = useState<number | null>(null);
+  const selectedDividerIdxRef = useRef<number | null>(null);
   // Mask stored as strokes — never gets reset by canvas operations
   const maskStrokesRef = useRef<Array<{ x: number; y: number; r: number }>>([]);
   const maskUndoStackRef = useRef<number[]>([]); // stores stroke-array length before each erase drag
@@ -683,6 +689,7 @@ const BambooStudio = () => {
     panelOrientation: 'vertical' | 'horizontal';
     edgeProfileSides: { top: boolean; bottom: boolean; left: boolean; right: boolean };
     jointProfilePosition: ('bottom' | 'top')[];
+    dividerStyleOverrides: Record<number, MoldingStyle>;
   };
   const historyRef = useRef<HistorySnapshot[]>([]);
   const redoRef   = useRef<HistorySnapshot[]>([]);
@@ -714,6 +721,7 @@ const BambooStudio = () => {
       panelOrientation: panelOrientationRef.current,
       edgeProfileSides: { ...edgeProfileSidesRef.current },
       jointProfilePosition: [...jointProfilePositionRef.current],
+      dividerStyleOverrides: { ...dividerStyleOverridesRef.current },
     });
     if (historyRef.current.length > 50) historyRef.current.shift();
     setHistoryLen(historyRef.current.length);
@@ -740,6 +748,7 @@ const BambooStudio = () => {
     panelOrientation: panelOrientationRef.current,
     edgeProfileSides: { ...edgeProfileSidesRef.current },
     jointProfilePosition: [...jointProfilePositionRef.current],
+    dividerStyleOverrides: { ...dividerStyleOverridesRef.current },
   }), []);
 
   // Restore a snapshot to live state
@@ -763,6 +772,7 @@ const BambooStudio = () => {
       setVMoldingCount(prev.vMoldingCount);
       setPanelOrientation(prev.panelOrientation);
       setJointProfilePosition(prev.jointProfilePosition ?? ['bottom']);
+      setDividerStyleOverrides(prev.dividerStyleOverrides ?? {});
     } else {
       const cfg = surfacesRef.current[prev.surfaceIndex] ?? defaultSurfaceConfig();
       surfacesRef.current[prev.surfaceIndex] = {
@@ -782,6 +792,7 @@ const BambooStudio = () => {
         vMoldingCount: prev.vMoldingCount,
         panelOrientation: prev.panelOrientation,
         jointProfilePosition: prev.jointProfilePosition ?? ['bottom'],
+        dividerStyleOverrides: prev.dividerStyleOverrides ?? {},
       };
       setPoints(pv => [...pv]);
     }
@@ -854,9 +865,12 @@ const BambooStudio = () => {
       wallWidthMm, wallHeightMm,
       panelOrientation,
       jointProfilePosition,
+      dividerStyleOverrides,
     };
-  }, [activeSurface, panelCount, dividerPositions, sectorMaterials, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, vMoldingPositions, vMoldingCount, wallWidthMm, wallHeightMm, panelOrientation, jointProfilePosition]);
+  }, [activeSurface, panelCount, dividerPositions, sectorMaterials, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, vMoldingPositions, vMoldingCount, wallWidthMm, wallHeightMm, panelOrientation, jointProfilePosition, dividerStyleOverrides]);
   useEffect(() => { jointProfilePositionRef.current = jointProfilePosition; }, [jointProfilePosition]);
+  useEffect(() => { dividerStyleOverridesRef.current = dividerStyleOverrides; }, [dividerStyleOverrides]);
+  useEffect(() => { selectedDividerIdxRef.current = selectedDividerIdx; }, [selectedDividerIdx]);
 
   // Ctrl+Z global undo / Ctrl+Y global redo
   useEffect(() => {
@@ -892,6 +906,7 @@ const BambooStudio = () => {
       wallHeightMm: wallHeightMmRef.current,
       panelOrientation: panelOrientationRef.current,
       jointProfilePosition: [...jointProfilePositionRef.current],
+      dividerStyleOverrides: { ...dividerStyleOverridesRef.current },
     };
     const cfg = surfacesRef.current[idx] ?? defaultSurfaceConfig();
     surfacesRef.current[idx] = cfg;
@@ -912,6 +927,7 @@ const BambooStudio = () => {
     setWallHeightMm(cfg.wallHeightMm);
     setPanelOrientation(cfg.panelOrientation ?? 'vertical');
     setJointProfilePosition(cfg.jointProfilePosition ?? ['bottom']);
+    setDividerStyleOverrides(cfg.dividerStyleOverrides ?? {});
     setActiveSector(null);
   }, []);
 
@@ -1324,7 +1340,12 @@ const BambooStudio = () => {
           tCtx.stroke();
         }
 
-        tCtx.strokeStyle = 'rgba(0,0,0,0.05)';
+        // Faint border in the panel's own color at ~10% opacity
+        const hex6 = material.color.replace('#', '');
+        const br = parseInt(hex6.slice(0, 2), 16);
+        const bg = parseInt(hex6.slice(2, 4), 16);
+        const bb = parseInt(hex6.slice(4, 6), 16);
+        tCtx.strokeStyle = `rgba(${br},${bg},${bb},0.10)`;
         tCtx.lineWidth = 0.75;
         tCtx.stroke();
       }
@@ -1340,9 +1361,10 @@ const BambooStudio = () => {
           const bY = isHoriz ? qp[1].y + (qp[2].y - qp[1].y) * ratio : qp[3].y + (qp[2].y - qp[3].y) * ratio;
 
           tCtx.save();
-          tCtx.strokeStyle = 'rgba(255,255,255,0.6)';
-          tCtx.lineWidth = 2;
-          tCtx.setLineDash([6, 4]);
+          const isSelDiv = (dIdx: number) => selectedDividerIdxRef.current === dIdx;
+          tCtx.strokeStyle = 'rgba(255,255,255,0.45)';
+          tCtx.lineWidth = 1.5;
+          tCtx.setLineDash([]);
           tCtx.beginPath();
           tCtx.moveTo(aX, aY);
           tCtx.lineTo(bX, bY);
@@ -1352,15 +1374,17 @@ const BambooStudio = () => {
           // Handle circle at midpoint
           const midX = (aX + bX) / 2;
           const midY = (aY + bY) / 2;
+          const dIdx = cfg.dividerPositions.indexOf(ratio);
+          const selDiv = isSelDiv(dIdx);
           tCtx.save();
-          tCtx.fillStyle = 'white';
-          tCtx.strokeStyle = 'rgba(0,0,0,0.3)';
+          tCtx.fillStyle = selDiv ? '#1d4ed8' : 'white';
+          tCtx.strokeStyle = selDiv ? '#1e40af' : 'rgba(0,0,0,0.25)';
           tCtx.lineWidth = 1.5;
           tCtx.beginPath();
           tCtx.arc(midX, midY, 8, 0, Math.PI * 2);
           tCtx.fill();
           tCtx.stroke();
-          tCtx.fillStyle = '#555';
+          tCtx.fillStyle = selDiv ? 'white' : '#555';
           tCtx.font = 'bold 10px sans-serif';
           tCtx.textAlign = 'center';
           tCtx.textBaseline = 'middle';
@@ -1374,16 +1398,17 @@ const BambooStudio = () => {
       const curMoldingStyle = cfg.moldingStyle;
       const curMoldingWidth = cfg.moldingWidth;
 
-      // User-set vertical profile joints at divider positions
-      if (curMoldingStyle !== 'none' && cfg.dividerPositions.length > 0) {
-        cfg.dividerPositions.forEach((ratio) => {
+      // User-set vertical profile joints at divider positions (per-divider style override)
+      if (cfg.dividerPositions.length > 0) {
+        cfg.dividerPositions.forEach((ratio, dIdx) => {
+          const dStyle = cfg.dividerStyleOverrides?.[dIdx] ?? curMoldingStyle;
+          if (dStyle === 'none') return;
           // Profiles are always VERTICAL lines (top→bottom) regardless of panel orientation.
-          // Divider ratio is always a horizontal position (left→right).
           const aX = qp[0].x + (qp[1].x - qp[0].x) * ratio;
           const aY = qp[0].y + (qp[1].y - qp[0].y) * ratio;
           const bX = qp[3].x + (qp[2].x - qp[3].x) * ratio;
           const bY = qp[3].y + (qp[2].y - qp[3].y) * ratio;
-          drawMoldLine(aX, aY, bX, bY, curMoldingStyle, curMoldingWidth);
+          drawMoldLine(aX, aY, bX, bY, dStyle as Exclude<MoldingStyle,'none'>, curMoldingWidth);
         });
       }
 
@@ -1468,9 +1493,9 @@ const BambooStudio = () => {
           // Draw drag handle (visible when not erasing and not exporting)
           if (isActive && !curIsErasing && !forExportRef.current) {
             tCtx.save();
-            tCtx.strokeStyle = 'rgba(255,255,255,0.6)';
-            tCtx.lineWidth = 2;
-            tCtx.setLineDash([6, 4]);
+            tCtx.strokeStyle = 'rgba(255,255,255,0.45)';
+            tCtx.lineWidth = 1.5;
+            tCtx.setLineDash([]);
             tCtx.beginPath();
             tCtx.moveTo(lx, ly);
             tCtx.lineTo(rx, ry);
@@ -1577,6 +1602,7 @@ const BambooStudio = () => {
         wallHeightMm: wallHeightMmRef.current,
         panelOrientation: panelOrientationRef.current,
         jointProfilePosition: jointProfilePositionRef.current,
+        dividerStyleOverrides: dividerStyleOverridesRef.current,
       };
       const quadCfgs: SurfaceConfig[] = [];
       for (let q = 0; q < nQuads; q++) {
@@ -2113,6 +2139,9 @@ const BambooStudio = () => {
       pushHistory();
       draggingDividerIndexRef.current = divIdx;
       setIsDraggingDivider(true);
+      setSelectedDividerIdx(divIdx);
+    } else {
+      setSelectedDividerIdx(null);
     }
   };
 
@@ -4268,6 +4297,36 @@ const BambooStudio = () => {
                   <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Профиль вертик.</span>
                 </div>
                 <MoldingStyleRow value={moldingStyle} onChange={(v) => { pushHistory(); setMoldingStyle(v); if (v !== 'none') setMoldingWidth(1); }} vertical={true}/>
+                {/* Per-divider override: shown when user clicked a specific divider handle */}
+                {selectedDividerIdx !== null && selectedDividerIdx < panelCount - 1 && (
+                  <div className="mt-2 pt-2 border-t border-gray-100">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[9px] font-black text-blue-600 uppercase tracking-wide">
+                        Разделитель {selectedDividerIdx + 1}
+                      </span>
+                      {dividerStyleOverrides[selectedDividerIdx] != null && (
+                        <button
+                          className="text-[8px] text-gray-400 hover:text-red-500 font-bold transition-colors"
+                          onClick={() => {
+                            const upd = { ...dividerStyleOverrides };
+                            delete upd[selectedDividerIdx];
+                            setDividerStyleOverrides(upd);
+                          }}
+                        >
+                          ↺ Общий
+                        </button>
+                      )}
+                    </div>
+                    <MoldingStyleRow
+                      value={dividerStyleOverrides[selectedDividerIdx] ?? moldingStyle}
+                      onChange={(v) => {
+                        pushHistory();
+                        setDividerStyleOverrides({ ...dividerStyleOverrides, [selectedDividerIdx]: v });
+                      }}
+                      vertical={true}
+                    />
+                  </div>
+                )}
                 {panelCount >= 2 && (() => {
                   const hasNoMetalAdj = Array.from({ length: panelCount - 1 }, (_, j) => j).some(j => {
                     const l = sectorMaterials[j], r = sectorMaterials[j + 1];
