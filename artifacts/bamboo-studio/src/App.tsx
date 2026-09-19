@@ -1530,7 +1530,7 @@ const BambooStudio = () => {
           drawMoldLine(lx, ly, rx, ry, autoHStyle, autoHWidth);
         };
 
-        if (!allNoProfile && cfg.wallHeightMm > singleRowH) {
+        if (cfg.wallHeightMm > singleRowH) {
           const rowCount = Math.ceil(cfg.wallHeightMm / singleRowH);
           // cutH = height of the partial panel at the extension end
           const cutH = cfg.wallHeightMm - (rowCount - 1) * singleRowH;
