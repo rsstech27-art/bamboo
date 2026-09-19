@@ -1116,9 +1116,12 @@ const BambooStudio = () => {
             const ts = material.textureScale ?? 1;
             // If textureScale set explicitly: use 1/ts (artistic repeat scale).
             // Otherwise scale so the texture covers the full panel height (no seam).
+            // For both vertical and horizontal panels, scale so the texture
+            // covers one panel-height unit — this prevents the texture from
+            // being stretched across a wide horizontal panel.
             const scale = ts > 1
               ? 1 / ts
-              : (isHoriz ? dW / cachedTex.width : dH / cachedTex.height);
+              : dH / cachedTex.height;
             const pattern = tCtx.createPattern(cachedTex, 'repeat');
             if (pattern) {
               const m = new DOMMatrix();
