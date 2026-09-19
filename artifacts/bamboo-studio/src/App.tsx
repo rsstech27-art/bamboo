@@ -1139,7 +1139,7 @@ const BambooStudio = () => {
           tCtx.shadowColor = 'rgba(255, 255, 255, 1)';
           tCtx.shadowBlur  = lw * 8;
           tCtx.strokeStyle = '#ffffff';
-          tCtx.lineWidth   = Math.max(lw * 0.28, 1.2);
+          tCtx.lineWidth   = Math.max(lw * 0.5, 2);
           tCtx.beginPath(); tCtx.moveTo(x1, y1); tCtx.lineTo(x2, y2); tCtx.stroke();
         } else {
           // Normal single stripe
