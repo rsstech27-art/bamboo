@@ -128,7 +128,7 @@ function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Editable-name + editable-price row for default (built-in) series/moldings */
-function EditableRow({ defaultName, defaultPrice, nameOverride, priceOverride, onNameChange, onPriceChange, unitLabel = '₽' }: {
+function EditableRow({ defaultName, defaultPrice, nameOverride, priceOverride, onNameChange, onPriceChange, unitLabel, onDelete }: {
   defaultName: string;
   defaultPrice: number;
   nameOverride?: string;
@@ -136,6 +136,7 @@ function EditableRow({ defaultName, defaultPrice, nameOverride, priceOverride, o
   onNameChange: (v: string) => void;
   onPriceChange: (v: number) => void;
   unitLabel?: string;
+  onDelete?: () => void;
 }) {
   const effectiveName  = nameOverride  ?? defaultName;
   const effectivePrice = priceOverride ?? defaultPrice;
@@ -175,8 +176,14 @@ function EditableRow({ defaultName, defaultPrice, nameOverride, priceOverride, o
           onKeyDown={e => e.key === 'Enter' && commitPrice()}
           className="w-24 text-right text-sm px-2 py-1.5 rounded-lg border border-gray-200 bg-gray-50 focus:border-black focus:bg-white text-gray-700 outline-none transition-colors"
         />
-        <span className="text-xs text-gray-400">{unitLabel}</span>
+        {unitLabel && <span className="text-xs text-gray-400">{unitLabel}</span>}
       </div>
+      {onDelete && (
+        <button onClick={() => { if (confirm(`Удалить «${effectiveName}»?`)) onDelete!(); }}
+          title="Удалить" className="p-1.5 text-gray-300 hover:text-red-500 transition-colors shrink-0">
+          <Trash2 size={13} />
+        </button>
+      )}
     </div>
   );
 }
@@ -303,9 +310,11 @@ function AddItemForm({ onAdd, buttonLabel = 'Добавить серию', formT
 function TabPrices({
   panelOverrides, moldingOverrides, seriesNameOverrides, moldingNameOverrides,
   customSeries, customMoldings,
+  hiddenSeriesIds, hiddenMoldingIds, hiddenExtrasIds,
   onUpdatePanel, onUpdateMolding, onUpdateSeriesName, onUpdateMoldingName,
   onAddSeries, onDeleteSeries, onUpdateCustomSeries,
   onAddMolding, onDeleteMolding, onUpdateCustomMolding,
+  onHideSeries, onHideMolding, onHideExtra,
   onReset, extrasOverrides, onUpdateExtras,
 }: {
   panelOverrides: PriceMap;
@@ -314,6 +323,9 @@ function TabPrices({
   moldingNameOverrides: SeriesNames;
   customSeries: SeriesDefinition[];
   customMoldings: SeriesDefinition[];
+  hiddenSeriesIds: string[];
+  hiddenMoldingIds: string[];
+  hiddenExtrasIds: string[];
   onUpdatePanel: (id: string, p: number) => void;
   onUpdateMolding: (id: string, p: number) => void;
   onUpdateSeriesName: (id: string, name: string) => void;
@@ -324,16 +336,24 @@ function TabPrices({
   onAddMolding: (name: string, price: number) => void;
   onDeleteMolding: (id: string) => void;
   onUpdateCustomMolding: (id: string, name: string, price: number) => void;
+  onHideSeries: (id: string) => void;
+  onHideMolding: (id: string) => void;
+  onHideExtra: (id: string) => void;
   onReset: () => void;
   extrasOverrides: PriceMap;
   onUpdateExtras: (id: string, price: number) => void;
 }) {
+  const [seriesOpen,  setSeriesOpen]  = useState(true);
   const [moldingsOpen, setMoldingsOpen] = useState(true);
   const [extrasOpen, setExtrasOpen] = useState(false);
 
+  const visibleSeries   = DEFAULT_SERIES_PRICES.filter(s => !hiddenSeriesIds.includes(s.id));
+  const visibleMoldings = DEFAULT_MOLDING_PRICES.filter(m => !hiddenMoldingIds.includes(m.id));
+  const visibleExtras   = DEFAULT_EXTRAS.filter(e => !hiddenExtrasIds.includes(e.id));
+
   return (
     <div className="max-w-xl mx-auto space-y-6 py-6 px-4">
-      {/* Reset bar — only shown when there are overrides */}
+      {/* Reset bar */}
       {(Object.keys(panelOverrides).length > 0 || Object.keys(moldingOverrides).length > 0 ||
         Object.keys(seriesNameOverrides).length > 0 || Object.keys(moldingNameOverrides).length > 0) && (
         <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
@@ -347,39 +367,44 @@ function TabPrices({
 
       {/* ── Серии панелей ── */}
       <section>
-        <div className="flex items-center justify-between mb-3">
+        <button onClick={() => setSeriesOpen(v => !v)}
+          className="w-full flex items-center justify-between group mb-3">
           <div className="flex items-center gap-2">
-            <ChevronRight size={13} className="text-gray-400" />
-            <h3 className="text-xs font-black uppercase tracking-widest text-gray-500">Серии панелей</h3>
+            <ChevronRight size={13} className={`text-gray-400 transition-transform ${seriesOpen ? 'rotate-90' : ''}`} />
+            <h3 className="text-xs font-black uppercase tracking-widest text-gray-500 group-hover:text-gray-700 transition-colors">Серии панелей</h3>
           </div>
-          <span className="text-[10px] text-gray-400">Название · Цена (₽/панель)</span>
-        </div>
-        <div className="bg-white border border-gray-100 rounded-xl px-4 shadow-sm">
-          {DEFAULT_SERIES_PRICES.map(s => (
-            <EditableRow
-              key={s.id}
-              defaultName={s.name}
-              defaultPrice={s.defaultPrice}
-              nameOverride={seriesNameOverrides[s.id]}
-              priceOverride={panelOverrides[s.id]}
-              onNameChange={name => onUpdateSeriesName(s.id, name)}
-              onPriceChange={price => onUpdatePanel(s.id, price)}
-            />
-          ))}
-          {customSeries.map(s => (
-            <CustomItemRow
-              key={s.id}
-              item={s}
-              onUpdate={(name, price) => onUpdateCustomSeries(s.id, name, price)}
-              onDelete={() => onDeleteSeries(s.id)}
-              unitLabel="₽/панель"
-            />
-          ))}
-        </div>
-        <div className="mt-3">
-          <AddItemForm onAdd={onAddSeries} buttonLabel="Добавить серию" formTitle="Новая серия"
-            namePlaceholder="Название серии" priceLabel="Цена, ₽/панель" errorFallback="Не удалось добавить серию" />
-        </div>
+          <span className="text-[10px] text-gray-400">Название · Цена (₽)</span>
+        </button>
+        {seriesOpen && (
+          <>
+            <div className="bg-white border border-gray-100 rounded-xl px-4 shadow-sm">
+              {visibleSeries.map(s => (
+                <EditableRow
+                  key={s.id}
+                  defaultName={s.name}
+                  defaultPrice={s.defaultPrice}
+                  nameOverride={seriesNameOverrides[s.id]}
+                  priceOverride={panelOverrides[s.id]}
+                  onNameChange={name => onUpdateSeriesName(s.id, name)}
+                  onPriceChange={price => onUpdatePanel(s.id, price)}
+                  onDelete={() => onHideSeries(s.id)}
+                />
+              ))}
+              {customSeries.map(s => (
+                <CustomItemRow
+                  key={s.id}
+                  item={s}
+                  onUpdate={(name, price) => onUpdateCustomSeries(s.id, name, price)}
+                  onDelete={() => onDeleteSeries(s.id)}
+                />
+              ))}
+            </div>
+            <div className="mt-3">
+              <AddItemForm onAdd={onAddSeries} buttonLabel="Добавить серию" formTitle="Новая серия"
+                namePlaceholder="Название серии" priceLabel="Цена, ₽" errorFallback="Не удалось добавить серию" />
+            </div>
+          </>
+        )}
       </section>
 
       {/* ── Профили ── */}
@@ -395,7 +420,7 @@ function TabPrices({
         {moldingsOpen && (
           <>
             <div className="bg-white border border-gray-100 rounded-xl px-4 shadow-sm">
-              {DEFAULT_MOLDING_PRICES.map(m => (
+              {visibleMoldings.map(m => (
                 <EditableRow
                   key={m.id}
                   defaultName={m.name}
@@ -404,6 +429,7 @@ function TabPrices({
                   priceOverride={moldingOverrides[m.id]}
                   onNameChange={name => onUpdateMoldingName(m.id, name)}
                   onPriceChange={price => onUpdateMolding(m.id, price)}
+                  onDelete={() => onHideMolding(m.id)}
                 />
               ))}
               {customMoldings.map(m => (
@@ -412,7 +438,6 @@ function TabPrices({
                   item={m}
                   onUpdate={(name, price) => onUpdateCustomMolding(m.id, name, price)}
                   onDelete={() => onDeleteMolding(m.id)}
-                  unitLabel="₽/3 м"
                 />
               ))}
             </div>
@@ -437,7 +462,7 @@ function TabPrices({
         </button>
         {extrasOpen && (
           <div className="bg-white border border-gray-100 rounded-xl px-4 shadow-sm">
-            {DEFAULT_EXTRAS.map(e => (
+            {visibleExtras.map(e => (
               <EditableRow
                 key={e.id}
                 defaultName={e.name}
@@ -446,6 +471,7 @@ function TabPrices({
                 onNameChange={() => {/* имя не редактируется */}}
                 onPriceChange={price => onUpdateExtras(e.id, price)}
                 unitLabel={e.unit}
+                onDelete={() => onHideExtra(e.id)}
               />
             ))}
           </div>
@@ -1430,15 +1456,17 @@ function OrderCard({ order, expanded, onToggle }: {
                         <DownloadIcon /> Скачать
                       </a>
                     )}
-                    <button
-                      onClick={e => { e.stopPropagation(); afterInputRef.current?.click(); }}
-                      disabled={afterUploading}
-                      className="flex items-center gap-1 text-[10px] font-bold text-gray-400 hover:text-black transition-colors disabled:opacity-40">
-                      {afterUploading
-                        ? <Loader2 size={10} className="animate-spin" />
-                        : <Upload size={10} />}
-                      {afterPhotoUrl ? 'Заменить' : 'Добавить'}
-                    </button>
+                    {!afterPhotoUrl && (
+                      <button
+                        onClick={e => { e.stopPropagation(); afterInputRef.current?.click(); }}
+                        disabled={afterUploading}
+                        className="flex items-center gap-1 text-[10px] font-bold text-gray-400 hover:text-black transition-colors disabled:opacity-40">
+                        {afterUploading
+                          ? <Loader2 size={10} className="animate-spin" />
+                          : <Upload size={10} />}
+                        Добавить
+                      </button>
+                    )}
                   </div>
                 </div>
                 {afterPhotoUrl
@@ -1794,6 +1822,9 @@ interface Props {
   moldingNameOverrides: SeriesNames;
   customSeries: SeriesDefinition[];
   customMoldings: SeriesDefinition[];
+  hiddenSeriesIds: string[];
+  hiddenMoldingIds: string[];
+  hiddenExtrasIds: string[];
   seriesDefinitions: SeriesDefinition[];
   onUpdatePanel: (id: string, p: number) => void;
   onUpdateMolding: (id: string, p: number) => void;
@@ -1805,6 +1836,9 @@ interface Props {
   onAddMolding: (name: string, price: number) => void;
   onDeleteMolding: (id: string) => void;
   onUpdateCustomMolding: (id: string, name: string, price: number) => void;
+  onHideSeries: (id: string) => void;
+  onHideMolding: (id: string) => void;
+  onHideExtra: (id: string) => void;
   onReset: () => void;
   extrasOverrides: PriceMap;
   onUpdateExtras: (id: string, price: number) => void;
@@ -1816,9 +1850,11 @@ interface Props {
 export function ManagerPanel({
   panelOverrides, moldingOverrides, seriesNameOverrides, moldingNameOverrides,
   customSeries, customMoldings, seriesDefinitions,
+  hiddenSeriesIds, hiddenMoldingIds, hiddenExtrasIds,
   onUpdatePanel, onUpdateMolding, onUpdateSeriesName, onUpdateMoldingName,
   onAddSeries, onDeleteSeries, onUpdateCustomSeries,
   onAddMolding, onDeleteMolding, onUpdateCustomMolding,
+  onHideSeries, onHideMolding, onHideExtra,
   onReset, onClose, onPhotoChange, onSettingsChange,
   extrasOverrides, onUpdateExtras,
 }: Props) {
@@ -1914,6 +1950,9 @@ export function ManagerPanel({
                   moldingNameOverrides={moldingNameOverrides}
                   customSeries={customSeries}
                   customMoldings={customMoldings}
+                  hiddenSeriesIds={hiddenSeriesIds}
+                  hiddenMoldingIds={hiddenMoldingIds}
+                  hiddenExtrasIds={hiddenExtrasIds}
                   onUpdatePanel={onUpdatePanel}
                   onUpdateMolding={onUpdateMolding}
                   onUpdateSeriesName={onUpdateSeriesName}
@@ -1924,6 +1963,9 @@ export function ManagerPanel({
                   onAddMolding={onAddMolding}
                   onDeleteMolding={onDeleteMolding}
                   onUpdateCustomMolding={onUpdateCustomMolding}
+                  onHideSeries={onHideSeries}
+                  onHideMolding={onHideMolding}
+                  onHideExtra={onHideExtra}
                   onReset={onReset}
                   extrasOverrides={extrasOverrides}
                   onUpdateExtras={onUpdateExtras}

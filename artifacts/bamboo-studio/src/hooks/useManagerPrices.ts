@@ -46,17 +46,24 @@ export type SeriesDefinition = {
 };
 
 // ── localStorage keys (used only as optimistic cache) ────────────────────────
-const LS_PANEL_KEY           = 'aw_manager_panel_prices';
-const LS_MOLDING_KEY         = 'aw_manager_molding_prices';
-const LS_SERIES_NAMES_KEY    = 'aw_manager_series_names';
-const LS_MOLDING_NAMES_KEY   = 'aw_manager_molding_names';
-const LS_CUSTOM_SERIES_KEY   = 'aw_manager_custom_series';
-const LS_CUSTOM_MOLDINGS_KEY = 'aw_manager_custom_moldings';
-const LS_EXTRAS_KEY          = 'aw_manager_extras_prices';
+const LS_PANEL_KEY            = 'aw_manager_panel_prices';
+const LS_MOLDING_KEY          = 'aw_manager_molding_prices';
+const LS_SERIES_NAMES_KEY     = 'aw_manager_series_names';
+const LS_MOLDING_NAMES_KEY    = 'aw_manager_molding_names';
+const LS_CUSTOM_SERIES_KEY    = 'aw_manager_custom_series';
+const LS_CUSTOM_MOLDINGS_KEY  = 'aw_manager_custom_moldings';
+const LS_EXTRAS_KEY           = 'aw_manager_extras_prices';
+const LS_HIDDEN_SERIES_KEY    = 'aw_manager_hidden_series';
+const LS_HIDDEN_MOLDINGS_KEY  = 'aw_manager_hidden_moldings';
+const LS_HIDDEN_EXTRAS_KEY    = 'aw_manager_hidden_extras';
 
 function loadLS(key: string): Record<string, unknown> {
   try { const r = localStorage.getItem(key); return r ? JSON.parse(r) as Record<string, unknown> : {}; }
   catch { return {}; }
+}
+function loadArr(key: string): string[] {
+  try { const r = localStorage.getItem(key); return Array.isArray(JSON.parse(r ?? 'null')) ? JSON.parse(r!) as string[] : []; }
+  catch { return []; }
 }
 function saveLS(key: string, v: Record<string, unknown>) {
   try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* ignore */ }
@@ -74,6 +81,9 @@ async function fetchSettings(): Promise<{
   custom_series?: SeriesDefinition[];
   custom_moldings?: SeriesDefinition[];
   extras_prices?: PriceMap;
+  hidden_series_ids?: string[];
+  hidden_molding_ids?: string[];
+  hidden_extras_ids?: string[];
 }> {
   try {
     const r = await fetch('/api/settings');
@@ -125,6 +135,9 @@ export function useManagerPrices() {
       return raw ? JSON.parse(raw) as SeriesDefinition[] : [];
     } catch { return []; }
   });
+  const [hiddenSeriesIds,  setHiddenSeriesIds]  = useState<string[]>(() => loadArr(LS_HIDDEN_SERIES_KEY));
+  const [hiddenMoldingIds, setHiddenMoldingIds] = useState<string[]>(() => loadArr(LS_HIDDEN_MOLDINGS_KEY));
+  const [hiddenExtrasIds,  setHiddenExtrasIds]  = useState<string[]>(() => loadArr(LS_HIDDEN_EXTRAS_KEY));
 
   // Refs for use in callbacks without stale closures
   const panelOverridesRef   = useRef(panelOverrides);
@@ -156,6 +169,9 @@ export function useManagerPrices() {
         setCustomMoldings(valid);
         try { localStorage.setItem(LS_CUSTOM_MOLDINGS_KEY, JSON.stringify(valid)); } catch { /* ignore */ }
       }
+      if (Array.isArray(remote.hidden_series_ids))  { setHiddenSeriesIds(remote.hidden_series_ids);   try { localStorage.setItem(LS_HIDDEN_SERIES_KEY,   JSON.stringify(remote.hidden_series_ids));  } catch { /* ignore */ } }
+      if (Array.isArray(remote.hidden_molding_ids)) { setHiddenMoldingIds(remote.hidden_molding_ids); try { localStorage.setItem(LS_HIDDEN_MOLDINGS_KEY, JSON.stringify(remote.hidden_molding_ids)); } catch { /* ignore */ } }
+      if (Array.isArray(remote.hidden_extras_ids))  { setHiddenExtrasIds(remote.hidden_extras_ids);   try { localStorage.setItem(LS_HIDDEN_EXTRAS_KEY,   JSON.stringify(remote.hidden_extras_ids));  } catch { /* ignore */ } }
     });
   }, []);
 
@@ -298,6 +314,36 @@ export function useManagerPrices() {
     });
   }, []);
 
+  const hideDefaultSeries = useCallback((id: string) => {
+    setHiddenSeriesIds(prev => {
+      if (prev.includes(id)) return prev;
+      const next = [...prev, id];
+      try { localStorage.setItem(LS_HIDDEN_SERIES_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      void putSetting('hidden_series_ids', next as unknown as Record<string, unknown>);
+      return next;
+    });
+  }, []);
+
+  const hideDefaultMolding = useCallback((id: string) => {
+    setHiddenMoldingIds(prev => {
+      if (prev.includes(id)) return prev;
+      const next = [...prev, id];
+      try { localStorage.setItem(LS_HIDDEN_MOLDINGS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      void putSetting('hidden_molding_ids', next as unknown as Record<string, unknown>);
+      return next;
+    });
+  }, []);
+
+  const hideDefaultExtra = useCallback((id: string) => {
+    setHiddenExtrasIds(prev => {
+      if (prev.includes(id)) return prev;
+      const next = [...prev, id];
+      try { localStorage.setItem(LS_HIDDEN_EXTRAS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      void putSetting('hidden_extras_ids', next as unknown as Record<string, unknown>);
+      return next;
+    });
+  }, []);
+
   const setExtrasPrice = useCallback((id: string, price: number) => {
     setExtrasOverrides(prev => {
       const next = { ...prev, [id]: price };
@@ -345,6 +391,9 @@ export function useManagerPrices() {
       setCustomMoldings(valid);
       try { localStorage.setItem(LS_CUSTOM_MOLDINGS_KEY, JSON.stringify(valid)); } catch { /* ignore */ }
     }
+    if (Array.isArray(remote.hidden_series_ids))  { setHiddenSeriesIds(remote.hidden_series_ids);   try { localStorage.setItem(LS_HIDDEN_SERIES_KEY,   JSON.stringify(remote.hidden_series_ids));  } catch { /* ignore */ } }
+    if (Array.isArray(remote.hidden_molding_ids)) { setHiddenMoldingIds(remote.hidden_molding_ids); try { localStorage.setItem(LS_HIDDEN_MOLDINGS_KEY, JSON.stringify(remote.hidden_molding_ids)); } catch { /* ignore */ } }
+    if (Array.isArray(remote.hidden_extras_ids))  { setHiddenExtrasIds(remote.hidden_extras_ids);   try { localStorage.setItem(LS_HIDDEN_EXTRAS_KEY,   JSON.stringify(remote.hidden_extras_ids));  } catch { /* ignore */ } }
   }, []);
 
   const seriesDefinitions = useMemo<SeriesDefinition[]>(() => [
@@ -367,6 +416,9 @@ export function useManagerPrices() {
     moldingNameOverrides,
     customSeries,
     customMoldings,
+    hiddenSeriesIds,
+    hiddenMoldingIds,
+    hiddenExtrasIds,
     seriesDefinitions,
     extrasOverrides,
     panelOverridesRef,
@@ -381,6 +433,9 @@ export function useManagerPrices() {
     addCustomMolding,
     deleteCustomMolding,
     updateCustomMolding,
+    hideDefaultSeries,
+    hideDefaultMolding,
+    hideDefaultExtra,
     setExtrasPrice,
     resetPrices,
     reloadSettings,

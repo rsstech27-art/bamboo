@@ -543,10 +543,12 @@ const BambooStudio = () => {
   const {
     panelOverrides, moldingOverrides, seriesNameOverrides, moldingNameOverrides,
     customSeries, customMoldings, seriesDefinitions,
+    hiddenSeriesIds, hiddenMoldingIds, hiddenExtrasIds,
     panelOverridesRef, moldingOverridesRef,
     setPanelPrice, setMoldingPrice, setSeriesName, setMoldingName,
     addCustomSeries, deleteCustomSeries, updateCustomSeries,
     addCustomMolding, deleteCustomMolding, updateCustomMolding,
+    hideDefaultSeries, hideDefaultMolding, hideDefaultExtra,
     resetPrices, extrasOverrides, setExtrasPrice,
     reloadSettings,
   } = useManagerPrices();
@@ -4688,6 +4690,9 @@ const BambooStudio = () => {
           moldingNameOverrides={moldingNameOverrides}
           customSeries={customSeries}
           customMoldings={customMoldings}
+          hiddenSeriesIds={hiddenSeriesIds}
+          hiddenMoldingIds={hiddenMoldingIds}
+          hiddenExtrasIds={hiddenExtrasIds}
           seriesDefinitions={seriesDefinitions}
           onUpdatePanel={setPanelPrice}
           onUpdateMolding={setMoldingPrice}
@@ -4699,6 +4704,9 @@ const BambooStudio = () => {
           onAddMolding={addCustomMolding}
           onDeleteMolding={deleteCustomMolding}
           onUpdateCustomMolding={updateCustomMolding}
+          onHideSeries={hideDefaultSeries}
+          onHideMolding={hideDefaultMolding}
+          onHideExtra={hideDefaultExtra}
           onReset={resetPrices}
           extrasOverrides={extrasOverrides}
           onUpdateExtras={setExtrasPrice}
