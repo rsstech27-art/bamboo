@@ -3420,12 +3420,12 @@ const BambooStudio = () => {
     const dir = vertical ? 'to-r' : 'to-b';
     const { color: curColor, modifier: curMod } = decodeMoldStyle(value);
 
-    // Radial-gradient "metallic sphere" icons for each colour
-    const COLOR_ICON: Record<string, React.CSSProperties> = {
-      none:     {},
-      black:    { background: 'radial-gradient(circle at 35% 30%, #606060, #1c1c1c 45%, #000 75%)' },
-      metallic: { background: 'radial-gradient(circle at 35% 30%, #ffffff, #b0b0b0 40%, #4a4a4a 75%)' },
-      bronze:   { background: 'radial-gradient(circle at 35% 30%, #e0a060, #a06030 40%, #3a1400 75%)' },
+    // Linear-gradient profile bar icons — simulates a real metal strip cross-section
+    const COLOR_BAR: Record<string, React.CSSProperties> = {
+      none:     { background: '#e5e7eb' },
+      black:    { background: 'linear-gradient(to bottom, #111 0%, #2a2a2a 18%, #4a4a4a 35%, #5a5a5a 50%, #3a3a3a 65%, #1a1a1a 82%, #080808 100%)' },
+      metallic: { background: 'linear-gradient(to bottom, #5a5a5a 0%, #9e9e9e 18%, #d8d8d8 35%, #ffffff 50%, #d0d0d0 65%, #8a8a8a 82%, #4a4a4a 100%)' },
+      bronze:   { background: 'linear-gradient(to bottom, #2e1400 0%, #7a3c10 18%, #be6e2e 35%, #e09050 50%, #b86020 65%, #6e3008 82%, #1e0800 100%)' },
     };
 
     const colorOpts: Array<{ id: string; label: string }> = [
@@ -3448,19 +3448,19 @@ const BambooStudio = () => {
             const active = curColor === o.id;
             return (
               <button key={o.id} onClick={() => onChange(encodeMoldStyle(o.id, o.id === 'none' ? 'normal' : curMod))}
-                className={`flex flex-col items-center gap-1 transition-all ${active ? 'opacity-100' : 'opacity-40 hover:opacity-70'}`}>
-                {/* icon */}
-                <div className={`w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all
-                  ${active ? 'border-gray-800 shadow-md' : 'border-gray-200'}`}
-                  style={COLOR_ICON[o.id]}>
+                className="flex flex-col items-center gap-1 transition-all">
+                {/* profile bar icon */}
+                <div className={`w-full h-5 rounded-sm border-2 flex items-center justify-center transition-all
+                  ${active ? 'border-gray-800 shadow-md scale-100' : 'border-transparent opacity-55'}`}
+                  style={COLOR_BAR[o.id]}>
                   {o.id === 'none' && (
-                    <svg width="12" height="12" viewBox="0 0 12 12" className="text-gray-400">
-                      <line x1="2" y1="2" x2="10" y2="10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                      <line x1="10" y1="2" x2="2" y2="10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                    <svg width="10" height="10" viewBox="0 0 10 10">
+                      <line x1="1.5" y1="1.5" x2="8.5" y2="8.5" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round"/>
+                      <line x1="8.5" y1="1.5" x2="1.5" y2="8.5" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round"/>
                     </svg>
                   )}
                 </div>
-                <span className="text-[7px] font-bold uppercase text-gray-500 leading-none">{o.label}</span>
+                <span className={`text-[7px] font-bold uppercase leading-none transition-all ${active ? 'text-gray-800' : 'text-gray-400'}`}>{o.label}</span>
               </button>
             );
           })}
