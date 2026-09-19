@@ -6,7 +6,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { createHash, randomBytes } from "crypto";
-import { requireAdminSession } from "../middleware/managerAuth";
+import { requireAdminOrPerm } from "../middleware/managerAuth";
 
 const router = Router();
 
@@ -24,7 +24,9 @@ function generatePassword(): string {
 }
 
 // ── GET /api/admin/users ──────────────────────────────────────────────────────
-router.get("/admin/users", requireAdminSession, async (_req, res) => {
+router.get("/admin/users",
+  requireAdminOrPerm(['user_management', 'canRead'], ['access_rights', 'canRead']),
+  async (_req, res) => {
   try {
     const users = await db.execute(sql`
       SELECT id, login, created_at FROM manager_users ORDER BY created_at
@@ -60,7 +62,9 @@ router.get("/admin/users", requireAdminSession, async (_req, res) => {
 });
 
 // ── POST /api/admin/users ─────────────────────────────────────────────────────
-router.post("/admin/users", requireAdminSession, async (req, res) => {
+router.post("/admin/users",
+  requireAdminOrPerm(['user_management', 'canEdit']),
+  async (req, res) => {
   const { login } = req.body as { login?: string };
   if (!login?.trim()) {
     return void res.status(400).json({ error: "Login is required." });
@@ -88,7 +92,9 @@ router.post("/admin/users", requireAdminSession, async (req, res) => {
 });
 
 // ── DELETE /api/admin/users/:id ───────────────────────────────────────────────
-router.delete("/admin/users/:id", requireAdminSession, async (req, res) => {
+router.delete("/admin/users/:id",
+  requireAdminOrPerm(['user_management', 'canDelete']),
+  async (req, res) => {
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) return void res.status(400).json({ error: "Invalid id." });
   await db.execute(sql`DELETE FROM manager_users WHERE id = ${id}`);
@@ -96,7 +102,9 @@ router.delete("/admin/users/:id", requireAdminSession, async (req, res) => {
 });
 
 // ── POST /api/admin/users/:id/reset-password ──────────────────────────────────
-router.post("/admin/users/:id/reset-password", requireAdminSession, async (req, res) => {
+router.post("/admin/users/:id/reset-password",
+  requireAdminOrPerm(['user_management', 'canEdit']),
+  async (req, res) => {
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) return void res.status(400).json({ error: "Invalid id." });
 
@@ -109,7 +117,9 @@ router.post("/admin/users/:id/reset-password", requireAdminSession, async (req, 
 });
 
 // ── PUT /api/admin/users/:id/permissions ─────────────────────────────────────
-router.put("/admin/users/:id/permissions", requireAdminSession, async (req, res) => {
+router.put("/admin/users/:id/permissions",
+  requireAdminOrPerm(['access_rights', 'canEdit']),
+  async (req, res) => {
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) return void res.status(400).json({ error: "Invalid id." });
 

@@ -157,11 +157,13 @@ function LoginScreen({
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ADMIN_SECTIONS = [
-  { id: 'prices',       label: 'Цены' },
-  { id: 'products',     label: 'Товары' },
-  { id: 'orders',       label: 'Заказы' },
-  { id: 'integrations', label: 'API' },
-  { id: 'backup',       label: 'Резервная копия' },
+  { id: 'prices',           label: 'Цены' },
+  { id: 'products',         label: 'Товары' },
+  { id: 'orders',           label: 'Заказы' },
+  { id: 'integrations',     label: 'API' },
+  { id: 'backup',           label: 'Резервная копия' },
+  { id: 'user_management',  label: 'Добавление пользователей' },
+  { id: 'access_rights',    label: 'Назначение прав доступа' },
 ] as const;
 
 interface MgrUser {
@@ -173,7 +175,20 @@ interface MgrUser {
 
 interface NewCreds { userId: number; login: string; password: string }
 
-function TabAdmin({ onBack }: { onBack: () => void }) {
+type SectionPerms = Record<string, { canRead: boolean; canEdit: boolean; canDelete: boolean }>;
+
+function TabAdmin({
+  onBack,
+  callerIsAdmin,
+  callerPermissions,
+}: {
+  onBack: () => void;
+  callerIsAdmin: boolean;
+  callerPermissions: SectionPerms | null;
+}) {
+  /** true if caller is admin OR has the given permission on the given section */
+  const can = (section: string, field: 'canRead' | 'canEdit' | 'canDelete') =>
+    callerIsAdmin || (callerPermissions?.[section]?.[field] ?? false);
   const [users, setUsers] = useState<MgrUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [addingUser, setAddingUser] = useState(false);
@@ -270,10 +285,12 @@ function TabAdmin({ onBack }: { onBack: () => void }) {
               <p className="text-xs text-gray-400">Настройка доступа к кабинету менеджера</p>
             </div>
           </div>
-          <button onClick={() => setAddingUser(true)}
-            className="flex items-center gap-2 bg-black text-white text-sm font-bold px-4 py-2 rounded-xl hover:bg-gray-800 transition-colors">
-            <UserPlus size={14} /> Добавить пользователя
-          </button>
+          {can('user_management', 'canEdit') && (
+            <button onClick={() => setAddingUser(true)}
+              className="flex items-center gap-2 bg-black text-white text-sm font-bold px-4 py-2 rounded-xl hover:bg-gray-800 transition-colors">
+              <UserPlus size={14} /> Добавить пользователя
+            </button>
+          )}
         </div>
 
         {/* New credentials banner */}
@@ -356,43 +373,55 @@ function TabAdmin({ onBack }: { onBack: () => void }) {
                   <tr key={`u-${user.id}`} className="border-b border-gray-100 bg-gray-50/60">
                     <td className="px-4 py-3 font-bold text-gray-900">{user.login}</td>
                     <td className="px-4 py-3">
-                      <button onClick={() => void resetPassword(user.id, user.login)}
-                        className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors">
-                        <RefreshCw size={11} /> Сбросить пароль
-                      </button>
+                      {can('user_management', 'canEdit') && (
+                        <button onClick={() => void resetPassword(user.id, user.login)}
+                          className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors">
+                          <RefreshCw size={11} /> Сбросить пароль
+                        </button>
+                      )}
                     </td>
                     <td colSpan={3} />
                     <td className="px-2 py-3 text-right">
-                      <button onClick={() => void deleteUser(user.id)}
-                        className="text-gray-300 hover:text-red-500 transition-colors p-1">
-                        <Trash2 size={14} />
-                      </button>
+                      {can('user_management', 'canDelete') && (
+                        <button onClick={() => void deleteUser(user.id)}
+                          className="text-gray-300 hover:text-red-500 transition-colors p-1">
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                     </td>
                   </tr>,
                   // ── Section permission rows ──────────────────────────────
                   ...ADMIN_SECTIONS.map(sec => {
                     const perm = user.permissions[sec.id] ?? { canRead: false, canEdit: false, canDelete: false };
-                    const noDelete = sec.id === 'integrations' || sec.id === 'backup';
+                    const noDelete = sec.id === 'integrations' || sec.id === 'backup' || sec.id === 'access_rights';
                     return (
                       <tr key={`${user.id}-${sec.id}`} className="border-b border-gray-50 hover:bg-gray-50/40 transition-colors">
                         <td className="px-4 py-2 pl-9 text-gray-400 text-xs">{sec.label}</td>
                         <td />
                         <td className="text-center py-2">
-                          <input type="checkbox" checked={perm.canRead}
-                            onChange={() => void togglePerm(user.id, sec.id, 'canRead', perm.canRead)}
-                            className="w-4 h-4 accent-black rounded cursor-pointer" />
+                          {can('access_rights', 'canEdit')
+                            ? <input type="checkbox" checked={perm.canRead}
+                                onChange={() => void togglePerm(user.id, sec.id, 'canRead', perm.canRead)}
+                                className="w-4 h-4 accent-black rounded cursor-pointer" />
+                            : <span className={`text-xs font-bold ${perm.canRead ? 'text-black' : 'text-gray-200'}`}>{perm.canRead ? '✓' : '—'}</span>
+                          }
                         </td>
                         <td className="text-center py-2">
-                          <input type="checkbox" checked={perm.canEdit}
-                            onChange={() => void togglePerm(user.id, sec.id, 'canEdit', perm.canEdit)}
-                            className="w-4 h-4 accent-black rounded cursor-pointer" />
+                          {can('access_rights', 'canEdit')
+                            ? <input type="checkbox" checked={perm.canEdit}
+                                onChange={() => void togglePerm(user.id, sec.id, 'canEdit', perm.canEdit)}
+                                className="w-4 h-4 accent-black rounded cursor-pointer" />
+                            : <span className={`text-xs font-bold ${perm.canEdit ? 'text-black' : 'text-gray-200'}`}>{perm.canEdit ? '✓' : '—'}</span>
+                          }
                         </td>
                         <td className="text-center py-2">
                           {noDelete
                             ? <span className="text-gray-200 text-xs">—</span>
-                            : <input type="checkbox" checked={perm.canDelete}
-                                onChange={() => void togglePerm(user.id, sec.id, 'canDelete', perm.canDelete)}
-                                className="w-4 h-4 accent-black rounded cursor-pointer" />
+                            : can('access_rights', 'canEdit')
+                              ? <input type="checkbox" checked={perm.canDelete}
+                                  onChange={() => void togglePerm(user.id, sec.id, 'canDelete', perm.canDelete)}
+                                  className="w-4 h-4 accent-black rounded cursor-pointer" />
+                              : <span className={`text-xs font-bold ${perm.canDelete ? 'text-black' : 'text-gray-200'}`}>{perm.canDelete ? '✓' : '—'}</span>
                           }
                         </td>
                         <td />
@@ -2579,7 +2608,7 @@ export function ManagerPanel({
                     </button>
                   );
                 })}
-                {isAdmin && (
+                {(isAdmin || permissions?.user_management?.canRead || permissions?.access_rights?.canRead) && (
                   <>
                     <div className="flex-1" />
                     <button onClick={() => setShowAdmin(true)}
@@ -2589,7 +2618,7 @@ export function ManagerPanel({
                           : 'border-transparent text-gray-500 hover:text-gray-300'
                       }`}>
                       <Shield size={14} />
-                      Администратор
+                      Пользователи
                     </button>
                   </>
                 )}
@@ -2597,8 +2626,12 @@ export function ManagerPanel({
             </div>
 
             {/* Admin panel (replaces tab content) */}
-            {showAdmin && isAdmin && (
-              <TabAdmin onBack={() => setShowAdmin(false)} />
+            {showAdmin && (isAdmin || permissions?.user_management?.canRead || permissions?.access_rights?.canRead) && (
+              <TabAdmin
+                onBack={() => setShowAdmin(false)}
+                callerIsAdmin={isAdmin}
+                callerPermissions={permissions}
+              />
             )}
 
             {/* Tab content */}
