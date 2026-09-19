@@ -48,6 +48,8 @@ export type SeriesDefinition = {
   custom?: boolean;
 };
 
+export type DbSaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+
 // ── localStorage keys (used only as optimistic cache) ────────────────────────
 const LS_PANEL_KEY            = 'aw_manager_panel_prices';
 const LS_MOLDING_KEY          = 'aw_manager_molding_prices';
@@ -69,6 +71,9 @@ function loadArr(key: string): string[] {
   catch { return []; }
 }
 function saveLS(key: string, v: Record<string, unknown>) {
+  try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* ignore */ }
+}
+function saveArrLS(key: string, v: unknown[]) {
   try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* ignore */ }
 }
 function clearLS(...keys: string[]) {
@@ -95,14 +100,27 @@ async function fetchSettings(): Promise<{
   } catch { return {}; }
 }
 
-async function putSetting(key: string, value: Record<string, unknown>) {
+/**
+ * Persist a setting to the DB via the authenticated manager API.
+ * Returns true on success, false on failure.
+ * Throws nothing — always resolves.
+ */
+async function putSetting(key: string, value: unknown): Promise<boolean> {
   try {
-    await managerFetch(`/api/settings/${key}`, {
+    const r = await managerFetch(`/api/settings/${key}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(value),
     });
-  } catch { /* best-effort */ }
+    if (!r.ok) {
+      console.error(`[manager/prices] DB save failed for "${key}": HTTP ${r.status}`);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error(`[manager/prices] Network error saving "${key}":`, e);
+    return false;
+  }
 }
 
 async function deleteSetting(key: string) {
@@ -142,11 +160,55 @@ export function useManagerPrices() {
   const [hiddenMoldingIds, setHiddenMoldingIds] = useState<string[]>(() => loadArr(LS_HIDDEN_MOLDINGS_KEY));
   const [hiddenExtrasIds,  setHiddenExtrasIds]  = useState<string[]>(() => loadArr(LS_HIDDEN_EXTRAS_KEY));
 
-  // Refs for use in callbacks without stale closures
-  const panelOverridesRef   = useRef(panelOverrides);
-  const moldingOverridesRef = useRef(moldingOverrides);
-  useEffect(() => { panelOverridesRef.current  = panelOverrides;  }, [panelOverrides]);
-  useEffect(() => { moldingOverridesRef.current = moldingOverrides; }, [moldingOverrides]);
+  // ── Save status for UI feedback ─────────────────────────────────────────────
+  const [dbSaveStatus, setDbSaveStatus] = useState<DbSaveStatus>('idle');
+  const saveResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingSaves   = useRef(0);
+
+  const markSaving = useCallback(() => {
+    pendingSaves.current++;
+    setDbSaveStatus('saving');
+    if (saveResetTimer.current) { clearTimeout(saveResetTimer.current); saveResetTimer.current = null; }
+  }, []);
+
+  const markDone = useCallback((ok: boolean) => {
+    pendingSaves.current = Math.max(0, pendingSaves.current - 1);
+    if (pendingSaves.current > 0) return; // more saves in-flight
+    setDbSaveStatus(ok ? 'saved' : 'error');
+    if (saveResetTimer.current) clearTimeout(saveResetTimer.current);
+    saveResetTimer.current = setTimeout(() => setDbSaveStatus('idle'), 3000);
+  }, []);
+
+  /** Persist a key to DB with visual status tracking. Call OUTSIDE setState updaters. */
+  const persist = useCallback(async (key: string, value: unknown) => {
+    markSaving();
+    const ok = await putSetting(key, value);
+    markDone(ok);
+  }, [markSaving, markDone]);
+
+  // ── Refs: always-current copies of state for use in callbacks ───────────────
+  // (avoids stale closures and allows calling side-effects OUTSIDE setState updaters)
+  const panelOverridesRef       = useRef(panelOverrides);
+  const moldingOverridesRef     = useRef(moldingOverrides);
+  const seriesNameOverridesRef  = useRef(seriesNameOverrides);
+  const moldingNameOverridesRef = useRef(moldingNameOverrides);
+  const extrasOverridesRef      = useRef(extrasOverrides);
+  const customSeriesRef         = useRef(customSeries);
+  const customMoldingsRef       = useRef(customMoldings);
+  const hiddenSeriesRef         = useRef(hiddenSeriesIds);
+  const hiddenMoldingsRef       = useRef(hiddenMoldingIds);
+  const hiddenExtrasRef         = useRef(hiddenExtrasIds);
+
+  useEffect(() => { panelOverridesRef.current       = panelOverrides;       }, [panelOverrides]);
+  useEffect(() => { moldingOverridesRef.current     = moldingOverrides;     }, [moldingOverrides]);
+  useEffect(() => { seriesNameOverridesRef.current  = seriesNameOverrides;  }, [seriesNameOverrides]);
+  useEffect(() => { moldingNameOverridesRef.current = moldingNameOverrides; }, [moldingNameOverrides]);
+  useEffect(() => { extrasOverridesRef.current      = extrasOverrides;      }, [extrasOverrides]);
+  useEffect(() => { customSeriesRef.current         = customSeries;         }, [customSeries]);
+  useEffect(() => { customMoldingsRef.current       = customMoldings;       }, [customMoldings]);
+  useEffect(() => { hiddenSeriesRef.current         = hiddenSeriesIds;      }, [hiddenSeriesIds]);
+  useEffect(() => { hiddenMoldingsRef.current       = hiddenMoldingIds;     }, [hiddenMoldingIds]);
+  useEffect(() => { hiddenExtrasRef.current         = hiddenExtrasIds;      }, [hiddenExtrasIds]);
 
   // On mount: load authoritative values from DB, then overwrite local state + cache
   useEffect(() => {
@@ -172,73 +234,75 @@ export function useManagerPrices() {
         setCustomMoldings(valid);
         try { localStorage.setItem(LS_CUSTOM_MOLDINGS_KEY, JSON.stringify(valid)); } catch { /* ignore */ }
       }
-      if (Array.isArray(remote.hidden_series_ids))  { setHiddenSeriesIds(remote.hidden_series_ids);   try { localStorage.setItem(LS_HIDDEN_SERIES_KEY,   JSON.stringify(remote.hidden_series_ids));  } catch { /* ignore */ } }
-      if (Array.isArray(remote.hidden_molding_ids)) { setHiddenMoldingIds(remote.hidden_molding_ids); try { localStorage.setItem(LS_HIDDEN_MOLDINGS_KEY, JSON.stringify(remote.hidden_molding_ids)); } catch { /* ignore */ } }
-      if (Array.isArray(remote.hidden_extras_ids))  { setHiddenExtrasIds(remote.hidden_extras_ids);   try { localStorage.setItem(LS_HIDDEN_EXTRAS_KEY,   JSON.stringify(remote.hidden_extras_ids));  } catch { /* ignore */ } }
+      if (Array.isArray(remote.hidden_series_ids))  { setHiddenSeriesIds(remote.hidden_series_ids);   saveArrLS(LS_HIDDEN_SERIES_KEY,   remote.hidden_series_ids); }
+      if (Array.isArray(remote.hidden_molding_ids)) { setHiddenMoldingIds(remote.hidden_molding_ids); saveArrLS(LS_HIDDEN_MOLDINGS_KEY, remote.hidden_molding_ids); }
+      if (Array.isArray(remote.hidden_extras_ids))  { setHiddenExtrasIds(remote.hidden_extras_ids);   saveArrLS(LS_HIDDEN_EXTRAS_KEY,   remote.hidden_extras_ids); }
     });
   }, []);
 
-  // ── Setters ─────────────────────────────────────────────────────────────────
+  // ── Setters — side-effects OUTSIDE setState updater to avoid React 18 anti-pattern ──
 
   const setPanelPrice = useCallback((seriesId: string, price: number) => {
-    setPanelOverrides(prev => {
-      const next = { ...prev, [seriesId]: price };
-      saveLS(LS_PANEL_KEY, next as Record<string, unknown>);
-      void putSetting('panel_prices', next as Record<string, unknown>);
-      return next;
-    });
-  }, []);
+    const next = { ...panelOverridesRef.current, [seriesId]: price };
+    panelOverridesRef.current = next;
+    saveLS(LS_PANEL_KEY, next as Record<string, unknown>);
+    setPanelOverrides(next);
+    void persist('panel_prices', next);
+  }, [persist]);
 
   const setMoldingPrice = useCallback((styleId: string, price: number) => {
-    setMoldingOverrides(prev => {
-      const next = { ...prev, [styleId]: price };
-      saveLS(LS_MOLDING_KEY, next as Record<string, unknown>);
-      void putSetting('molding_prices', next as Record<string, unknown>);
-      return next;
-    });
-  }, []);
+    const next = { ...moldingOverridesRef.current, [styleId]: price };
+    moldingOverridesRef.current = next;
+    saveLS(LS_MOLDING_KEY, next as Record<string, unknown>);
+    setMoldingOverrides(next);
+    void persist('molding_prices', next);
+  }, [persist]);
 
   const setSeriesName = useCallback((seriesId: string, name: string) => {
-    setSeriesNameOverrides(prev => {
-      const trimmed = name.trim();
-      const next: SeriesNames = { ...prev };
-      if (trimmed) { next[seriesId] = trimmed; } else { delete next[seriesId]; }
-      saveLS(LS_SERIES_NAMES_KEY, next as Record<string, unknown>);
-      void putSetting('series_names', next as Record<string, unknown>);
-      return next;
-    });
-  }, []);
+    const trimmed = name.trim();
+    const next: SeriesNames = { ...seriesNameOverridesRef.current };
+    if (trimmed) { next[seriesId] = trimmed; } else { delete next[seriesId]; }
+    seriesNameOverridesRef.current = next;
+    saveLS(LS_SERIES_NAMES_KEY, next as Record<string, unknown>);
+    setSeriesNameOverrides(next);
+    void persist('series_names', next);
+  }, [persist]);
 
   const setMoldingName = useCallback((moldingId: string, name: string) => {
-    setMoldingNameOverrides(prev => {
-      const trimmed = name.trim();
-      const next: SeriesNames = { ...prev };
-      if (trimmed) { next[moldingId] = trimmed; } else { delete next[moldingId]; }
-      saveLS(LS_MOLDING_NAMES_KEY, next as Record<string, unknown>);
-      void putSetting('molding_names', next as Record<string, unknown>);
-      return next;
-    });
-  }, []);
+    const trimmed = name.trim();
+    const next: SeriesNames = { ...moldingNameOverridesRef.current };
+    if (trimmed) { next[moldingId] = trimmed; } else { delete next[moldingId]; }
+    moldingNameOverridesRef.current = next;
+    saveLS(LS_MOLDING_NAMES_KEY, next as Record<string, unknown>);
+    setMoldingNameOverrides(next);
+    void persist('molding_names', next);
+  }, [persist]);
+
+  const setExtrasPrice = useCallback((id: string, price: number) => {
+    const next = { ...extrasOverridesRef.current, [id]: price };
+    extrasOverridesRef.current = next;
+    saveLS(LS_EXTRAS_KEY, next as Record<string, unknown>);
+    setExtrasOverrides(next);
+    void persist('extras_prices', next);
+  }, [persist]);
 
   const deleteCustomSeries = useCallback((id: string) => {
-    setCustomSeries(prev => {
-      const next = prev.filter(s => s.id !== id);
-      try { localStorage.setItem(LS_CUSTOM_SERIES_KEY, JSON.stringify(next)); } catch { /* ignore */ }
-      void putSetting('custom_series', next as unknown as Record<string, unknown>);
-      return next;
-    });
-  }, []);
+    const next = customSeriesRef.current.filter(s => s.id !== id);
+    customSeriesRef.current = next;
+    saveArrLS(LS_CUSTOM_SERIES_KEY, next);
+    setCustomSeries(next);
+    void persist('custom_series', next);
+  }, [persist]);
 
   const updateCustomSeries = useCallback((id: string, name: string, price: number) => {
     const trimmed = name.trim();
     if (!trimmed || !Number.isFinite(price) || price <= 0) return;
-    setCustomSeries(prev => {
-      const next = prev.map(s => s.id === id ? { ...s, name: trimmed, price: Math.round(price) } : s);
-      try { localStorage.setItem(LS_CUSTOM_SERIES_KEY, JSON.stringify(next)); } catch { /* ignore */ }
-      void putSetting('custom_series', next as unknown as Record<string, unknown>);
-      return next;
-    });
-  }, []);
+    const next = customSeriesRef.current.map(s => s.id === id ? { ...s, name: trimmed, price: Math.round(price) } : s);
+    customSeriesRef.current = next;
+    saveArrLS(LS_CUSTOM_SERIES_KEY, next);
+    setCustomSeries(next);
+    void persist('custom_series', next);
+  }, [persist]);
 
   const addCustomSeries = useCallback((name: string, price: number) => {
     const trimmed = name.trim();
@@ -246,8 +310,8 @@ export function useManagerPrices() {
     if (!Number.isFinite(price) || price <= 0) throw new Error('Укажите стоимость больше нуля');
 
     const allNames = [
-      ...DEFAULT_SERIES_PRICES.map(s => seriesNameOverrides[s.id] || s.name),
-      ...customSeries.map(s => s.name),
+      ...DEFAULT_SERIES_PRICES.map(s => seriesNameOverridesRef.current[s.id] || s.name),
+      ...customSeriesRef.current.map(s => s.name),
     ];
     if (allNames.some(n => n.localeCompare(trimmed, 'ru', { sensitivity: 'accent' }) === 0)) {
       throw new Error('Серия с таким названием уже существует');
@@ -259,110 +323,101 @@ export function useManagerPrices() {
       .replace(/^-+|-+$/g, '') || 'series';
     const usedIds = new Set([
       ...DEFAULT_SERIES_PRICES.map(s => s.id),
-      ...customSeries.map(s => s.id),
+      ...customSeriesRef.current.map(s => s.id),
     ]);
     let id = `custom-${slug}`;
     let suffix = 2;
     while (usedIds.has(id)) id = `custom-${slug}-${suffix++}`;
 
     const created: SeriesDefinition = { id, name: trimmed, price: Math.round(price), custom: true };
-    const next = [...customSeries, created];
+    const next = [...customSeriesRef.current, created];
+    customSeriesRef.current = next;
+    saveArrLS(LS_CUSTOM_SERIES_KEY, next);
     setCustomSeries(next);
-    try { localStorage.setItem(LS_CUSTOM_SERIES_KEY, JSON.stringify(next)); } catch { /* ignore */ }
-    void putSetting('custom_series', next as unknown as Record<string, unknown>);
+    void persist('custom_series', next);
     return created;
-  }, [customSeries, seriesNameOverrides]);
+  }, [persist]);
 
   const addCustomMolding = useCallback((name: string, price: number) => {
     const trimmed = name.trim();
     if (!trimmed) throw new Error('Введите название профиля');
     if (!Number.isFinite(price) || price <= 0) throw new Error('Укажите стоимость больше нуля');
     const allNames = [
-      ...DEFAULT_MOLDING_PRICES.map(m => moldingNameOverrides[m.id] || m.name),
-      ...customMoldings.map(m => m.name),
+      ...DEFAULT_MOLDING_PRICES.map(m => moldingNameOverridesRef.current[m.id] || m.name),
+      ...customMoldingsRef.current.map(m => m.name),
     ];
     if (allNames.some(n => n.localeCompare(trimmed, 'ru', { sensitivity: 'accent' }) === 0)) {
       throw new Error('Профиль с таким названием уже существует');
     }
     const slug = trimmed.toLocaleLowerCase('ru').replace(/[^a-zа-яё0-9]+/gi, '-').replace(/^-+|-+$/g, '') || 'profile';
-    const usedIds = new Set([...DEFAULT_MOLDING_PRICES.map(m => m.id), ...customMoldings.map(m => m.id)]);
+    const usedIds = new Set([...DEFAULT_MOLDING_PRICES.map(m => m.id), ...customMoldingsRef.current.map(m => m.id)]);
     let id = `custom-molding-${slug}`;
     let suffix = 2;
     while (usedIds.has(id)) id = `custom-molding-${slug}-${suffix++}`;
     const created: SeriesDefinition = { id, name: trimmed, price: Math.round(price), custom: true };
-    const next = [...customMoldings, created];
+    const next = [...customMoldingsRef.current, created];
+    customMoldingsRef.current = next;
+    saveArrLS(LS_CUSTOM_MOLDINGS_KEY, next);
     setCustomMoldings(next);
-    try { localStorage.setItem(LS_CUSTOM_MOLDINGS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
-    void putSetting('custom_moldings', next as unknown as Record<string, unknown>);
+    void persist('custom_moldings', next);
     return created;
-  }, [customMoldings, moldingNameOverrides]);
+  }, [persist]);
 
   const deleteCustomMolding = useCallback((id: string) => {
-    setCustomMoldings(prev => {
-      const next = prev.filter(m => m.id !== id);
-      try { localStorage.setItem(LS_CUSTOM_MOLDINGS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
-      void putSetting('custom_moldings', next as unknown as Record<string, unknown>);
-      return next;
-    });
-  }, []);
+    const next = customMoldingsRef.current.filter(m => m.id !== id);
+    customMoldingsRef.current = next;
+    saveArrLS(LS_CUSTOM_MOLDINGS_KEY, next);
+    setCustomMoldings(next);
+    void persist('custom_moldings', next);
+  }, [persist]);
 
   const updateCustomMolding = useCallback((id: string, name: string, price: number) => {
     const trimmed = name.trim();
     if (!trimmed || !Number.isFinite(price) || price <= 0) return;
-    setCustomMoldings(prev => {
-      const next = prev.map(m => m.id === id ? { ...m, name: trimmed, price: Math.round(price) } : m);
-      try { localStorage.setItem(LS_CUSTOM_MOLDINGS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
-      void putSetting('custom_moldings', next as unknown as Record<string, unknown>);
-      return next;
-    });
-  }, []);
+    const next = customMoldingsRef.current.map(m => m.id === id ? { ...m, name: trimmed, price: Math.round(price) } : m);
+    customMoldingsRef.current = next;
+    saveArrLS(LS_CUSTOM_MOLDINGS_KEY, next);
+    setCustomMoldings(next);
+    void persist('custom_moldings', next);
+  }, [persist]);
 
   const hideDefaultSeries = useCallback((id: string) => {
-    setHiddenSeriesIds(prev => {
-      if (prev.includes(id)) return prev;
-      const next = [...prev, id];
-      try { localStorage.setItem(LS_HIDDEN_SERIES_KEY, JSON.stringify(next)); } catch { /* ignore */ }
-      void putSetting('hidden_series_ids', next as unknown as Record<string, unknown>);
-      return next;
-    });
-  }, []);
+    if (hiddenSeriesRef.current.includes(id)) return;
+    const next = [...hiddenSeriesRef.current, id];
+    hiddenSeriesRef.current = next;
+    saveArrLS(LS_HIDDEN_SERIES_KEY, next);
+    setHiddenSeriesIds(next);
+    void persist('hidden_series_ids', next);
+  }, [persist]);
 
   const hideDefaultMolding = useCallback((id: string) => {
-    setHiddenMoldingIds(prev => {
-      if (prev.includes(id)) return prev;
-      const next = [...prev, id];
-      try { localStorage.setItem(LS_HIDDEN_MOLDINGS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
-      void putSetting('hidden_molding_ids', next as unknown as Record<string, unknown>);
-      return next;
-    });
-  }, []);
+    if (hiddenMoldingsRef.current.includes(id)) return;
+    const next = [...hiddenMoldingsRef.current, id];
+    hiddenMoldingsRef.current = next;
+    saveArrLS(LS_HIDDEN_MOLDINGS_KEY, next);
+    setHiddenMoldingIds(next);
+    void persist('hidden_molding_ids', next);
+  }, [persist]);
 
   const hideDefaultExtra = useCallback((id: string) => {
-    setHiddenExtrasIds(prev => {
-      if (prev.includes(id)) return prev;
-      const next = [...prev, id];
-      try { localStorage.setItem(LS_HIDDEN_EXTRAS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
-      void putSetting('hidden_extras_ids', next as unknown as Record<string, unknown>);
-      return next;
-    });
-  }, []);
-
-  const setExtrasPrice = useCallback((id: string, price: number) => {
-    setExtrasOverrides(prev => {
-      const next = { ...prev, [id]: price };
-      saveLS(LS_EXTRAS_KEY, next as Record<string, unknown>);
-      void putSetting('extras_prices', next as Record<string, unknown>);
-      return next;
-    });
-  }, []);
+    if (hiddenExtrasRef.current.includes(id)) return;
+    const next = [...hiddenExtrasRef.current, id];
+    hiddenExtrasRef.current = next;
+    saveArrLS(LS_HIDDEN_EXTRAS_KEY, next);
+    setHiddenExtrasIds(next);
+    void persist('hidden_extras_ids', next);
+  }, [persist]);
 
   const resetPrices = useCallback(() => {
     setPanelOverrides({});
     setMoldingOverrides({});
     setSeriesNameOverrides({});
     setMoldingNameOverrides({});
+    panelOverridesRef.current = {};
+    moldingOverridesRef.current = {};
+    seriesNameOverridesRef.current = {};
+    moldingNameOverridesRef.current = {};
     clearLS(LS_PANEL_KEY, LS_MOLDING_KEY, LS_SERIES_NAMES_KEY, LS_MOLDING_NAMES_KEY);
-    // Remove all four settings from DB
     void deleteSetting('panel_prices');
     void deleteSetting('molding_prices');
     void deleteSetting('series_names');
@@ -370,7 +425,6 @@ export function useManagerPrices() {
   }, []);
 
   // Reload all settings from the API and apply them to local state + LS.
-  // Called after a backup import so the UI reflects the restored values immediately.
   const reloadSettings = useCallback(async () => {
     const remote = await fetchSettings();
     if (remote.panel_prices)   { setPanelOverrides(remote.panel_prices);     saveLS(LS_PANEL_KEY,         remote.panel_prices   as Record<string, unknown>); }
@@ -394,9 +448,9 @@ export function useManagerPrices() {
       setCustomMoldings(valid);
       try { localStorage.setItem(LS_CUSTOM_MOLDINGS_KEY, JSON.stringify(valid)); } catch { /* ignore */ }
     }
-    if (Array.isArray(remote.hidden_series_ids))  { setHiddenSeriesIds(remote.hidden_series_ids);   try { localStorage.setItem(LS_HIDDEN_SERIES_KEY,   JSON.stringify(remote.hidden_series_ids));  } catch { /* ignore */ } }
-    if (Array.isArray(remote.hidden_molding_ids)) { setHiddenMoldingIds(remote.hidden_molding_ids); try { localStorage.setItem(LS_HIDDEN_MOLDINGS_KEY, JSON.stringify(remote.hidden_molding_ids)); } catch { /* ignore */ } }
-    if (Array.isArray(remote.hidden_extras_ids))  { setHiddenExtrasIds(remote.hidden_extras_ids);   try { localStorage.setItem(LS_HIDDEN_EXTRAS_KEY,   JSON.stringify(remote.hidden_extras_ids));  } catch { /* ignore */ } }
+    if (Array.isArray(remote.hidden_series_ids))  { setHiddenSeriesIds(remote.hidden_series_ids);   saveArrLS(LS_HIDDEN_SERIES_KEY,   remote.hidden_series_ids); }
+    if (Array.isArray(remote.hidden_molding_ids)) { setHiddenMoldingIds(remote.hidden_molding_ids); saveArrLS(LS_HIDDEN_MOLDINGS_KEY, remote.hidden_molding_ids); }
+    if (Array.isArray(remote.hidden_extras_ids))  { setHiddenExtrasIds(remote.hidden_extras_ids);   saveArrLS(LS_HIDDEN_EXTRAS_KEY,   remote.hidden_extras_ids); }
   }, []);
 
   const seriesDefinitions = useMemo<SeriesDefinition[]>(() => [
@@ -426,6 +480,7 @@ export function useManagerPrices() {
     extrasOverrides,
     panelOverridesRef,
     moldingOverridesRef,
+    dbSaveStatus,
     setPanelPrice,
     setMoldingPrice,
     setSeriesName,

@@ -560,7 +560,7 @@ const BambooStudio = () => {
     addCustomMolding, deleteCustomMolding, updateCustomMolding,
     hideDefaultSeries, hideDefaultMolding, hideDefaultExtra,
     resetPrices, extrasOverrides, setExtrasPrice,
-    reloadSettings,
+    reloadSettings, dbSaveStatus,
   } = useManagerPrices();
   const [panelCount, setPanelCount] = useState(5);
   // dividerPositions: array of N-1 values in (0,1), sorted ascending
@@ -4991,6 +4991,7 @@ const BambooStudio = () => {
           onReset={resetPrices}
           extrasOverrides={extrasOverrides}
           onUpdateExtras={setExtrasPrice}
+          dbSaveStatus={dbSaveStatus}
           onSettingsChange={reloadSettings}
           onClose={() => setShowManagerPanel(false)}
           onPhotoChange={() => {

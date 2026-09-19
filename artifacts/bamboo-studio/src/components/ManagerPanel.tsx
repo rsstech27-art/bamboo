@@ -13,6 +13,7 @@ import {
   type PriceMap,
   type SeriesNames,
   type SeriesDefinition,
+  type DbSaveStatus,
 } from '../hooks/useManagerPrices';
 import { managerLogin, managerLogout, checkManagerSession, managerFetch } from '../lib/managerApi';
 
@@ -319,7 +320,7 @@ function TabPrices({
   onAddSeries, onDeleteSeries, onUpdateCustomSeries,
   onAddMolding, onDeleteMolding, onUpdateCustomMolding,
   onHideSeries, onHideMolding, onHideExtra,
-  onReset, extrasOverrides, onUpdateExtras,
+  onReset, extrasOverrides, onUpdateExtras, dbSaveStatus,
 }: {
   panelOverrides: PriceMap;
   moldingOverrides: PriceMap;
@@ -346,6 +347,7 @@ function TabPrices({
   onReset: () => void;
   extrasOverrides: PriceMap;
   onUpdateExtras: (id: string, price: number) => void;
+  dbSaveStatus: DbSaveStatus;
 }) {
   const [seriesOpen,  setSeriesOpen]  = useState(true);
   const [moldingsOpen, setMoldingsOpen] = useState(true);
@@ -482,10 +484,32 @@ function TabPrices({
         )}
       </section>
 
-      <p className="text-xs text-gray-400 text-center pb-4">
-        Кликните на любое поле для редактирования. Очистите название, чтобы вернуть исходное.
-        Изменения сохраняются автоматически.
-      </p>
+      {/* Save status indicator */}
+      <div className="sticky bottom-0 bg-white/80 backdrop-blur-sm border-t border-gray-100 py-2 px-4">
+        {dbSaveStatus === 'saving' && (
+          <div className="flex items-center justify-center gap-1.5 text-xs text-gray-400">
+            <Loader2 size={11} className="animate-spin" />
+            <span>Сохранение в БД…</span>
+          </div>
+        )}
+        {dbSaveStatus === 'saved' && (
+          <div className="flex items-center justify-center gap-1.5 text-xs text-emerald-600">
+            <Check size={11} />
+            <span>Сохранено в БД</span>
+          </div>
+        )}
+        {dbSaveStatus === 'error' && (
+          <div className="flex items-center justify-center gap-1.5 text-xs text-red-500">
+            <AlertTriangle size={11} />
+            <span>Ошибка сохранения — проверьте сессию менеджера</span>
+          </div>
+        )}
+        {dbSaveStatus === 'idle' && (
+          <p className="text-xs text-gray-400 text-center">
+            Кликните на любое поле для редактирования. Очистите название, чтобы вернуть исходное.
+          </p>
+        )}
+      </div>
     </div>
   );
 }
@@ -2139,6 +2163,7 @@ interface Props {
   onReset: () => void;
   extrasOverrides: PriceMap;
   onUpdateExtras: (id: string, price: number) => void;
+  dbSaveStatus: DbSaveStatus;
   onClose: () => void;
   onPhotoChange?: () => void;
   onSettingsChange?: () => void;
@@ -2153,7 +2178,7 @@ export function ManagerPanel({
   onAddMolding, onDeleteMolding, onUpdateCustomMolding,
   onHideSeries, onHideMolding, onHideExtra,
   onReset, onClose, onPhotoChange, onSettingsChange,
-  extrasOverrides, onUpdateExtras,
+  extrasOverrides, onUpdateExtras, dbSaveStatus,
 }: Props) {
   const [isAuth, setIsAuth] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
@@ -2266,6 +2291,7 @@ export function ManagerPanel({
                   onReset={onReset}
                   extrasOverrides={extrasOverrides}
                   onUpdateExtras={onUpdateExtras}
+                  dbSaveStatus={dbSaveStatus}
                 />
               )}
               {tab === 'products' && (
