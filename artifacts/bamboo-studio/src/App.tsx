@@ -200,7 +200,7 @@ const PANEL_SERIES = [
   },
 ];
 
-type Panel = { id: string; article: string; name: string; color: string; texture: string; textureScale?: number; textureStretch?: boolean; slatOverlay?: boolean; noMetallicProfile?: boolean; kpName?: string; panelWidthMm?: number; panelHeightMm?: number };
+type Panel = { id: string; article: string; name: string; color: string; texture: string; textureScale?: number; textureScaleX?: number; textureScaleY?: number; textureStretch?: boolean; slatOverlay?: boolean; noMetallicProfile?: boolean; kpName?: string; panelWidthMm?: number; panelHeightMm?: number };
 type PanelSeries = { id: string; name: string; panels: Panel[] };
 
 const BAMBOO_PANELS: Panel[] = (PANEL_SERIES as PanelSeries[]).flatMap(s => s.panels);
@@ -1117,14 +1117,25 @@ const BambooStudio = () => {
             // For both vertical and horizontal panels, scale so the texture
             // covers one panel-height unit — this prevents the texture from
             // being stretched across a wide horizontal panel.
-            const scale = ts > 1
+            const baseScale = ts > 1
               ? 1 / ts
               : dH / cachedTex.height;
+            // textureScaleX/Y are user-controlled per-axis scale (screen-space X=horiz, Y=vert).
+            // For horizontal panels the draw context is rotated -90°, so draw-X maps to
+            // screen-vertical and draw-Y maps to screen-horizontal — swap accordingly.
+            const tsX = material.textureScaleX;
+            const tsY = material.textureScaleY;
+            const drawScaleX = isHoriz
+              ? (tsY != null && tsY > 0 ? 1 / tsY : baseScale)
+              : (tsX != null && tsX > 0 ? 1 / tsX : baseScale);
+            const drawScaleY = isHoriz
+              ? (tsX != null && tsX > 0 ? 1 / tsX : baseScale)
+              : (tsY != null && tsY > 0 ? 1 / tsY : baseScale);
             const pattern = tCtx.createPattern(cachedTex, 'repeat');
             if (pattern) {
               const m = new DOMMatrix();
-              m.scaleSelf(scale, scale);
-              m.translateSelf(dX / scale, dY / scale);
+              m.scaleSelf(drawScaleX, drawScaleY);
+              m.translateSelf(dX / drawScaleX, dY / drawScaleY);
               pattern.setTransform(m);
               tCtx.fillStyle = pattern;
             } else {
@@ -3858,6 +3869,53 @@ const BambooStudio = () => {
                   if (owner) setOpenSeries(new Set([owner.id]));
                 }}
               />
+              {/* Per-axis texture scale sliders — shown when active sector has a tiling texture */}
+              {activeSector !== null &&
+               sectorMaterials[activeSector]?.texture &&
+               !sectorMaterials[activeSector]?.textureStretch && (() => {
+                const mat = sectorMaterials[activeSector]!;
+                const tsX = mat.textureScaleX ?? mat.textureScale ?? 1;
+                const tsY = mat.textureScaleY ?? mat.textureScale ?? 1;
+                const update = (patch: Partial<Panel>) => {
+                  pushHistory();
+                  setSectorMaterials({ ...sectorMaterials, [activeSector]: { ...mat, ...patch } });
+                };
+                return (
+                  <div className="mt-3 space-y-2 border-t border-gray-100 pt-3">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Масштаб текстуры</p>
+                    <label className="block">
+                      <div className="flex justify-between mb-0.5">
+                        <span className="text-[9px] font-bold text-gray-500">По горизонтали</span>
+                        <span className="text-[9px] font-mono text-gray-400">{tsX}×</span>
+                      </div>
+                      <input type="range" min={1} max={20} step={1}
+                        value={tsX}
+                        onChange={e => update({ textureScaleX: Number(e.target.value) })}
+                        className="w-full h-1.5 accent-[#7ec662] cursor-pointer"
+                      />
+                    </label>
+                    <label className="block">
+                      <div className="flex justify-between mb-0.5">
+                        <span className="text-[9px] font-bold text-gray-500">По вертикали</span>
+                        <span className="text-[9px] font-mono text-gray-400">{tsY}×</span>
+                      </div>
+                      <input type="range" min={1} max={20} step={1}
+                        value={tsY}
+                        onChange={e => update({ textureScaleY: Number(e.target.value) })}
+                        className="w-full h-1.5 accent-[#7ec662] cursor-pointer"
+                      />
+                    </label>
+                    {(mat.textureScaleX != null || mat.textureScaleY != null) && (
+                      <button
+                        onClick={() => { pushHistory(); setSectorMaterials({ ...sectorMaterials, [activeSector]: { ...mat, textureScaleX: undefined, textureScaleY: undefined } }); }}
+                        className="text-[8px] text-gray-400 hover:text-red-400 font-bold transition-colors"
+                      >
+                        ↺ Сбросить масштаб
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Размеры стены */}
