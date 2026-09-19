@@ -899,26 +899,8 @@ function ProductCard({ product, onEdit, onDelete }: {
           </div>}
       <div className="flex-1 min-w-0">
         <div className="font-bold text-sm text-gray-900 truncate">{product.name}</div>
-        <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-          <span className="text-xs font-mono text-gray-400">{product.article}</span>
-          {product.collection && (
-            <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-md">{product.collection}</span>
-          )}
-          {product.series && (
-            <span className="text-[10px] bg-blue-50 text-blue-500 px-1.5 py-0.5 rounded-md">{product.series}</span>
-          )}
-          {(product.panelWidthMm || product.panelHeightMm) && (
-            <span className="text-[10px] bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded-md font-mono">
-              {product.panelWidthMm ?? 1220}×{product.panelHeightMm ?? 2800} мм
-            </span>
-          )}
-          {product.kpName && (
-            <span className="text-[10px] bg-purple-50 text-purple-500 px-1.5 py-0.5 rounded-md max-w-[100px] truncate" title={product.kpName}>
-              КП: {product.kpName}
-            </span>
-          )}
-        </div>
-        <div className="text-xs font-bold text-[#7ec662] mt-0.5">{fmt(product.cost)}</div>
+        <div className="text-xs font-mono text-gray-400 mt-0.5">{product.article}</div>
+        <div className="text-xs font-bold text-gray-900 mt-0.5">{fmt(product.cost)}</div>
       </div>
       <div className="flex items-center gap-1.5 shrink-0">
         <button onClick={onEdit}
