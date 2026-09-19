@@ -2568,21 +2568,13 @@ export function ManagerPanel({
                   <div className="text-sm text-gray-400">Кабинет менеджера</div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <div className="flex flex-col items-end gap-0.5">
-                    {managerLoginName && (
-                      <span className="text-xs text-gray-500">{managerLoginName}</span>
-                    )}
-                    <button onClick={logout}
-                      className="flex items-center gap-1.5 text-gray-400 hover:text-white text-xs transition-colors">
-                      <LogOut size={13} /> Выйти
-                    </button>
-                    {isAdmin && (
-                      <button onClick={() => { setShowAdmin(true); }}
-                        className="flex items-center gap-1.5 text-gray-500 hover:text-white text-xs transition-colors">
-                        <Shield size={11} /> Администратор
-                      </button>
-                    )}
-                  </div>
+                  {managerLoginName && (
+                    <span className="text-xs text-gray-500">{managerLoginName}</span>
+                  )}
+                  <button onClick={logout}
+                    className="flex items-center gap-1.5 text-gray-400 hover:text-white text-xs transition-colors">
+                    <LogOut size={13} /> Выйти
+                  </button>
                   <button onClick={onClose}
                     className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white transition-colors">
                     <X size={14} />
@@ -2590,25 +2582,34 @@ export function ManagerPanel({
                 </div>
               </div>
 
-              {/* Tabs — hidden while admin panel is open */}
-              {!showAdmin && (
-                <div className="max-w-5xl mx-auto px-6 flex gap-1 pb-0">
-                  {visibleTabs.map(t => {
-                    const Icon = t.icon;
-                    return (
-                      <button key={t.id} onClick={() => setTab(t.id)}
-                        className={`flex items-center gap-2 px-4 py-3 text-sm font-bold border-b-2 transition-all ${
-                          tab === t.id
-                            ? 'border-[#7ec662] text-white'
-                            : 'border-transparent text-gray-500 hover:text-gray-300'
-                        }`}>
-                        <Icon size={14} />
-                        {t.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+              {/* Tabs row */}
+              <div className="max-w-5xl mx-auto px-6 flex gap-1 pb-0">
+                {visibleTabs.map(t => {
+                  const Icon = t.icon;
+                  return (
+                    <button key={t.id} onClick={() => { setShowAdmin(false); setTab(t.id); }}
+                      className={`flex items-center gap-2 px-4 py-3 text-sm font-bold border-b-2 transition-all ${
+                        !showAdmin && tab === t.id
+                          ? 'border-[#7ec662] text-white'
+                          : 'border-transparent text-gray-500 hover:text-gray-300'
+                      }`}>
+                      <Icon size={14} />
+                      {t.label}
+                    </button>
+                  );
+                })}
+                {isAdmin && (
+                  <button onClick={() => setShowAdmin(true)}
+                    className={`flex items-center gap-2 px-4 py-3 text-sm font-bold border-b-2 transition-all ${
+                      showAdmin
+                        ? 'border-[#7ec662] text-white'
+                        : 'border-transparent text-gray-500 hover:text-gray-300'
+                    }`}>
+                    <Shield size={14} />
+                    Администратор
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Admin panel (replaces tab content) */}
