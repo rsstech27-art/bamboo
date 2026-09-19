@@ -1490,34 +1490,49 @@ const BambooStudio = () => {
           curMoldingStyle !== 'none' ? curMoldingStyle as Exclude<MoldingStyle, 'none'> : 'black';
         const autoHWidth = curHMoldingStyle !== 'none' ? curHMoldingWidth :
           curMoldingStyle !== 'none' ? curMoldingWidth : 2;
+        const jpp = cfg.jointProfilePosition ?? ['bottom'];
+        const hasTop    = jpp.includes('top');
+        const hasBottom = jpp.includes('bottom');
+
+        // Draw one horizontal seam at ratio r (0–1 of quad height).
+        // Skips positions already covered by a user hMolding.
+        const drawHSeam = (r: number) => {
+          if (r <= 0 || r >= 1) return;
+          if (curHPositions.some(p => Math.abs(p - r) < 0.005)) return;
+          const lx = qp[0].x + (qp[3].x - qp[0].x) * r;
+          const ly = qp[0].y + (qp[3].y - qp[0].y) * r;
+          const rx = qp[1].x + (qp[2].x - qp[1].x) * r;
+          const ry = qp[1].y + (qp[2].y - qp[1].y) * r;
+          drawMoldLine(lx, ly, rx, ry, autoHStyle, autoHWidth);
+        };
+
         if (cfg.wallHeightMm > singleRowH) {
           const rowCount = Math.ceil(cfg.wallHeightMm / singleRowH);
-          const jpp = cfg.jointProfilePosition ?? ['bottom'];
           for (let ri = 1; ri < rowCount; ri++) {
-            const ratio = (ri * singleRowH) / cfg.wallHeightMm;
-            if (ratio >= 1) continue;
-            // Skip if a user hMolding position already sits within 0.5% of this ratio
-            if (curHPositions.some(p => Math.abs(p - ratio) < 0.005)) continue;
-            // Determine seam visibility based on jointProfilePosition checkboxes:
-            // first seam (ri=1) = 'top', last seam (ri=rowCount-1) = 'bottom',
-            // middle seams (between first and last) are always shown.
+            const naturalRatio = (ri * singleRowH) / cfg.wallHeightMm;
+            if (naturalRatio >= 1) continue;
             const isFirst = ri === 1;
             const isLast  = ri === rowCount - 1;
+
             if (isFirst && isLast) {
-              // Only one seam — visible if either checkbox is ticked
-              if (!jpp.includes('bottom') && !jpp.includes('top')) continue;
+              // Exactly 2 rows → one seam; shift its position by checkbox:
+              // top-only → upper third, bottom-only → lower third, both → both.
+              if (hasTop && hasBottom) { drawHSeam(1 / 3); drawHSeam(2 / 3); }
+              else if (hasTop)         drawHSeam(1 / 3);
+              else if (hasBottom)      drawHSeam(2 / 3);
             } else if (isFirst) {
-              if (!jpp.includes('top')) continue;
+              if (hasTop) drawHSeam(naturalRatio);
             } else if (isLast) {
-              if (!jpp.includes('bottom')) continue;
+              if (hasBottom) drawHSeam(naturalRatio);
+            } else {
+              drawHSeam(naturalRatio); // middle seams always drawn
             }
-            // Middle seams always drawn (ri > 1 && ri < rowCount - 1)
-            const lx = qp[0].x + (qp[3].x - qp[0].x) * ratio;
-            const ly = qp[0].y + (qp[3].y - qp[0].y) * ratio;
-            const rx = qp[1].x + (qp[2].x - qp[1].x) * ratio;
-            const ry = qp[1].y + (qp[2].y - qp[1].y) * ratio;
-            drawMoldLine(lx, ly, rx, ry, autoHStyle, autoHWidth);
           }
+        } else if (hasTop || hasBottom) {
+          // Single row or height not set: draw indicative seam(s) by checkbox.
+          if (hasTop && hasBottom) { drawHSeam(1 / 3); drawHSeam(2 / 3); }
+          else if (hasTop)    drawHSeam(1 / 3);
+          else                drawHSeam(2 / 3);
         }
       }
       }; // end renderQuad
