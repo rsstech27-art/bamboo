@@ -94,6 +94,7 @@ function LoginScreen({
   const [error, setError] = useState(false);
   const [shake, setShake] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [recovery, setRecovery] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -146,6 +147,33 @@ function LoginScreen({
             className="w-full flex items-center justify-center gap-2 bg-black text-white font-bold text-sm py-3 rounded-xl hover:bg-gray-800 active:scale-95 transition-all shadow-md disabled:opacity-60">
             {loading ? <><Loader2 size={14} className="animate-spin" /> Проверка…</> : 'Войти'}
           </button>
+          {!userOnly && (
+            <div className="pt-2 text-center">
+              {recovery === 'sent' ? (
+                <p className="text-xs text-green-600 font-medium">✓ Пароль отправлен на почту</p>
+              ) : recovery === 'error' ? (
+                <p className="text-xs text-red-500">Не удалось отправить. Попробуйте позже.</p>
+              ) : (
+                <button
+                  type="button"
+                  disabled={recovery === 'sending'}
+                  onClick={async () => {
+                    setRecovery('sending');
+                    try {
+                      const r = await fetch('/api/manager/recover-password', { method: 'POST' });
+                      setRecovery(r.ok ? 'sent' : 'error');
+                    } catch {
+                      setRecovery('error');
+                    }
+                  }}
+                  className="text-xs text-gray-400 hover:text-gray-700 transition-colors disabled:opacity-50">
+                  {recovery === 'sending'
+                    ? <span className="flex items-center gap-1 justify-center"><Loader2 size={10} className="animate-spin" /> Отправка…</span>
+                    : 'Забыли пароль?'}
+                </button>
+              )}
+            </div>
+          )}
         </form>
       </div>
     </div>

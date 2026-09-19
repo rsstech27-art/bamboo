@@ -2,7 +2,25 @@ import { Router, type IRouter } from "express";
 import { timingSafeEqual, createHash } from "crypto";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
+import nodemailer from "nodemailer";
 import { requireManagerSession } from "../middleware/managerAuth";
+
+// ── Recovery rate limiter: max 3 requests per IP per hour ─────────────────────
+const RECOVERY_MAX = 3;
+const RECOVERY_WINDOW_MS = 60 * 60 * 1000;
+const recoveryAttempts = new Map<string, { count: number; resetAt: number }>();
+
+function checkRecoveryLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = recoveryAttempts.get(ip);
+  if (!entry || now >= entry.resetAt) {
+    recoveryAttempts.set(ip, { count: 1, resetAt: now + RECOVERY_WINDOW_MS });
+    return true;
+  }
+  if (entry.count >= RECOVERY_MAX) return false;
+  entry.count++;
+  return true;
+}
 
 const router: IRouter = Router();
 
@@ -166,6 +184,75 @@ router.post("/manager/logout", requireManagerSession, (req, res) => {
     res.clearCookie("sid");
     res.json({ ok: true });
   });
+});
+
+/**
+ * POST /api/manager/recover-password
+ * Sends the current MANAGER_PASSWORD to the configured recovery email.
+ * Public endpoint (no session required) — protected only by rate limit.
+ */
+router.post("/manager/recover-password", async (req, res) => {
+  const ip = getClientIp(req);
+  if (!checkRecoveryLimit(ip)) {
+    return void res.status(429).json({ error: "Слишком много попыток. Повторите через час." });
+  }
+
+  const adminPassword = process.env["MANAGER_PASSWORD"];
+  if (!adminPassword) {
+    return void res.status(503).json({ error: "Пароль администратора не настроен." });
+  }
+
+  // Read recovery email from settings
+  let recoveryEmail: string | null = null;
+  try {
+    const row = await db.execute(sql`
+      SELECT value FROM manager_settings WHERE key = 'recovery_email'
+    `);
+    const val = row.rows[0]?.value;
+    recoveryEmail = typeof val === "string" ? val : null;
+  } catch {
+    return void res.status(500).json({ error: "Ошибка чтения настроек." });
+  }
+
+  if (!recoveryEmail) {
+    return void res.status(404).json({ error: "Адрес для восстановления не настроен." });
+  }
+
+  // SMTP config from env
+  const smtpHost = process.env["SMTP_HOST"];
+  const smtpPort = parseInt(process.env["SMTP_PORT"] ?? "587");
+  const smtpUser = process.env["SMTP_USER"];
+  const smtpPass = process.env["SMTP_PASS"];
+  const smtpFrom = process.env["SMTP_FROM"] ?? smtpUser;
+
+  if (!smtpHost || !smtpUser || !smtpPass) {
+    return void res.status(503).json({ error: "Отправка почты не настроена. Обратитесь к разработчику." });
+  }
+
+  try {
+    const transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpPort === 465,
+      auth: { user: smtpUser, pass: smtpPass },
+    });
+
+    await transporter.sendMail({
+      from: `"ALL WALL Кабинет" <${smtpFrom}>`,
+      to: recoveryEmail,
+      subject: "Восстановление пароля кабинета менеджера ALL WALL",
+      text: `Ваш текущий пароль администратора: ${adminPassword}\n\nЕсли вы не запрашивали это письмо — смените пароль в настройках.`,
+      html: `<p>Ваш текущий пароль администратора:</p>
+             <p style="font-size:18px;font-weight:bold;font-family:monospace">${adminPassword}</p>
+             <p style="color:#999;font-size:12px">Если вы не запрашивали это письмо — смените пароль в настройках.</p>`,
+    });
+
+    res.json({ ok: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[recover-password] SMTP error:", msg);
+    res.status(500).json({ error: "Не удалось отправить письмо. Проверьте настройки SMTP." });
+  }
 });
 
 /**
