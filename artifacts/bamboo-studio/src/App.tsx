@@ -1527,7 +1527,7 @@ const BambooStudio = () => {
           const ly = qp[0].y + (qp[3].y - qp[0].y) * r;
           const rx = qp[1].x + (qp[2].x - qp[1].x) * r;
           const ry = qp[1].y + (qp[2].y - qp[1].y) * r;
-          drawMoldLine(lx, ly, rx, ry, autoHStyle, autoHWidth);
+          drawMoldLine(lx, ly, rx, ry, autoHStyle, Math.max(autoHWidth, 3));
         };
 
         if (cfg.wallHeightMm > singleRowH) {
