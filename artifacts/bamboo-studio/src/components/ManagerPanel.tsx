@@ -1287,6 +1287,9 @@ function TabProducts({
   const [seeding, setSeeding] = useState(false);
   const [seedResult, setSeedResult] = useState<{ inserted: number; skipped: number } | null>(null);
   const [seriesFilter, setSeriesFilter] = useState<string | null>(null);
+  const [panelsOpen, setPanelsOpen] = useState(true);
+  const [profilesOpen, setProfilesOpen] = useState(true);
+  const [extrasOpen, setExtrasOpen] = useState(false);
 
   const apiErrorText = async (r: Response) => {
     try { return ((await r.json()) as { error?: string }).error ?? `HTTP ${r.status}`; }
@@ -1472,15 +1475,8 @@ function TabProducts({
       )}
       {error && <div className="text-sm text-red-500 text-center py-8">Ошибка: {error}</div>}
 
-      {!loading && panelProducts.length === 0 && !creating && (
-        <div className="text-center py-8 text-gray-400">
-          <Package size={36} className="mx-auto mb-3 opacity-30" />
-          <p className="text-sm">Нажмите «Загрузить каталог» или добавьте товар вручную</p>
-        </div>
-      )}
-
-      {/* ── Фильтр по сериям + быстрые разделы ── */}
-      {!loading && (
+      {/* ── Фильтр по сериям ── */}
+      {!loading && availableSeries.length > 0 && (
         <div className="flex flex-wrap gap-2">
           <button onClick={() => setSeriesFilter(null)}
             className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
@@ -1498,103 +1494,133 @@ function TabProducts({
               </span>
             </button>
           ))}
-          <div className="w-px bg-gray-200 self-stretch mx-1" />
-          {[{ id: '__profiles__', label: 'Профили' }, { id: '__glue__', label: 'Клей' }].map(chip => (
-            <button key={chip.id} onClick={() => setSeriesFilter(seriesFilter === chip.id ? null : chip.id)}
-              className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
-                seriesFilter === chip.id ? 'bg-black text-white border-black' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400 hover:text-gray-800'}`}>
-              {chip.label}
-            </button>
-          ))}
         </div>
       )}
 
-      {/* ── Panel product list ── */}
-      {!seriesFilter?.startsWith('__') && (
-        <>
-          {visibleProducts.length === 0 && !loading && seriesFilter && (
-            <div className="text-center py-8 text-gray-400 text-sm">В серии «{seriesFilter}» нет товаров</div>
-          )}
-          {visibleProducts.map(p => (
-            <ProductCard key={p.id} product={p}
-              onEdit={() => { setEditingProduct(p); setCreating(false); }}
-              onDelete={() => del(p.id)} />
-          ))}
-        </>
-      )}
-
-      {/* ── Профили ── */}
-      {(seriesFilter === null || seriesFilter === '__profiles__') && (
-        <div className="mt-4 space-y-4">
-
-          {/* Товары-профили (каталог) */}
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <ChevronRight size={13} className="text-gray-400" />
-              <span className="text-xs font-black uppercase tracking-widest text-gray-500">Товары — профили</span>
-              <span className="text-[10px] text-gray-400">— конкретные позиции</span>
-            </div>
-
-            {!creatingMolding ? (
-              <button onClick={() => { setCreatingMolding(true); setCreating(false); }}
-                className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 hover:border-black text-gray-500 hover:text-black text-sm font-bold py-3 rounded-2xl transition-colors mb-3">
-                <Plus size={14} /> Добавить профиль
+      {/* ── Панели ── */}
+      <section>
+        <button onClick={() => setPanelsOpen(v => !v)}
+          className="w-full flex items-center justify-between group mb-3">
+          <div className="flex items-center gap-2">
+            <ChevronRight size={13} className={`text-gray-400 transition-transform ${panelsOpen ? 'rotate-90' : ''}`} />
+            <h3 className="text-xs font-black uppercase tracking-widest text-gray-500 group-hover:text-gray-700 transition-colors">
+              Панели
+            </h3>
+            {panelProducts.length > 0 && (
+              <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">
+                {panelProducts.length}
+              </span>
+            )}
+          </div>
+        </button>
+        {panelsOpen && (
+          <div className="space-y-3">
+            {/* Форма добавления */}
+            {!creating ? (
+              <button onClick={() => { setCreating(true); setCreatingMolding(false); }}
+                className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 hover:border-black text-gray-500 hover:text-black text-sm font-bold py-3 rounded-2xl transition-colors">
+                <Plus size={14} /> Добавить панель
               </button>
             ) : (
-              <div className="mb-3">
-                <MoldingCreateForm
-                  seriesOptions={moldingSeriesOptions}
-                  onSave={createMolding}
-                  onCancel={() => setCreatingMolding(false)}
-                />
+              <ProductCreateForm seriesOptions={seriesOptions} onSave={create} onCancel={() => setCreating(false)} />
+            )}
+
+            {!loading && panelProducts.length === 0 && !creating && (
+              <div className="text-center py-6 text-gray-400">
+                <Package size={32} className="mx-auto mb-2 opacity-30" />
+                <p className="text-sm">Нажмите «Загрузить каталог» или добавьте панель вручную</p>
               </div>
             )}
 
-            {moldingProducts.length === 0 && !creatingMolding && (
-              <div className="text-center py-6 text-gray-400 text-sm">
-                <Package size={28} className="mx-auto mb-2 opacity-30" />
-                Нет добавленных профильных товаров
-              </div>
+            {visibleProducts.length === 0 && !loading && seriesFilter && (
+              <div className="text-center py-6 text-gray-400 text-sm">В серии «{seriesFilter}» нет товаров</div>
             )}
             <div className="space-y-2">
-              {moldingProducts.map(p => (
-                <MoldingCard key={p.id} product={p}
-                  onEdit={() => { setEditingMolding(p); setCreatingMolding(false); }}
-                  onDelete={() => delMolding(p.id)} />
+              {visibleProducts.map(p => (
+                <ProductCard key={p.id} product={p}
+                  onEdit={() => { setEditingProduct(p); setCreating(false); }}
+                  onDelete={() => del(p.id)} />
               ))}
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </section>
 
-      {/* ── Клей и дополнительные товары ── */}
-      {(seriesFilter === null || seriesFilter === '__glue__') && extrasOverrides !== undefined && DEFAULT_EXTRAS.length > 0 && (
-        <div className="mt-4">
-          <div className="flex items-center gap-2 mb-3">
-            <ChevronRight size={13} className="text-gray-400" />
-            <span className="text-xs font-black uppercase tracking-widest text-gray-500">Клей и доп. товары</span>
-            <span className="text-[10px] text-gray-400">— цена задаётся в разделе Цены</span>
+      {/* ── Профили ── */}
+      <section>
+        <button onClick={() => setProfilesOpen(v => !v)}
+          className="w-full flex items-center justify-between group mb-3">
+          <div className="flex items-center gap-2">
+            <ChevronRight size={13} className={`text-gray-400 transition-transform ${profilesOpen ? 'rotate-90' : ''}`} />
+            <h3 className="text-xs font-black uppercase tracking-widest text-gray-500 group-hover:text-gray-700 transition-colors">
+              Профили
+            </h3>
+            {moldingProducts.length > 0 && (
+              <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">
+                {moldingProducts.length}
+              </span>
+            )}
           </div>
+        </button>
+        {profilesOpen && (
           <div className="space-y-2">
-            {DEFAULT_EXTRAS.map(e => {
-              const price = extrasOverrides[e.id] ?? e.defaultPrice;
-              return (
-                <div key={e.id} className="bg-white border border-gray-100 rounded-2xl px-4 py-3 flex items-center gap-4 shadow-sm">
-                  <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
-                    <Package size={18} className="text-gray-400" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-bold text-gray-900">{e.name}</div>
-                    <div className="text-xs text-gray-400 mt-0.5">{e.article}</div>
-                  </div>
-                  <div className="shrink-0 text-sm font-bold text-gray-700">
-                    {price > 0 ? `${price.toLocaleString('ru-RU')} ₽` : <span className="text-gray-400 font-normal">не задана</span>}
-                  </div>
-                </div>
-              );
-            })}
+            {!creatingMolding ? (
+              <button onClick={() => { setCreatingMolding(true); setCreating(false); }}
+                className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 hover:border-black text-gray-500 hover:text-black text-sm font-bold py-3 rounded-2xl transition-colors">
+                <Plus size={14} /> Добавить профиль
+              </button>
+            ) : (
+              <MoldingCreateForm seriesOptions={moldingSeriesOptions} onSave={createMolding} onCancel={() => setCreatingMolding(false)} />
+            )}
+            {moldingProducts.length === 0 && !creatingMolding && (
+              <div className="text-center py-6 text-gray-400 text-sm">
+                <Package size={28} className="mx-auto mb-2 opacity-30" />
+                Нет добавленных профилей
+              </div>
+            )}
+            {moldingProducts.map(p => (
+              <MoldingCard key={p.id} product={p}
+                onEdit={() => { setEditingMolding(p); setCreatingMolding(false); }}
+                onDelete={() => delMolding(p.id)} />
+            ))}
           </div>
-        </div>
+        )}
+      </section>
+
+      {/* ── Клей и доп. товары ── */}
+      {extrasOverrides !== undefined && DEFAULT_EXTRAS.length > 0 && (
+        <section>
+          <button onClick={() => setExtrasOpen(v => !v)}
+            className="w-full flex items-center justify-between group mb-3">
+            <div className="flex items-center gap-2">
+              <ChevronRight size={13} className={`text-gray-400 transition-transform ${extrasOpen ? 'rotate-90' : ''}`} />
+              <h3 className="text-xs font-black uppercase tracking-widest text-gray-500 group-hover:text-gray-700 transition-colors">
+                Клей и доп. товары
+              </h3>
+            </div>
+          </button>
+          {extrasOpen && (
+            <div className="space-y-2">
+              {DEFAULT_EXTRAS.map(e => {
+                const price = extrasOverrides[e.id] ?? e.defaultPrice;
+                return (
+                  <div key={e.id} className="bg-white border border-gray-100 rounded-2xl px-4 py-3 flex items-center gap-4 shadow-sm">
+                    <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
+                      <Package size={18} className="text-gray-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-bold text-gray-900">{e.name}</div>
+                      <div className="text-xs text-gray-400 mt-0.5">{e.article}</div>
+                    </div>
+                    <div className="shrink-0 text-sm font-bold text-gray-700">
+                      {price > 0 ? `${price.toLocaleString('ru-RU')} ₽` : <span className="text-gray-400 font-normal">не задана</span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
       )}
     </div>
   );
