@@ -3164,7 +3164,7 @@ const BambooStudio = () => {
       ══════════════════════════════════════════ */}
       <section ref={toolRef} id="tool" className="flex flex-col bg-[#ebebed] h-screen">
         {/* ── App Nav ── */}
-        <nav className="h-10 shrink-0 border-b border-gray-200 bg-white/90 backdrop-blur-xl flex justify-between items-center px-4 z-40">
+        <nav className="h-10 shrink-0 border-b border-gray-200 bg-white/90 backdrop-blur-xl flex justify-end items-center px-4 z-40">
           <div className="flex items-center gap-3">
             {step === 'edit' && (
               <button onClick={undo} disabled={historyLen === 0}
