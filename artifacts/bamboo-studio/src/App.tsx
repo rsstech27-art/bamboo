@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Upload, Layout, Eraser, RotateCcw, Download, Check, Columns, Undo2, Sun, Moon, FileText } from 'lucide-react';
+import { Upload, Layout, Eraser, RotateCcw, Download, Check, Columns, Undo2, Redo2, Sun, Moon, FileText } from 'lucide-react';
 import { PANEL_H_MM, PANEL_W_MM, PANEL_AREA_M2, optimizedPanelCalc, packWidthRemainders, packProfileRuns, columnHiddenJoints, packWindowPieces, windowStdPieces, panelsWord, rowsWord } from './lib/panelCalc';
 import {
   DEFAULT_SERIES_PRICES,
@@ -668,10 +668,15 @@ const BambooStudio = () => {
     edgeProfileSides: { top: boolean; bottom: boolean; left: boolean; right: boolean };
   };
   const historyRef = useRef<HistorySnapshot[]>([]);
-  // Mirrors historyRef.current.length so the «Отменить» button can show enabled/disabled state
+  const redoRef   = useRef<HistorySnapshot[]>([]);
+  // Mirror lengths for button enabled/disabled state
   const [historyLen, setHistoryLen] = useState(0);
+  const [redoLen,    setRedoLen]    = useState(0);
 
   const pushHistory = useCallback(() => {
+    // Any new action clears the redo stack
+    redoRef.current = [];
+    setRedoLen(0);
     historyRef.current.push({
       surfaceIndex: activeSurfaceRef.current,
       sectorMaterials: { ...sectorMaterialsRef.current },
@@ -696,16 +701,34 @@ const BambooStudio = () => {
     setHistoryLen(historyRef.current.length);
   }, []);
 
-  const undo = useCallback(() => {
-    if (historyRef.current.length === 0) return;
-    const prev = historyRef.current.pop()!;
-    setHistoryLen(historyRef.current.length);
-    // Corner/wrap/edge settings are global — always restore
+  // Capture current live state as a snapshot (used by both undo and redo)
+  const captureSnapshot = useCallback((): HistorySnapshot => ({
+    surfaceIndex: activeSurfaceRef.current,
+    sectorMaterials: { ...sectorMaterialsRef.current },
+    dividerPositions: [...dividerPositionsRef.current],
+    panelCount: panelCountRef.current,
+    cornerTypes: [...cornerTypesRef.current],
+    wrapJunctions: [...wrapJunctionsRef.current],
+    wallWidthMm: wallWidthMmRef.current,
+    wallHeightMm: wallHeightMmRef.current,
+    moldingStyle: moldingStyleRef.current,
+    moldingWidth: moldingWidthRef.current,
+    hMoldingStyle: hMoldingStyleRef.current,
+    hMoldingCount: hMoldingCountRef.current,
+    hMoldingWidth: hMoldingWidthRef.current,
+    hMoldingPositions: [...hMoldingPositionsRef.current],
+    vMoldingPositions: [...vMoldingPositionsRef.current],
+    vMoldingCount: vMoldingCountRef.current,
+    panelOrientation: panelOrientationRef.current,
+    edgeProfileSides: { ...edgeProfileSidesRef.current },
+  }), []);
+
+  // Restore a snapshot to live state
+  const applySnapshot = useCallback((prev: HistorySnapshot) => {
     setCornerTypes(prev.cornerTypes);
     setWrapJunctions(prev.wrapJunctions);
     setEdgeProfileSides(prev.edgeProfileSides);
     if (prev.surfaceIndex === activeSurfaceRef.current) {
-      // Snapshot belongs to the active surface — restore via live state
       setSectorMaterials(prev.sectorMaterials);
       setDividerPositions(prev.dividerPositions);
       setPanelCount(prev.panelCount);
@@ -721,7 +744,6 @@ const BambooStudio = () => {
       setVMoldingCount(prev.vMoldingCount);
       setPanelOrientation(prev.panelOrientation);
     } else {
-      // Snapshot belongs to another surface — restore its stored config directly
       const cfg = surfacesRef.current[prev.surfaceIndex] ?? defaultSurfaceConfig();
       surfacesRef.current[prev.surfaceIndex] = {
         ...cfg,
@@ -740,10 +762,30 @@ const BambooStudio = () => {
         vMoldingCount: prev.vMoldingCount,
         panelOrientation: prev.panelOrientation,
       };
-      // Force redraw (stored configs are read from refs during draw)
       setPoints(pv => [...pv]);
     }
   }, []);
+
+  const undo = useCallback(() => {
+    if (historyRef.current.length === 0) return;
+    // Save current state to redo stack before restoring
+    redoRef.current.push(captureSnapshot());
+    setRedoLen(redoRef.current.length);
+    const prev = historyRef.current.pop()!;
+    setHistoryLen(historyRef.current.length);
+    applySnapshot(prev);
+  }, [captureSnapshot, applySnapshot]);
+
+  const redo = useCallback(() => {
+    if (redoRef.current.length === 0) return;
+    // Save current state to undo stack before restoring
+    historyRef.current.push(captureSnapshot());
+    if (historyRef.current.length > 50) historyRef.current.shift();
+    setHistoryLen(historyRef.current.length);
+    const next = redoRef.current.pop()!;
+    setRedoLen(redoRef.current.length);
+    applySnapshot(next);
+  }, [captureSnapshot, applySnapshot]);
 
   useEffect(() => { imageRef.current = image; }, [image]);
   useEffect(() => { stepRef.current = step; }, [step]);
@@ -793,17 +835,20 @@ const BambooStudio = () => {
     };
   }, [activeSurface, panelCount, dividerPositions, sectorMaterials, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, vMoldingPositions, vMoldingCount, wallWidthMm, wallHeightMm, panelOrientation]);
 
-  // Ctrl+Z global undo
+  // Ctrl+Z global undo / Ctrl+Y global redo
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
         undo();
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        redo();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [undo]);
+  }, [undo, redo]);
 
   // Switch active editing surface: snapshot current edits, load target config
   const switchSurface = useCallback((idx: number) => {
@@ -3372,6 +3417,13 @@ const BambooStudio = () => {
                 className={`text-xs font-medium flex items-center gap-1.5 transition-colors ${historyLen === 0 ? 'text-gray-300 cursor-default' : 'text-gray-600 hover:text-black'}`}
                 title={historyLen === 0 ? 'Нет действий для отмены' : 'Ctrl+Z'}>
                 <Undo2 size={13} /> Отменить
+              </button>
+            )}
+            {step === 'edit' && (
+              <button onClick={redo} disabled={redoLen === 0}
+                className={`text-xs font-medium flex items-center gap-1.5 transition-colors ${redoLen === 0 ? 'text-gray-300 cursor-default' : 'text-gray-600 hover:text-black'}`}
+                title={redoLen === 0 ? 'Нет действий для возврата' : 'Ctrl+Y'}>
+                <Redo2 size={13} /> Вернуть
               </button>
             )}
             {step !== 'zone' && (
