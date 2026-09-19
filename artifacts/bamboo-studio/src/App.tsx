@@ -678,6 +678,9 @@ const BambooStudio = () => {
   const hMoldingWidthRef = useRef(1);
   const hMoldingPositionsRef = useRef<number[]>([]);
   const draggingHMoldingIndexRef = useRef<number | null>(null);
+  // Original positions of auto-seams that have been adopted into hMoldingPositions.
+  // drawHSeam skips these so the original red line does not reappear after drag.
+  const adoptedSeamOriginalsRef = useRef<Set<number>>(new Set());
   const [panelOrientation, setPanelOrientation] = useState<'vertical' | 'horizontal'>('vertical');
   const panelOrientationRef = useRef<'vertical' | 'horizontal'>('vertical');
   const [dividerStyleOverrides, setDividerStyleOverrides] = useState<Record<number, MoldingStyle>>({});
@@ -1558,6 +1561,8 @@ const BambooStudio = () => {
         // Skips positions already covered by a user hMolding that is actually visible (style ≠ 'none').
         const drawHSeam = (r: number) => {
           if (r <= 0 || r >= 1) return;
+          // Skip seams already claimed by an hMolding (either close-by or explicitly adopted).
+          if (adoptedSeamOriginalsRef.current.has(r)) return;
           if (curHPositions.some((p, idx) => {
             const hStyle = cfg.hMoldingStyleOverrides?.[idx] ?? curHMoldingStyle;
             return Math.abs(p - r) < 0.005 && hStyle !== 'none';
@@ -2182,6 +2187,8 @@ const BambooStudio = () => {
     const seamR = findNearAutoSeam(x, y);
     if (seamR !== -1) {
       pushHistory();
+      // Remember the original computed position so drawHSeam won't redraw it after drag.
+      adoptedSeamOriginalsRef.current.add(seamR);
       const newPositions = [...hMoldingPositionsRef.current, seamR].sort((a, b) => a - b);
       const newIdx = newPositions.findIndex(p => Math.abs(p - seamR) < 0.001);
       hMoldingPositionsRef.current = newPositions; // sync ref immediately for drag
