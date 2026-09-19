@@ -66,6 +66,9 @@ export async function ensureSchema(): Promise<void> {
   await db.execute(sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS kp_name TEXT`);
   await db.execute(sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS panel_width_mm INTEGER`);
   await db.execute(sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS panel_height_mm INTEGER`);
+  await db.execute(sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS category TEXT NOT NULL DEFAULT 'panel'`);
+  await db.execute(sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS color TEXT`);
+  await db.execute(sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS size TEXT`);
 
   logger.info("Schema check complete.");
 }

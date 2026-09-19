@@ -13,7 +13,11 @@ const VALID_KEYS = new Set([
   "series_names",
   "molding_names",
   "custom_series",
+  "custom_moldings",
   "extras_prices",
+  "hidden_series_ids",
+  "hidden_molding_ids",
+  "hidden_extras_ids",
   "api_key",
 ]);
 

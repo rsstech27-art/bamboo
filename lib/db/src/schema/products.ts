@@ -4,6 +4,8 @@ import { z } from "zod/v4";
 
 export const productsTable = pgTable("products", {
   id: serial("id").primaryKey(),
+  /** 'panel' (default) | 'molding' */
+  category: text("category").notNull().default("panel"),
   name: text("name").notNull(),
   article: text("article").notNull(),
   collection: text("collection"),
@@ -20,6 +22,10 @@ export const productsTable = pgTable("products", {
   panelWidthMm: integer("panel_width_mm"),
   /** Высота панели в мм для расчёта КП (по умолчанию 2800) */
   panelHeightMm: integer("panel_height_mm"),
+  /** Цвет (для профильных товаров) */
+  color: text("color"),
+  /** Размер — длина, напр. «3 м» (для профильных товаров) */
+  size: text("size"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => [

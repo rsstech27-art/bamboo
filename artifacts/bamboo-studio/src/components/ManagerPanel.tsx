@@ -21,6 +21,8 @@ import { managerLogin, managerLogout, checkManagerSession, managerFetch } from '
 // ─────────────────────────────────────────────────────────────────────────────
 interface Product {
   id: number;
+  /** 'panel' (default) | 'molding' */
+  category: string;
   name: string;
   article: string;
   collection: string | null;
@@ -32,6 +34,8 @@ interface Product {
   kpName: string | null;
   panelWidthMm: number | null;
   panelHeightMm: number | null;
+  color: string | null;
+  size: string | null;
   createdAt: string;
 }
 
@@ -877,6 +881,249 @@ function ProductCard({ product, onEdit, onDelete }: {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Molding product form & card
+// ─────────────────────────────────────────────────────────────────────────────
+
+const EMPTY_MOLDING = {
+  category: 'molding' as const,
+  name: '',
+  article: '',
+  series: '',
+  size: '',
+  color: '',
+  cost: 0,
+  photoUrl: null as string | null,
+};
+
+function MoldingFormFields({ form, setForm, seriesOptions, fileRef }: {
+  form: typeof EMPTY_MOLDING;
+  setForm: React.Dispatch<React.SetStateAction<typeof EMPTY_MOLDING>>;
+  seriesOptions: Array<{ name: string }>;
+  fileRef: React.RefObject<HTMLInputElement | null>;
+}) {
+  const handlePhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setForm(f => ({ ...f, photoUrl: reader.result as string }));
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Photo */}
+      <div className="flex items-center gap-4">
+        <div className="relative shrink-0">
+          <button type="button" onClick={() => fileRef.current?.click()}
+            className="w-20 h-20 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center hover:border-black transition-colors overflow-hidden bg-gray-50">
+            {form.photoUrl
+              ? <img src={form.photoUrl} className="w-full h-full object-cover" alt="" />
+              : <div className="flex flex-col items-center gap-1 text-gray-300"><Image size={20} /><span className="text-[10px]">Фото</span></div>}
+          </button>
+          {form.photoUrl && (
+            <button type="button" onClick={() => setForm(f => ({ ...f, photoUrl: null }))} title="Удалить фото"
+              className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center shadow transition-colors">
+              <X size={10} />
+            </button>
+          )}
+        </div>
+        <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handlePhoto} />
+        <div className="flex-1 text-xs text-gray-400">Фото профиля (необязательно)</div>
+      </div>
+
+      {/* Fields */}
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Наименование *</label>
+            <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              placeholder="Золотой профиль" required
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-black transition-colors" />
+          </div>
+          <div>
+            <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Артикул *</label>
+            <input value={form.article} onChange={e => setForm(f => ({ ...f, article: e.target.value }))}
+              placeholder="PR-GOLD-3M" required
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-mono outline-none focus:border-black transition-colors" />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Серия профиля</label>
+            <select value={form.series} onChange={e => setForm(f => ({ ...f, series: e.target.value }))}
+              className={`w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-black transition-colors bg-white ${form.series ? 'text-gray-900' : 'text-gray-400'}`}>
+              <option value="">— не выбрана —</option>
+              {seriesOptions.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Цвет</label>
+            <input value={form.color} onChange={e => setForm(f => ({ ...f, color: e.target.value }))}
+              placeholder="Золото"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-black transition-colors" />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Размер</label>
+            <input value={form.size} onChange={e => setForm(f => ({ ...f, size: e.target.value }))}
+              placeholder="3 м"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-black transition-colors" />
+          </div>
+          <div>
+            <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Стоимость, ₽</label>
+            <input value={form.cost || ''} onChange={e => setForm(f => ({ ...f, cost: parseInt(e.target.value) || 0 }))}
+              placeholder="990" type="number" min="0"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-black transition-colors" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MoldingCreateForm({ seriesOptions, onSave, onCancel }: {
+  seriesOptions: Array<{ name: string }>;
+  onSave: (data: typeof EMPTY_MOLDING) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [form, setForm] = useState({ ...EMPTY_MOLDING });
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.name.trim() || !form.article.trim()) return;
+    setSaving(true); setSaveError(null);
+    try { await onSave(form); }
+    catch (err) { setSaveError(err instanceof Error ? err.message : 'Ошибка сохранения'); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <form onSubmit={submit} className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4 shadow-sm">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-sm font-black text-gray-900">Новый товар (профиль)</span>
+        <button type="button" onClick={onCancel} className="text-gray-400 hover:text-gray-700 transition-colors"><X size={16} /></button>
+      </div>
+      <MoldingFormFields form={form} setForm={setForm} seriesOptions={seriesOptions} fileRef={fileRef} />
+      {saveError && <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{saveError}</div>}
+      <div className="flex gap-2 pt-1">
+        <button type="submit" disabled={saving}
+          className="flex-1 flex items-center justify-center gap-2 bg-black text-white text-sm font-bold py-2.5 rounded-xl hover:bg-gray-800 active:scale-95 transition-all disabled:opacity-50">
+          {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Сохранить
+        </button>
+        <button type="button" onClick={onCancel}
+          className="px-4 py-2.5 border border-gray-200 text-sm text-gray-600 rounded-xl hover:bg-gray-50 transition-colors">Отмена</button>
+      </div>
+    </form>
+  );
+}
+
+function EditMoldingModal({ product, seriesOptions, onSave, onClose }: {
+  product: Product;
+  seriesOptions: Array<{ name: string }>;
+  onSave: (data: typeof EMPTY_MOLDING) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [form, setForm] = useState<typeof EMPTY_MOLDING>({
+    category: 'molding',
+    name: product.name,
+    article: product.article,
+    series: product.series ?? '',
+    size: product.size ?? '',
+    color: product.color ?? '',
+    cost: product.cost,
+    photoUrl: product.photoUrl,
+  });
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.name.trim() || !form.article.trim()) return;
+    setSaving(true); setSaveError(null);
+    try { await onSave(form); onClose(); }
+    catch (err) { setSaveError(err instanceof Error ? err.message : 'Ошибка сохранения'); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <>
+      <div className="fixed inset-0 z-[1100] bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-0 z-[1101] flex items-center justify-center p-4 pointer-events-none">
+        <form onSubmit={submit}
+          className="pointer-events-auto w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 space-y-5 animate-[slideInUp_0.2s_ease]"
+          onClick={e => e.stopPropagation()}>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-base font-black text-gray-900">Редактирование профиля</div>
+              <div className="text-xs text-gray-400 mt-0.5 font-mono">{product.article}</div>
+            </div>
+            <button type="button" onClick={onClose}
+              className="shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 transition-colors">
+              <X size={15} />
+            </button>
+          </div>
+          <MoldingFormFields form={form} setForm={setForm} seriesOptions={seriesOptions} fileRef={fileRef} />
+          {saveError && <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{saveError}</div>}
+          <div className="flex gap-2 pt-1">
+            <button type="submit" disabled={saving}
+              className="flex-1 flex items-center justify-center gap-2 bg-black text-white text-sm font-bold py-2.5 rounded-xl hover:bg-gray-800 active:scale-95 transition-all disabled:opacity-50">
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Сохранить изменения
+            </button>
+            <button type="button" onClick={onClose}
+              className="px-4 py-2.5 border border-gray-200 text-sm text-gray-600 rounded-xl hover:bg-gray-50 transition-colors">Отмена</button>
+          </div>
+        </form>
+      </div>
+    </>
+  );
+}
+
+function MoldingCard({ product, onEdit, onDelete }: {
+  product: Product; onEdit: () => void; onDelete: () => void;
+}) {
+  return (
+    <div className="bg-white border border-gray-100 rounded-2xl p-4 flex items-center gap-4 shadow-sm hover:shadow transition-shadow group">
+      {product.photoUrl
+        ? <img src={product.photoUrl} alt={product.name} className="w-12 h-12 rounded-xl object-cover shrink-0 border border-gray-100" />
+        : <div className="w-12 h-12 rounded-xl bg-gray-100 shrink-0 flex items-center justify-center">
+            <Package size={16} className="text-gray-300" />
+          </div>}
+      <div className="flex-1 min-w-0">
+        <div className="font-bold text-sm text-gray-900 truncate">{product.name}</div>
+        <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+          <span className="text-xs font-mono text-gray-400">{product.article}</span>
+          {product.series && <span className="text-[10px] bg-blue-50 text-blue-500 px-1.5 py-0.5 rounded-md">{product.series}</span>}
+          {product.color && <span className="text-[10px] bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded-md">{product.color}</span>}
+          {product.size  && <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-md">{product.size}</span>}
+        </div>
+        <div className="text-xs font-bold text-[#7ec662] mt-0.5">{fmt(product.cost)}</div>
+      </div>
+      <div className="flex items-center gap-1.5 shrink-0">
+        <button onClick={onEdit}
+          className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-semibold text-gray-600 hover:border-black hover:text-black hover:bg-gray-50 transition-colors">
+          <Pencil size={12} /> Изменить
+        </button>
+        <button onClick={onDelete}
+          className="w-7 h-7 flex items-center justify-center rounded-lg border border-red-100 hover:bg-red-50 text-red-400 hover:text-red-600 transition-colors">
+          <Trash2 size={12} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Backup / Restore
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1069,6 +1316,8 @@ function TabProducts({
   const { data, loading, error, reload } = useFetch<Product[]>('/api/products');
   const [creating, setCreating] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [creatingMolding, setCreatingMolding] = useState(false);
+  const [editingMolding, setEditingMolding] = useState<Product | null>(null);
   const [seeding, setSeeding] = useState(false);
   const [seedResult, setSeedResult] = useState<{ inserted: number; skipped: number } | null>(null);
   const [seriesFilter, setSeriesFilter] = useState<string | null>(null);
@@ -1078,11 +1327,10 @@ function TabProducts({
     catch { return `HTTP ${r.status}`; }
   };
 
+  // ── Panel products ──────────────────────────────────────────────────────────
   const create = async (form: typeof EMPTY_PRODUCT) => {
     const r = await managerFetch('/api/products', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form),
     });
     if (!r.ok) throw new Error(await apiErrorText(r));
     setCreating(false);
@@ -1092,9 +1340,7 @@ function TabProducts({
 
   const update = async (id: number, form: typeof EMPTY_PRODUCT) => {
     const r = await managerFetch(`/api/products/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form),
     });
     if (!r.ok) throw new Error(await apiErrorText(r));
     setEditingProduct(null);
@@ -1110,6 +1356,36 @@ function TabProducts({
     onPhotoChange?.();
   };
 
+  // ── Molding products ────────────────────────────────────────────────────────
+  const createMolding = async (form: typeof EMPTY_MOLDING) => {
+    const r = await managerFetch('/api/products', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form),
+    });
+    if (!r.ok) throw new Error(await apiErrorText(r));
+    setCreatingMolding(false);
+    await reload();
+    onPhotoChange?.();
+  };
+
+  const updateMolding = async (id: number, form: typeof EMPTY_MOLDING) => {
+    const r = await managerFetch(`/api/products/${id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form),
+    });
+    if (!r.ok) throw new Error(await apiErrorText(r));
+    setEditingMolding(null);
+    await reload();
+    onPhotoChange?.();
+  };
+
+  const delMolding = async (id: number) => {
+    if (!confirm('Удалить товар?')) return;
+    const r = await managerFetch(`/api/products/${id}`, { method: 'DELETE' });
+    if (!r.ok) { alert(`Ошибка удаления: ${await apiErrorText(r)}`); return; }
+    await reload();
+    onPhotoChange?.();
+  };
+
+  // ── Seed ────────────────────────────────────────────────────────────────────
   const seedCatalog = async () => {
     setSeeding(true);
     setSeedResult(null);
@@ -1127,29 +1403,47 @@ function TabProducts({
     }
   };
 
-  const currentCount = data?.length ?? 0;
+  // ── Computed ────────────────────────────────────────────────────────────────
+  const panelProducts   = data?.filter(p => (p.category ?? 'panel') !== 'molding') ?? [];
+  const moldingProducts = data?.filter(p => p.category === 'molding') ?? [];
+
+  const currentCount = panelProducts.length;
   const alreadyFull = currentCount >= CATALOG_SIZE;
 
-  // Уникальные серии из загруженных товаров (сохраняем порядок появления)
-  const availableSeries = data
-    ? Array.from(new Set(data.map(p => p.series).filter((s): s is string => !!s)))
-    : [];
+  // Серии только из панельных товаров
+  const availableSeries = Array.from(new Set(panelProducts.map(p => p.series).filter((s): s is string => !!s)));
 
-  // Товары после фильтрации
-  const visibleProducts = data
-    ? (seriesFilter ? data.filter(p => p.series === seriesFilter) : data)
-    : [];
+  // Панельные товары после фильтрации
+  const visibleProducts = seriesFilter && !seriesFilter.startsWith('__')
+    ? panelProducts.filter(p => p.series === seriesFilter)
+    : panelProducts;
+
+  // Серии профилей (для выпадающего списка в форме)
+  const moldingSeriesOptions: Array<{ name: string }> = [
+    ...DEFAULT_MOLDING_PRICES
+      .filter(m => !(hiddenMoldingIds ?? []).includes(m.id))
+      .map(m => ({ name: (moldingNameOverrides ?? {})[m.id] || m.name })),
+    ...(customMoldings ?? []).map(m => ({ name: m.name })),
+  ];
 
   return (
     <div className="max-w-2xl mx-auto py-6 px-4 space-y-4">
 
-      {/* ── Edit modal ── */}
+      {/* ── Modals ── */}
       {editingProduct && (
         <EditProductModal
           product={editingProduct}
           seriesOptions={seriesOptions}
           onSave={(f) => update(editingProduct.id, f)}
           onClose={() => setEditingProduct(null)}
+        />
+      )}
+      {editingMolding && (
+        <EditMoldingModal
+          product={editingMolding}
+          seriesOptions={moldingSeriesOptions}
+          onSave={(f) => updateMolding(editingMolding.id, f)}
+          onClose={() => setEditingMolding(null)}
         />
       )}
 
@@ -1191,11 +1485,11 @@ function TabProducts({
       {/* ── Backup / Restore ── */}
       <BackupSection onImportSuccess={() => { void reload(); onPhotoChange?.(); onSettingsChange?.(); }} />
 
-      {/* ── Add manually ── */}
+      {/* ── Add panel product manually ── */}
       {!creating ? (
-        <button onClick={() => setCreating(true)}
+        <button onClick={() => { setCreating(true); setCreatingMolding(false); }}
           className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 hover:border-black text-gray-500 hover:text-black text-sm font-bold py-3.5 rounded-2xl transition-colors">
-          <Plus size={16} /> Добавить товар вручную
+          <Plus size={16} /> Добавить панельный товар
         </button>
       ) : (
         <ProductCreateForm
@@ -1212,7 +1506,7 @@ function TabProducts({
       )}
       {error && <div className="text-sm text-red-500 text-center py-8">Ошибка: {error}</div>}
 
-      {!loading && data && data.length === 0 && !creating && (
+      {!loading && panelProducts.length === 0 && !creating && (
         <div className="text-center py-8 text-gray-400">
           <Package size={36} className="mx-auto mb-3 opacity-30" />
           <p className="text-sm">Нажмите «Загрузить каталог» или добавьте товар вручную</p>
@@ -1222,106 +1516,130 @@ function TabProducts({
       {/* ── Фильтр по сериям + быстрые разделы ── */}
       {!loading && (
         <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => setSeriesFilter(null)}
+          <button onClick={() => setSeriesFilter(null)}
             className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
-              seriesFilter === null
-                ? 'bg-black text-white border-black'
-                : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400 hover:text-gray-800'
-            }`}>
+              seriesFilter === null ? 'bg-black text-white border-black' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400 hover:text-gray-800'}`}>
             Все
           </button>
           {availableSeries.map(s => (
-            <button key={s}
-              onClick={() => setSeriesFilter(seriesFilter === s ? null : s)}
+            <button key={s} onClick={() => setSeriesFilter(seriesFilter === s ? null : s)}
               className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
-                seriesFilter === s
-                  ? 'bg-black text-white border-black'
-                  : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400 hover:text-gray-800'
-              }`}>
+                seriesFilter === s ? 'bg-black text-white border-black' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400 hover:text-gray-800'}`}>
               {s}
               <span className={`ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                seriesFilter === s ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-400'
-              }`}>
-                {data!.filter(p => p.series === s).length}
+                seriesFilter === s ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-400'}`}>
+                {panelProducts.filter(p => p.series === s).length}
               </span>
             </button>
           ))}
-          {/* Быстрый переход к разделам */}
           <div className="w-px bg-gray-200 self-stretch mx-1" />
           {[{ id: '__profiles__', label: 'Профили' }, { id: '__glue__', label: 'Клей' }].map(chip => (
-            <button key={chip.id}
-              onClick={() => setSeriesFilter(seriesFilter === chip.id ? null : chip.id)}
+            <button key={chip.id} onClick={() => setSeriesFilter(seriesFilter === chip.id ? null : chip.id)}
               className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
-                seriesFilter === chip.id
-                  ? 'bg-black text-white border-black'
-                  : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400 hover:text-gray-800'
-              }`}>
+                seriesFilter === chip.id ? 'bg-black text-white border-black' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400 hover:text-gray-800'}`}>
               {chip.label}
             </button>
           ))}
         </div>
       )}
 
-      {/* ── Список товаров (скрыт при выборе специального раздела) ── */}
+      {/* ── Panel product list ── */}
       {!seriesFilter?.startsWith('__') && (
         <>
           {visibleProducts.length === 0 && !loading && seriesFilter && (
-            <div className="text-center py-8 text-gray-400 text-sm">
-              В серии «{seriesFilter}» нет товаров
-            </div>
+            <div className="text-center py-8 text-gray-400 text-sm">В серии «{seriesFilter}» нет товаров</div>
           )}
           {visibleProducts.map(p => (
-            <ProductCard
-              key={p.id}
-              product={p}
+            <ProductCard key={p.id} product={p}
               onEdit={() => { setEditingProduct(p); setCreating(false); }}
-              onDelete={() => del(p.id)}
-            />
+              onDelete={() => del(p.id)} />
           ))}
         </>
       )}
 
-      {/* ── Профили (показывается всегда или при фильтре __profiles__) ── */}
+      {/* ── Профили ── */}
       {(seriesFilter === null || seriesFilter === '__profiles__') && (
-        <div className="mt-4">
-          <div className="flex items-center gap-2 mb-3">
-            <ChevronRight size={13} className="text-gray-400" />
-            <span className="text-xs font-black uppercase tracking-widest text-gray-500">Профили</span>
-          </div>
-          <div className="bg-white border border-gray-100 rounded-xl px-4 shadow-sm">
-            {DEFAULT_MOLDING_PRICES
-              .filter(m => !(hiddenMoldingIds ?? []).includes(m.id))
-              .map(m => (
-                <EditableRow
+        <div className="mt-4 space-y-4">
+
+          {/* Серии профилей (цены) */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <ChevronRight size={13} className="text-gray-400" />
+              <span className="text-xs font-black uppercase tracking-widest text-gray-500">Серии профилей</span>
+              <span className="text-[10px] text-gray-400">— название и цена</span>
+            </div>
+            <div className="bg-white border border-gray-100 rounded-xl px-4 shadow-sm">
+              {DEFAULT_MOLDING_PRICES
+                .filter(m => !(hiddenMoldingIds ?? []).includes(m.id))
+                .map(m => (
+                  <EditableRow
+                    key={m.id}
+                    defaultName={m.name}
+                    defaultPrice={m.defaultPrice}
+                    nameOverride={(moldingNameOverrides ?? {})[m.id]}
+                    priceOverride={(moldingOverrides ?? {})[m.id]}
+                    onNameChange={name => onUpdateMoldingName?.(m.id, name)}
+                    onPriceChange={price => onUpdateMolding?.(m.id, price)}
+                    unitLabel="₽/3 м"
+                    onDelete={() => onHideMolding?.(m.id)}
+                  />
+                ))}
+              {(customMoldings ?? []).map(m => (
+                <CustomItemRow
                   key={m.id}
-                  defaultName={m.name}
-                  defaultPrice={m.defaultPrice}
-                  nameOverride={(moldingNameOverrides ?? {})[m.id]}
-                  priceOverride={(moldingOverrides ?? {})[m.id]}
-                  onNameChange={name => onUpdateMoldingName?.(m.id, name)}
-                  onPriceChange={price => onUpdateMolding?.(m.id, price)}
+                  item={m}
+                  onUpdate={(name, price) => onUpdateCustomMolding?.(m.id, name, price)}
+                  onDelete={() => onDeleteMolding?.(m.id)}
                   unitLabel="₽/3 м"
-                  onDelete={() => onHideMolding?.(m.id)}
                 />
               ))}
-            {(customMoldings ?? []).map(m => (
-              <CustomItemRow
-                key={m.id}
-                item={m}
-                onUpdate={(name, price) => onUpdateCustomMolding?.(m.id, name, price)}
-                onDelete={() => onDeleteMolding?.(m.id)}
-                unitLabel="₽/3 м"
-              />
-            ))}
-          </div>
-          {onAddMolding && (
-            <div className="mt-3">
-              <AddItemForm onAdd={onAddMolding} buttonLabel="Добавить профиль" formTitle="Новый профиль"
-                namePlaceholder="Название профиля" priceLabel="Цена, ₽/3 м" pricePlaceholder="990"
-                errorFallback="Не удалось добавить профиль" />
             </div>
-          )}
+            {onAddMolding && (
+              <div className="mt-3">
+                <AddItemForm onAdd={onAddMolding} buttonLabel="Добавить серию профиля" formTitle="Новая серия профиля"
+                  namePlaceholder="Название серии" priceLabel="Цена, ₽/3 м" pricePlaceholder="990"
+                  errorFallback="Не удалось добавить" />
+              </div>
+            )}
+          </div>
+
+          {/* Товары-профили (каталог) */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <ChevronRight size={13} className="text-gray-400" />
+              <span className="text-xs font-black uppercase tracking-widest text-gray-500">Товары — профили</span>
+              <span className="text-[10px] text-gray-400">— конкретные позиции</span>
+            </div>
+
+            {!creatingMolding ? (
+              <button onClick={() => { setCreatingMolding(true); setCreating(false); }}
+                className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 hover:border-black text-gray-500 hover:text-black text-sm font-bold py-3 rounded-2xl transition-colors mb-3">
+                <Plus size={14} /> Добавить товар-профиль
+              </button>
+            ) : (
+              <div className="mb-3">
+                <MoldingCreateForm
+                  seriesOptions={moldingSeriesOptions}
+                  onSave={createMolding}
+                  onCancel={() => setCreatingMolding(false)}
+                />
+              </div>
+            )}
+
+            {moldingProducts.length === 0 && !creatingMolding && (
+              <div className="text-center py-6 text-gray-400 text-sm">
+                <Package size={28} className="mx-auto mb-2 opacity-30" />
+                Нет добавленных профильных товаров
+              </div>
+            )}
+            <div className="space-y-2">
+              {moldingProducts.map(p => (
+                <MoldingCard key={p.id} product={p}
+                  onEdit={() => { setEditingMolding(p); setCreatingMolding(false); }}
+                  onDelete={() => delMolding(p.id)} />
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
