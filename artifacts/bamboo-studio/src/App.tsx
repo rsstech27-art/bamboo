@@ -206,6 +206,34 @@ type PanelSeries = { id: string; name: string; panels: Panel[] };
 
 const BAMBOO_PANELS: Panel[] = (PANEL_SERIES as PanelSeries[]).flatMap(s => s.panels);
 
+// ─── Auto-seam position helper ───────────────────────────────────────────────
+// Returns the fractional Y ratios (0–1) of mandatory horizontal seam lines for
+// a wall of wallHeightMm with panels of singleRowH mm, given joint placement
+// (jpp = jointProfilePosition array, e.g. ['bottom'] or ['top','bottom']).
+const computeAutoSeamPositions = (
+  wallHeightMm: number,
+  singleRowH: number,
+  jpp: string[],
+): number[] => {
+  if (wallHeightMm <= singleRowH || wallHeightMm <= 0 || singleRowH <= 0) return [];
+  const rowCount = Math.ceil(wallHeightMm / singleRowH);
+  const cutH = wallHeightMm - (rowCount - 1) * singleRowH;
+  const hasTop    = jpp.includes('top');
+  const hasBottom = jpp.includes('bottom');
+  const positions: number[] = [];
+  if (hasTop && hasBottom) {
+    const halfCut = cutH / 2;
+    positions.push(halfCut / wallHeightMm, (wallHeightMm - halfCut) / wallHeightMm);
+  } else {
+    if (hasTop)    positions.push(cutH / wallHeightMm);
+    if (hasBottom) positions.push(((rowCount - 1) * singleRowH) / wallHeightMm);
+  }
+  for (let ri = 1; ri <= rowCount - 2; ri++) {
+    positions.push((ri * singleRowH) / wallHeightMm);
+  }
+  return positions.filter(r => r > 0 && r < 1);
+};
+
 // ─── Dynamic catalog helpers ─────────────────────────────────────────────────
 // Module-level lookup maps built once from the hardcoded catalog.
 // Used to merge DB product list (name, photoUrl) with local render metadata
@@ -1538,14 +1566,34 @@ const BambooStudio = () => {
           const ly = qp[0].y + (qp[3].y - qp[0].y) * r;
           const rx = qp[1].x + (qp[2].x - qp[1].x) * r;
           const ry = qp[1].y + (qp[2].y - qp[1].y) * r;
-          // Forced row-join: always single stripe (no gap/light), width same as regular profile.
+          const midX = (lx + rx) / 2;
+          const midY = (ly + ry) / 2;
+          // Forced row-join: always single stripe, drawn in red to signal draggable seam.
           tCtx.save();
-          tCtx.strokeStyle = 'red';
+          tCtx.strokeStyle = '#ef4444';
           tCtx.lineWidth = autoHWidth;
           tCtx.lineCap = 'butt';
           tCtx.setLineDash([]);
           tCtx.beginPath(); tCtx.moveTo(lx, ly); tCtx.lineTo(rx, ry); tCtx.stroke();
           tCtx.restore();
+          // Drag handle — visible only on active surface, not during erase/export.
+          if (isActive && !curIsErasing && !forExportRef.current) {
+            tCtx.save();
+            tCtx.fillStyle = '#ef4444';
+            tCtx.strokeStyle = 'rgba(255,255,255,0.9)';
+            tCtx.lineWidth = 1.5;
+            tCtx.setLineDash([]);
+            tCtx.beginPath();
+            tCtx.arc(midX, midY, 7, 0, Math.PI * 2);
+            tCtx.fill();
+            tCtx.stroke();
+            tCtx.fillStyle = 'white';
+            tCtx.font = 'bold 9px sans-serif';
+            tCtx.textAlign = 'center';
+            tCtx.textBaseline = 'middle';
+            tCtx.fillText('↕', midX, midY);
+            tCtx.restore();
+          }
         };
 
         if (!allNoProfile && cfg.wallHeightMm > singleRowH) {
@@ -2033,6 +2081,42 @@ const BambooStudio = () => {
     return -1;
   }, []);
 
+  // Return the panel row-height (mm) for the active surface: custom per-material or standard 2800.
+  const getActiveSingleRowH = useCallback((): number => {
+    const isHorizTv = wallZoneRef.current === 'tv' && panelOrientationRef.current === 'horizontal';
+    const mat = sectorMaterialsRef.current[0];
+    return isHorizTv
+      ? (mat?.panelWidthMm ?? PANEL_W_MM)
+      : (mat?.panelHeightMm ?? PANEL_H_MM);
+  }, []);
+
+  // Find which red auto-seam line handle is near a canvas point.
+  // Returns the seam ratio (0–1) or -1 if none within hit radius.
+  const findNearAutoSeam = useCallback((cx: number, cy: number): number => {
+    const pts = pointsRef.current;
+    if (pts.length < 4) return -1;
+    const wallH = wallHeightMmRef.current;
+    if (wallH <= 0) return -1;
+    const singleRowH = getActiveSingleRowH();
+    const jpp = jointProfilePositionRef.current ?? ['bottom'];
+    const seamPositions = computeAutoSeamPositions(wallH, singleRowH, jpp);
+    if (seamPositions.length === 0) return -1;
+    const asIdx = activeSurfaceRef.current;
+    const q = pts.length >= asIdx * 4 + 4 ? pts.slice(asIdx * 4, asIdx * 4 + 4) : pts.slice(0, 4);
+    const hPositions = hMoldingPositionsRef.current;
+    for (const seamR of seamPositions) {
+      // Skip seams already covered by a user hMolding
+      if (hPositions.some(p => Math.abs(p - seamR) < 0.005)) continue;
+      const lx = q[0].x + (q[3].x - q[0].x) * seamR;
+      const ly = q[0].y + (q[3].y - q[0].y) * seamR;
+      const rx = q[1].x + (q[2].x - q[1].x) * seamR;
+      const ry = q[1].y + (q[2].y - q[1].y) * seamR;
+      const midX = (lx + rx) / 2;
+      const midY = (ly + ry) / 2;
+      if (Math.sqrt((cx - midX) ** 2 + (cy - midY) ** 2) <= 14) return seamR;
+    }
+    return -1;
+  }, [getActiveSingleRowH]);
 
   // Initialize canvas only when image changes
   useEffect(() => {
@@ -2094,6 +2178,19 @@ const BambooStudio = () => {
       setSelectedDividerIdx(null);
       return;
     }
+    // Clicking a red auto-seam handle: adopt it as a draggable hMolding.
+    const seamR = findNearAutoSeam(x, y);
+    if (seamR !== -1) {
+      pushHistory();
+      const newPositions = [...hMoldingPositionsRef.current, seamR].sort((a, b) => a - b);
+      const newIdx = newPositions.findIndex(p => Math.abs(p - seamR) < 0.001);
+      hMoldingPositionsRef.current = newPositions; // sync ref immediately for drag
+      setHMoldingPositions(newPositions);
+      draggingHMoldingIndexRef.current = newIdx;
+      setSelectedHMoldingIdx(newIdx);
+      setSelectedDividerIdx(null);
+      return;
+    }
     const divIdx = findNearDivider(x, y);
     if (divIdx !== -1) {
       pushHistory();
@@ -2119,29 +2216,45 @@ const BambooStudio = () => {
 
     const { x, y } = getCanvasCoords(e);
 
-    // Dragging a horizontal molding
+    // Dragging a horizontal molding (includes adopted auto-seam lines)
     if (!isErasing && draggingHMoldingIndexRef.current !== null) {
       const idx = draggingHMoldingIndexRef.current;
       const rawRatio = canvasYToWallRatio(x, y);
       const wallH = wallHeightMmRef.current;
-
-      // Snap to nearest 2800 mm grid mark when wall height is known.
-      // Each valid position is a whole multiple of (PANEL_H_MM / wallH).
-      let snappedRatio = rawRatio;
-      if (wallH > PANEL_H_MM) {
-        const step = PANEL_H_MM / wallH;           // ratio per panel-height
-        const gridIdx = Math.max(1, Math.round(rawRatio / step)); // ≥ 1 step from top
-        snappedRatio = Math.min(gridIdx * step, 0.98); // clamp away from bottom edge
-      }
+      const singleRowH = getActiveSingleRowH();
 
       setHMoldingPositions(prev => {
-        const updated = [...prev];
-        updated[idx] = snappedRatio;
-        const sorted = [...updated].sort((a, b) => a - b);
-        // Keep dragging index in sync after sort
-        const newDragIdx = sorted.findIndex(p => Math.abs(p - snappedRatio) < 0.001);
+        // Remove the dragged profile to find its neighbors cleanly.
+        const others = prev.filter((_, i) => i !== idx).sort((a, b) => a - b);
+
+        // Neighbor edges relative to where rawRatio falls in the "others" list.
+        let prevEdge = 0;
+        let nextEdge = 1;
+        for (const p of others) {
+          if (p <= rawRatio) prevEdge = p;
+          else { nextEdge = p; break; }
+        }
+
+        // Clamp: each adjacent section must stay ≤ singleRowH (e.g. 2800 mm).
+        // Gap above = (r − prevEdge) × wallH ≤ singleRowH  →  r ≤ prevEdge + threshold
+        // Gap below = (nextEdge − r) × wallH ≤ singleRowH  →  r ≥ nextEdge − threshold
+        let newRatio = rawRatio;
+        if (wallH > 0 && singleRowH > 0) {
+          const threshold = singleRowH / wallH;
+          const maxR = prevEdge + threshold; // hard stop downward
+          const minR = nextEdge - threshold; // hard stop upward
+          if (minR <= maxR) {
+            // Valid range exists — apply hard stops.
+            newRatio = Math.max(minR, Math.min(maxR, rawRatio));
+          }
+          // else conflict (span > 2 × singleRowH with no other profiles) → free move.
+        }
+        newRatio = Math.max(0.02, Math.min(0.98, newRatio));
+
+        const updated = [...others, newRatio].sort((a, b) => a - b);
+        const newDragIdx = updated.findIndex(p => Math.abs(p - newRatio) < 0.001);
         if (newDragIdx !== -1) draggingHMoldingIndexRef.current = newDragIdx;
-        return sorted;
+        return updated;
       });
       return;
     }
