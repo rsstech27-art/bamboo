@@ -1060,11 +1060,6 @@ function MoldingCard({ product, onEdit, onDelete }: {
 }) {
   return (
     <div className="bg-white border border-gray-100 rounded-2xl p-4 flex items-center gap-4 shadow-sm hover:shadow transition-shadow group">
-      {product.photoUrl
-        ? <img src={product.photoUrl} alt={product.name} className="w-12 h-12 rounded-xl object-cover shrink-0 border border-gray-100" />
-        : <div className="w-12 h-12 rounded-xl bg-gray-100 shrink-0 flex items-center justify-center">
-            <Package size={16} className="text-gray-300" />
-          </div>}
       <div className="flex-1 min-w-0">
         <div className="font-bold text-sm text-gray-900 truncate">{product.name}</div>
         <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
