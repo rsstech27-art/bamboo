@@ -1912,41 +1912,6 @@ function TabProducts({
         {/* ════════════════════ RIGHT — sidebar ════════════════════ */}
         <div className="w-72 shrink-0 space-y-3">
 
-          {/* Обновить каталог */}
-          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm space-y-3">
-            <div className="flex items-center gap-2">
-              <Package size={14} className="text-gray-400 shrink-0" />
-              <span className="text-sm font-black text-gray-800">Каталог ALL WALL</span>
-            </div>
-            <div className="text-xs text-gray-500 leading-relaxed">
-              {loading ? 'Загрузка…'
-                : alreadyFull
-                  ? `${currentCount} из ${CATALOG_SIZE} позиций загружено`
-                  : `${currentCount} из ${CATALOG_SIZE} — заполните одним нажатием`}
-            </div>
-            {seedResult && seedResult.skipped !== -1 && (
-              <div className="text-xs text-green-600 font-medium">
-                {seedResult.inserted > 0
-                  ? `✓ Добавлено ${seedResult.inserted} новых, пропущено ${seedResult.skipped}`
-                  : `Все ${seedResult.skipped} позиций уже есть`}
-              </div>
-            )}
-            {seedResult && seedResult.skipped === -1 && (
-              <div className="text-xs text-red-500">Ошибка при загрузке</div>
-            )}
-            <button onClick={seedCatalog} disabled={seeding}
-              className={`w-full flex items-center justify-center gap-2 text-xs font-bold py-2.5 rounded-xl transition-all active:scale-95 disabled:opacity-60
-                ${alreadyFull
-                  ? 'bg-green-100 text-green-700 hover:bg-green-200 border border-green-300'
-                  : 'bg-black text-white hover:bg-gray-800 shadow-sm'}`}>
-              {seeding
-                ? <><Loader2 size={13} className="animate-spin" /> Загрузка…</>
-                : alreadyFull
-                  ? <><RotateCcw size={13} /> Обновить каталог</>
-                  : <><Package size={13} /> Загрузить каталог</>}
-            </button>
-          </div>
-
         </div>
       </div>
     </div>
