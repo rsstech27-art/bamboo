@@ -2204,11 +2204,11 @@ const BambooStudio = () => {
       }
       if (cfg.hMoldingStyle !== 'none') addRuns(cfg.hMoldingStyle, wMm, cfg.hMoldingCount);
 
-      // Mandatory horizontal row-join profiles: when the wall is taller than one panel
+      // Mandatory horizontal row-join profiles: when the wall/column face is taller than one panel
       // (PANEL_H_MM = 2800 mm for vertical orientation, PANEL_W_MM = 1220 mm for horizontal TV),
-      // every additional row requires a horizontal profile across the full wall width.
-      // Only computed when wall height is explicitly set — otherwise we assume a single row.
-      if (cfg.wallHeightMm > 0 && !isColumn) {
+      // every additional row requires a horizontal profile across the full face width.
+      // Only computed when height is explicitly set — otherwise we assume a single row.
+      if (cfg.wallHeightMm > 0) {
         const singleRowH = isHorizTv ? PANEL_W_MM : PANEL_H_MM;
         const rowJoints = Math.max(0, Math.ceil(hMm / singleRowH) - 1);
         if (rowJoints > 0) {
@@ -2257,10 +2257,35 @@ const BambooStudio = () => {
         .slice(0, Math.max(0, nQuads - 1))
         .filter((w, j) => w && (cornerTypesRef.current[j] ?? 'external') === 'external').length;
       const hiddenJoints = columnHiddenJoints(perRowCol, columnVisibleJoints, visibleWraps);
+      const colH = columnHeightMm > 0 ? columnHeightMm : PANEL_H_MM;
+      const visStyle = kpCfgs.find(c => c.moldingStyle !== 'none')?.moldingStyle;
+      const colStyle: Exclude<MoldingStyle, 'none'> =
+        visStyle && visStyle !== 'none' ? visStyle as Exclude<MoldingStyle, 'none'> : 'metallic';
+      // Vertical joints on hidden faces
       if (hiddenJoints > 0) {
-        const visStyle = kpCfgs.find(cfg => cfg.moldingStyle !== 'none')?.moldingStyle;
-        addRuns(visStyle && visStyle !== 'none' ? visStyle : 'metallic',
-          columnHeightMm > 0 ? columnHeightMm : PANEL_H_MM, hiddenJoints);
+        addRuns(colStyle, colH, hiddenJoints);
+      }
+      // Horizontal row-join profiles on hidden faces when column is taller than one panel.
+      // Each hidden face needs (rowCount-1) horizontal profiles of PANEL_W_MM width.
+      if (columnHeightMm > PANEL_H_MM) {
+        const rowJoints = Math.max(0, Math.ceil(columnHeightMm / PANEL_H_MM) - 1);
+        if (rowJoints > 0) {
+          // Count visible faces to find hidden face count
+          let visFaces = 0;
+          for (let q = 0; q < nQuads; q++) {
+            const cfg = kpCfgs[q];
+            const wL = q > 0 && (wrapJunctionsRef.current[q - 1] ?? false)
+              && (cornerTypesRef.current[q - 1] ?? 'external') === 'external';
+            for (let sIdx = 0; sIdx < cfg.panelCount; sIdx++) {
+              if (sIdx === 0 && wL) continue;
+              visFaces++;
+            }
+          }
+          const hiddenFaceCount = Math.max(0, perRowCol - visFaces);
+          if (hiddenFaceCount > 0) {
+            addRuns(colStyle, PANEL_W_MM, hiddenFaceCount * rowJoints);
+          }
+        }
       }
     }
     // Standard window with «через профиль»: outer slope corners get profiles —
