@@ -1879,7 +1879,9 @@ const SORT_OPTIONS: { value: SortKey; label: string }[] = [
 // Tab: Интеграции (API)
 // ─────────────────────────────────────────────────────────────────────────────
 function TabIntegrations() {
+  // apiKey: stored for copy; revealed: true only immediately after generation
   const [apiKey, setApiKey] = useState<string | null>(null);
+  const [revealed, setRevealed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -1890,7 +1892,9 @@ function TabIntegrations() {
     void managerFetch('/api/settings/api_key')
       .then(r => r.ok ? r.json() : null)
       .then((val: Record<string, string> | null) => {
+        // Store the key for copy purposes but never reveal it on load
         setApiKey(val?.key ?? null);
+        setRevealed(false);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -1906,16 +1910,23 @@ function TabIntegrations() {
         body: JSON.stringify({ key }),
       });
       setApiKey(key);
+      setRevealed(true); // show only right after generation
     } catch { /* ignore */ }
     setGenerating(false);
   };
 
-  const copy = (text: string) => {
-    void navigator.clipboard.writeText(text).then(() => {
+  const copy = () => {
+    if (!apiKey) return;
+    void navigator.clipboard.writeText(apiKey).then(() => {
       setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      setTimeout(() => {
+        setCopied(false);
+        setRevealed(false); // mask after copy animation ends
+      }, 1200);
     });
   };
+
+  const MASK = '•'.repeat(64);
 
   return (
     <div className="max-w-xl mx-auto space-y-6 py-6 px-4">
@@ -1930,11 +1941,16 @@ function TabIntegrations() {
             <div className="flex items-center gap-2 text-gray-400 text-sm"><Loader2 size={14} className="animate-spin" /> Загрузка…</div>
           ) : apiKey ? (
             <div>
-              <p className="text-[10px] text-gray-400 mb-1.5">Текущий ключ — передаётся в заголовке <code className="bg-gray-100 px-1 rounded">X-Api-Key</code></p>
+              <p className="text-[10px] text-gray-400 mb-1.5">
+                Ключ передаётся в заголовке <code className="bg-gray-100 px-1 rounded">X-Api-Key</code>
+                {!revealed && <span className="ml-1">— перегенерируйте, чтобы увидеть снова</span>}
+              </p>
               <div className="flex items-center gap-2">
-                <code className="flex-1 text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 font-mono break-all text-gray-700">{apiKey}</code>
-                <button onClick={() => copy(apiKey)}
-                  className="shrink-0 px-3 py-2 text-xs font-bold rounded-lg bg-black text-white hover:bg-gray-800 transition-colors">
+                <code className="flex-1 text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 font-mono break-all text-gray-700 select-none tracking-widest">
+                  {revealed ? apiKey : MASK}
+                </code>
+                <button onClick={copy} disabled={copied}
+                  className="shrink-0 px-3 py-2 text-xs font-bold rounded-lg bg-black text-white hover:bg-gray-800 transition-colors disabled:opacity-60">
                   {copied ? <Check size={12} /> : 'Копировать'}
                 </button>
               </div>
