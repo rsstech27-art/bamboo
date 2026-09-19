@@ -3995,7 +3995,7 @@ const BambooStudio = () => {
                       <p className="text-[9px] font-bold text-gray-600">Периметр: {Math.round(perMm / 10)} см{areaM2 > 0 ? ` · площадь: ${areaM2.toFixed(2).replace('.', ',')} м²` : ''}</p>
                       <p className="text-[9px] font-bold text-[#5a9c3e]">Панелей всего: {opt.needed} (по периметру {perRow}, периметр ÷ 122 см, округление вверх)</p>
                       {opt.donorPanels > 0 && columnHeightMm > PANEL_H_MM && (
-                        <p className="text-[9px] font-bold text-amber-600">⚠ Высота больше 2,8 м — недостающие {(opt.remMm / 10).toFixed(0)} см докраиваются: {opt.donorPanels} {panelsWord(opt.donorPanels)} режется на полосы ({opt.stripsPerPanel} шт. из одной панели)</p>
+                        <p className="text-[9px] font-bold text-amber-600">⚠ Высота больше 2,8 м — {opt.fullRows} {rowsWord(opt.fullRows)} по высоте, всего {opt.needed} {panelsWord(opt.needed)} (в расчёте КП учтено)</p>
                       )}
                     </div>
                   );
@@ -4183,9 +4183,7 @@ const BambooStudio = () => {
                     )}
                     {tooTall && (
                       <p className="text-[9px] font-bold text-amber-600">
-                        {opt.donorPanels > 0
-                          ? `⚠ Высота стены больше 2,8 м — недостающие ${(opt.remMm / 10).toFixed(0)} см докраиваются: ${opt.donorPanels} ${panelsWord(opt.donorPanels)} режется на полосы (${opt.stripsPerPanel} шт. из одной), всего ${opt.needed} ${panelsWord(opt.needed)} (в расчёте КП учтено)`
-                          : `⚠ Высота стены больше 2,8 м — ${opt.fullRows} ${rowsWord(opt.fullRows)} по высоте, всего ${opt.needed} ${panelsWord(opt.needed)} (в расчёте КП учтено)`}
+                        {`⚠ Высота стены больше 2,8 м — ${opt.fullRows} ${rowsWord(opt.fullRows)} по высоте, всего ${opt.needed} ${panelsWord(opt.needed)} (в расчёте КП учтено)`}
                       </p>
                     )}
                     <p className="text-[8px] text-gray-400">Ширина панели в проекте: {Math.round(wallWidthMm / panelCount / 10)} см (макс. 122 см)</p>
