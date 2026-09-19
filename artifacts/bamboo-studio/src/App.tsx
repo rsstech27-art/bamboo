@@ -3299,7 +3299,7 @@ const BambooStudio = () => {
       {/* ══════════════════════════════════════════
           WEBSITE HEADER — allwall.ru style
       ══════════════════════════════════════════ */}
-      <header className="sticky top-0 z-50 bg-[#1c1c1c] text-white">
+      <header className="sticky top-0 z-50 bg-[#282828] text-white">
         <div className="max-w-7xl mx-auto flex items-center justify-between px-6 h-16">
           {/* Logo */}
           <a href="https://allwall.ru" target="_blank" rel="noopener noreferrer" className="flex items-center shrink-0">
@@ -3323,7 +3323,7 @@ const BambooStudio = () => {
       {/* ══════════════════════════════════════════
           HERO — описание и инструкция
       ══════════════════════════════════════════ */}
-      <section className="bg-[#1c1c1c] text-white pt-12 pb-14 px-6">
+      <section className="bg-[#282828] text-white pt-12 pb-14 px-6">
         <div className="max-w-5xl mx-auto text-center">
           <h1 style={{
             verticalAlign: 'middle',
@@ -3353,7 +3353,7 @@ const BambooStudio = () => {
               { n: '03', title: 'Подберите панели', desc: 'Выбирайте из 81 варианта — текстуры, цвета, молдинги.' },
               { n: '04', title: 'Сохраните результат', desc: 'Скачайте PNG и покажите дизайнеру или в магазин.' },
             ].map(s => (
-              <div key={s.n} className="bg-white/5 border border-white/10 rounded-2xl p-5 hover:bg-white/8 transition-colors">
+              <div key={s.n} className="bg-transparent border border-white p-5 hover:bg-white/5 transition-colors">
                 <div className="text-[#7ec662] text-3xl font-black mb-3 leading-none">{s.n}</div>
                 <div className="font-bold text-white mb-2 text-sm">{s.title}</div>
                 <div className="text-gray-400 text-xs leading-relaxed">{s.desc}</div>
@@ -4553,7 +4553,7 @@ const BambooStudio = () => {
       {/* ══════════════════════════════════════════
           FOOTER — allwall.ru style
       ══════════════════════════════════════════ */}
-      <footer className="bg-[#1c1c1c] text-white pt-14 pb-8 px-6">
+      <footer className="bg-[#282828] text-white pt-14 pb-8 px-6">
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-10 pb-10 border-b border-white/10">
             {/* Brand */}
