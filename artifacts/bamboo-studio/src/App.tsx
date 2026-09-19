@@ -1136,10 +1136,10 @@ const BambooStudio = () => {
             tCtx.stroke();
           }
           // Glowing white centre strip between the two rails
-          tCtx.shadowColor = 'rgba(255, 245, 180, 0.95)';
-          tCtx.shadowBlur  = lw * 4;
-          tCtx.strokeStyle = 'rgba(255, 255, 230, 0.92)';
-          tCtx.lineWidth   = Math.max(lw * 0.22, 1);
+          tCtx.shadowColor = 'rgba(255, 255, 255, 1)';
+          tCtx.shadowBlur  = lw * 8;
+          tCtx.strokeStyle = '#ffffff';
+          tCtx.lineWidth   = Math.max(lw * 0.28, 1.2);
           tCtx.beginPath(); tCtx.moveTo(x1, y1); tCtx.lineTo(x2, y2); tCtx.stroke();
         } else {
           // Normal single stripe
