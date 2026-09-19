@@ -224,13 +224,14 @@ const SERIES_ORDER_MAP = new Map<string, number>(); // series id → sort positi
   }));
 });
 
-type ApiProduct = { id: number; article: string; name: string; series: string | null; photoUrl: string | null; scaleDown: boolean; noMetallicProfile: boolean; kpName: string | null; panelWidthMm: number | null; panelHeightMm: number | null };
+type ApiProduct = { id: number; article: string; name: string; series: string | null; photoUrl: string | null; scaleDown: boolean; noMetallicProfile: boolean; kpName: string | null; panelWidthMm: number | null; panelHeightMm: number | null; category: string | null };
 
 /** Group API products into PanelSeries[], preserving hardcoded series order. */
 function buildCatalogSeries(products: ApiProduct[]): PanelSeries[] {
   const seriesMap = new Map<string, PanelSeries>();
   for (const p of products) {
     if (!p.series) continue;
+    if (p.category === 'molding') continue;
     const sId = SERIES_ID_MAP.get(p.series)
       ?? p.series.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
     if (!seriesMap.has(sId)) seriesMap.set(sId, { id: sId, name: p.series, panels: [] });
