@@ -3325,7 +3325,20 @@ const BambooStudio = () => {
       ══════════════════════════════════════════ */}
       <section className="bg-[#1c1c1c] text-white pt-12 pb-14 px-6">
         <div className="max-w-5xl mx-auto text-center">
-          <h1 style={{ color: '#ffffff', fontSize: '46px', fontFamily: 'var(--t-headline-font, Arial)', lineHeight: 1.2, fontWeight: 300, verticalAlign: 'middle' }} className="mb-5">
+          <h1 style={{
+            verticalAlign: 'middle',
+            color: '#ffffff',
+            fontSize: '46px',
+            fontFamily: 'var(--t-headline-font, Arial)',
+            lineHeight: 1.2,
+            fontWeight: 300,
+            backgroundPosition: 'center center',
+            borderWidth: 'var(--t396-borderwidth, 0)',
+            borderStyle: 'var(--t396-borderstyle, solid)' as React.CSSProperties['borderStyle'],
+            borderColor: 'var(--t396-bordercolor, transparent)',
+            transition: 'background-color var(--t396-speedhover, 0s) ease-in-out, color var(--t396-speedhover, 0s) ease-in-out, border-color var(--t396-speedhover, 0s) ease-in-out, box-shadow var(--t396-shadowshoverspeed, 0.2s) ease-in-out',
+            textShadow: 'var(--t396-shadow-text-x, 0px) var(--t396-shadow-text-y, 0px) var(--t396-shadow-text-blur, 0px) rgba(var(--t396-shadow-text-color, 0,0,0), var(--t396-shadow-text-opacity, 100%))',
+          } as React.CSSProperties} className="mb-5">
             Визуализатор<br/>стеновых панелей
           </h1>
           <p className="text-gray-400 text-lg max-w-2xl mx-auto mb-9 leading-relaxed">
