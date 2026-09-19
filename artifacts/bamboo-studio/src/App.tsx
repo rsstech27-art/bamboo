@@ -2787,7 +2787,7 @@ const BambooStudio = () => {
           : ` · целых панелей: ${ownPanels}`;
         c.fillStyle = '#333333';
         c.fillText(
-          `Стена ${q + 1}: ${wCm} × ${hCm} см · ${area.toFixed(2).replace('.', ',')} м² · панелей в проекте: ${cfg.panelCount}${widthNote}${heightNote} · расчётная стоимость: ${fmt(calcCost)}`,
+          `Стена ${q + 1}: ${wCm} × ${hCm} см · ${area.toFixed(2).replace('.', ',')} м² · панелей в проекте: ${cfg.panelCount}${widthNote}${heightNote}`,
           60, y + 8, W - 120);
         y += 28;
       });
@@ -2843,9 +2843,6 @@ const BambooStudio = () => {
             60, y + 8, W - 120);
         y += 28;
       }
-      c.fillStyle = '#111111'; c.font = 'bold 16px sans-serif';
-      c.fillText(`Расчётная стоимость панелей колонны: ${fmt(Math.round(panelsTableCost))}`, 60, y + 8);
-      y += 30;
     }
 
     // Standard window block: slopes + sill, cutting, joint preference
@@ -2869,9 +2866,6 @@ const BambooStudio = () => {
           : 'Соединение на углах: загиб панели — профили не требуются',
         60, y + 8, W - 120);
       y += 28;
-      c.fillStyle = '#111111'; c.font = 'bold 16px sans-serif';
-      c.fillText(`Расчётная стоимость панелей окна: ${fmt(Math.round(panelsTableCost))}`, 60, y + 8);
-      y += 30;
     }
 
     // Built-in TV: загибы inside the cutout
@@ -2959,9 +2953,6 @@ const BambooStudio = () => {
       y += 28;
       c.fillText(`Деталей: ${tvSurfaceCut.pieces.length} · панелей: ${tvSurfaceCut.panels} (обрезки полос используются повторно)`, 60, y + 8);
       y += 28;
-      c.fillStyle = '#111111'; c.font = 'bold 16px sans-serif';
-      c.fillText(`Расчётная стоимость панелей ТВ-зоны: ${fmt(Math.round(panelsTableCost))}`, 60, y + 8);
-      y += 30;
     }
 
     // Door zone: reveals block
@@ -3007,9 +2998,6 @@ const BambooStudio = () => {
             60, y + 8);
           y += 28;
         }
-        c.fillStyle = '#111111'; c.font = 'bold 16px sans-serif';
-        c.fillText(`Стоимость дополнительных деталей дверного проёма: ${fmt(Math.round(doorCutCost))}`, 60, y + 8);
-        y += 30;
       }
       y += 8;
     }
