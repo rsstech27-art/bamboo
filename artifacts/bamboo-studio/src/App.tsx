@@ -1527,8 +1527,13 @@ const BambooStudio = () => {
           const rx = qp[1].x + (qp[2].x - qp[1].x) * r;
           const ry = qp[1].y + (qp[2].y - qp[1].y) * r;
           // Forced row-join: always single stripe (no gap/light), width same as regular profile.
-          const seamColor = parseMoldStyle(autoHStyle).color as Exclude<MoldingStyle, 'none'>;
-          drawMoldLine(lx, ly, rx, ry, seamColor, autoHWidth);
+          tCtx.save();
+          tCtx.strokeStyle = 'red';
+          tCtx.lineWidth = autoHWidth;
+          tCtx.lineCap = 'butt';
+          tCtx.setLineDash([]);
+          tCtx.beginPath(); tCtx.moveTo(lx, ly); tCtx.lineTo(rx, ry); tCtx.stroke();
+          tCtx.restore();
         };
 
         if (!allNoProfile && cfg.wallHeightMm > singleRowH) {
