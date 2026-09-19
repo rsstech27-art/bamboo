@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   X, LogOut, Lock, ChevronRight, Package, ShoppingBag, Tag,
   Plus, Pencil, Trash2, RotateCcw, Image, Check, Loader2,
-  Download, Upload, HardDrive, AlertTriangle,
+  Download, Upload, HardDrive, AlertTriangle, Shield, Eye,
+  RefreshCw, UserPlus, ArrowLeft, Copy,
 } from 'lucide-react';
 import {
   DEFAULT_SERIES_PRICES,
@@ -15,7 +16,7 @@ import {
   type SeriesDefinition,
   type DbSaveStatus,
 } from '../hooks/useManagerPrices';
-import { managerLogin, managerLogout, checkManagerSession, managerFetch } from '../lib/managerApi';
+import { managerLogin, managerLogout, checkManagerSession, managerFetch, type ManagerSession } from '../lib/managerApi';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -80,7 +81,8 @@ function useFetch<T>(url: string) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Login screen
 // ─────────────────────────────────────────────────────────────────────────────
-function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
+function LoginScreen({ onSuccess }: { onSuccess: (session: ManagerSession) => void }) {
+  const [login, setLogin] = useState('');
   const [pw, setPw] = useState('');
   const [error, setError] = useState(false);
   const [shake, setShake] = useState(false);
@@ -90,10 +92,11 @@ function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
     e.preventDefault();
     if (!pw.trim()) return;
     setLoading(true);
-    const ok = await managerLogin(pw);
+    const ok = await managerLogin(login, pw);
     setLoading(false);
     if (ok) {
-      onSuccess();
+      const session = await checkManagerSession();
+      if (session) onSuccess(session);
     } else {
       setError(true); setShake(true);
       setTimeout(() => setShake(false), 500);
@@ -108,21 +111,289 @@ function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
           <Lock size={28} className="text-white" />
         </div>
         <h2 className="text-center text-2xl font-black text-gray-900 mb-1">Кабинет менеджера</h2>
-        <p className="text-center text-sm text-gray-400 mb-8">ALL WALL · Введите пароль</p>
+        <p className="text-center text-sm text-gray-400 mb-8">ALL WALL · Введите данные для входа</p>
         <form onSubmit={submit} className="space-y-3 px-4">
           <input
-            type="password" value={pw} autoFocus
+            type="text" value={login} autoFocus
+            onChange={e => { setLogin(e.target.value); setError(false); }}
+            placeholder="Логин (пусто = администратор)"
+            className={`w-full border rounded-xl px-4 py-3 text-sm outline-none transition-all
+              ${error ? 'border-red-400 bg-red-50 text-red-700' : 'border-gray-200 focus:border-black bg-gray-50 focus:bg-white'}`}
+          />
+          <input
+            type="password" value={pw}
             onChange={e => { setPw(e.target.value); setError(false); }}
             placeholder="Пароль"
             className={`w-full border rounded-xl px-4 py-3 text-sm outline-none transition-all
               ${error ? 'border-red-400 bg-red-50 text-red-700' : 'border-gray-200 focus:border-black bg-gray-50 focus:bg-white'}`}
           />
-          {error && <p className="text-xs text-red-500 text-center">Неверный пароль</p>}
+          {error && <p className="text-xs text-red-500 text-center">Неверные учётные данные</p>}
           <button type="submit" disabled={loading}
             className="w-full flex items-center justify-center gap-2 bg-black text-white font-bold text-sm py-3 rounded-xl hover:bg-gray-800 active:scale-95 transition-all shadow-md disabled:opacity-60">
             {loading ? <><Loader2 size={14} className="animate-spin" /> Проверка…</> : 'Войти'}
           </button>
         </form>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Admin panel — user management
+// ─────────────────────────────────────────────────────────────────────────────
+
+const ADMIN_SECTIONS = [
+  { id: 'prices',       label: 'Цены' },
+  { id: 'products',     label: 'Товары' },
+  { id: 'orders',       label: 'Заказы' },
+  { id: 'integrations', label: 'API' },
+  { id: 'backup',       label: 'Резервная копия' },
+] as const;
+
+interface MgrUser {
+  id: number;
+  login: string;
+  createdAt: string;
+  permissions: Record<string, { canRead: boolean; canEdit: boolean; canDelete: boolean }>;
+}
+
+interface NewCreds { userId: number; login: string; password: string }
+
+function TabAdmin({ onBack }: { onBack: () => void }) {
+  const [users, setUsers] = useState<MgrUser[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [addingUser, setAddingUser] = useState(false);
+  const [newLogin, setNewLogin] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [newCreds, setNewCreds] = useState<NewCreds | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const loadUsers = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await managerFetch('/api/admin/users');
+      if (r.ok) setUsers(await r.json() as MgrUser[]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void loadUsers(); }, [loadUsers]);
+
+  const addUser = async () => {
+    if (!newLogin.trim()) return;
+    setSaving(true);
+    try {
+      const r = await managerFetch('/api/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ login: newLogin.trim() }),
+      });
+      if (r.ok) {
+        const data = await r.json() as { id: number; login: string; password: string };
+        setNewCreds({ userId: data.id, login: data.login, password: data.password });
+        setNewLogin(''); setAddingUser(false);
+        await loadUsers();
+      } else {
+        const d = await r.json() as { error?: string };
+        alert(d.error ?? 'Ошибка при создании пользователя');
+      }
+    } finally { setSaving(false); }
+  };
+
+  const deleteUser = async (id: number) => {
+    if (!confirm('Удалить пользователя?')) return;
+    await managerFetch(`/api/admin/users/${id}`, { method: 'DELETE' });
+    await loadUsers();
+  };
+
+  const resetPassword = async (userId: number, login: string) => {
+    const r = await managerFetch(`/api/admin/users/${userId}/reset-password`, { method: 'POST' });
+    if (r.ok) {
+      const { password } = await r.json() as { password: string };
+      setNewCreds({ userId, login, password });
+    }
+  };
+
+  const togglePerm = async (
+    userId: number, section: string,
+    field: 'canRead' | 'canEdit' | 'canDelete', current: boolean,
+  ) => {
+    const user = users.find(u => u.id === userId);
+    if (!user) return;
+    const existing = user.permissions[section] ?? { canRead: false, canEdit: false, canDelete: false };
+    const updated = { ...existing, [field]: !current };
+    // Optimistic update
+    setUsers(prev => prev.map(u => u.id === userId
+      ? { ...u, permissions: { ...u.permissions, [section]: updated } } : u));
+    await managerFetch(`/api/admin/users/${userId}/permissions`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ section, ...updated }),
+    });
+  };
+
+  const copyCredentials = () => {
+    if (!newCreds) return;
+    void navigator.clipboard.writeText(`Логин: ${newCreds.login}\nПароль: ${newCreds.password}`);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="flex-1 overflow-y-auto">
+      <div className="max-w-5xl mx-auto p-6">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <button onClick={onBack}
+              className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 transition-colors">
+              <ArrowLeft size={14} /> Назад
+            </button>
+            <div className="h-4 w-px bg-gray-200" />
+            <div>
+              <h2 className="text-lg font-black text-gray-900">Управление пользователями</h2>
+              <p className="text-xs text-gray-400">Настройка доступа к кабинету менеджера</p>
+            </div>
+          </div>
+          <button onClick={() => setAddingUser(true)}
+            className="flex items-center gap-2 bg-black text-white text-sm font-bold px-4 py-2 rounded-xl hover:bg-gray-800 transition-colors">
+            <UserPlus size={14} /> Добавить пользователя
+          </button>
+        </div>
+
+        {/* New credentials banner */}
+        {newCreds && (
+          <div className="mb-6 bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
+            <p className="text-sm font-bold text-emerald-800 mb-3 flex items-center gap-2">
+              <Check size={14} /> Учётные данные — сохраните, пароль показывается только один раз
+            </p>
+            <div className="flex items-center gap-4 bg-white rounded-xl px-4 py-3 font-mono text-sm border border-emerald-100">
+              <span className="text-gray-500">Логин:</span>
+              <span className="font-bold">{newCreds.login}</span>
+              <span className="text-gray-300">|</span>
+              <span className="text-gray-500">Пароль:</span>
+              <span className="font-bold tracking-wide">{newCreds.password}</span>
+              <button onClick={copyCredentials}
+                className="ml-auto flex items-center gap-1 text-xs text-emerald-700 hover:text-emerald-900 font-sans font-medium transition-colors">
+                {copied ? <><Check size={12} /> Скопировано</> : <><Copy size={12} /> Копировать</>}
+              </button>
+            </div>
+            <button onClick={() => setNewCreds(null)}
+              className="mt-2 text-xs text-gray-400 hover:text-gray-600 transition-colors">
+              Скрыть
+            </button>
+          </div>
+        )}
+
+        {/* Add user form */}
+        {addingUser && (
+          <div className="mb-6 bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+            <p className="text-sm font-bold text-gray-900 mb-3">Новый пользователь</p>
+            <div className="flex gap-2">
+              <input value={newLogin} onChange={e => setNewLogin(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && void addUser()}
+                placeholder="Логин" autoFocus
+                className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-black transition-colors" />
+              <button onClick={() => void addUser()} disabled={saving || !newLogin.trim()}
+                className="px-4 py-2 bg-black text-white text-sm font-bold rounded-xl hover:bg-gray-800 disabled:opacity-50 transition-colors">
+                {saving ? <Loader2 size={14} className="animate-spin" /> : 'Создать'}
+              </button>
+              <button onClick={() => { setAddingUser(false); setNewLogin(''); }}
+                className="px-4 py-2 text-sm text-gray-400 hover:text-gray-700 transition-colors">
+                Отмена
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 mt-2">Пароль будет сгенерирован автоматически</p>
+          </div>
+        )}
+
+        {/* Permissions legend */}
+        <div className="mb-3 flex items-center gap-6 text-xs text-gray-400 px-1">
+          <span>Разделы и права доступа. ☑ — разрешено, ☐ — запрещено.</span>
+        </div>
+
+        {/* Users table */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          {loading ? (
+            <div className="p-12 text-center text-gray-400 flex items-center justify-center gap-2">
+              <Loader2 size={16} className="animate-spin" /> Загрузка…
+            </div>
+          ) : users.length === 0 ? (
+            <div className="p-12 text-center">
+              <p className="text-gray-400 text-sm">Пользователей пока нет</p>
+              <p className="text-gray-300 text-xs mt-1">Добавьте первого пользователя кабинета</p>
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-100">
+                  <th className="text-left px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wide">Пользователь</th>
+                  <th className="text-left px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wide">Учётные данные</th>
+                  <th className="text-center px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wide">Чтение</th>
+                  <th className="text-center px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wide">Изменение</th>
+                  <th className="text-center px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wide">Удаление</th>
+                  <th className="w-8" />
+                </tr>
+              </thead>
+              <tbody>
+                {users.flatMap(user => [
+                  // ── User header row ──────────────────────────────────────
+                  <tr key={`u-${user.id}`} className="border-b border-gray-100 bg-gray-50/60">
+                    <td className="px-4 py-3 font-bold text-gray-900">{user.login}</td>
+                    <td className="px-4 py-3">
+                      <button onClick={() => void resetPassword(user.id, user.login)}
+                        className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors">
+                        <RefreshCw size={11} /> Сбросить пароль
+                      </button>
+                    </td>
+                    <td colSpan={3} />
+                    <td className="px-2 py-3 text-right">
+                      <button onClick={() => void deleteUser(user.id)}
+                        className="text-gray-300 hover:text-red-500 transition-colors p-1">
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
+                  </tr>,
+                  // ── Section permission rows ──────────────────────────────
+                  ...ADMIN_SECTIONS.map(sec => {
+                    const perm = user.permissions[sec.id] ?? { canRead: false, canEdit: false, canDelete: false };
+                    const noDelete = sec.id === 'integrations' || sec.id === 'backup';
+                    return (
+                      <tr key={`${user.id}-${sec.id}`} className="border-b border-gray-50 hover:bg-gray-50/40 transition-colors">
+                        <td className="px-4 py-2 pl-9 text-gray-400 text-xs">{sec.label}</td>
+                        <td />
+                        <td className="text-center py-2">
+                          <input type="checkbox" checked={perm.canRead}
+                            onChange={() => void togglePerm(user.id, sec.id, 'canRead', perm.canRead)}
+                            className="w-4 h-4 accent-black rounded cursor-pointer" />
+                        </td>
+                        <td className="text-center py-2">
+                          <input type="checkbox" checked={perm.canEdit}
+                            onChange={() => void togglePerm(user.id, sec.id, 'canEdit', perm.canEdit)}
+                            className="w-4 h-4 accent-black rounded cursor-pointer" />
+                        </td>
+                        <td className="text-center py-2">
+                          {noDelete
+                            ? <span className="text-gray-200 text-xs">—</span>
+                            : <input type="checkbox" checked={perm.canDelete}
+                                onChange={() => void togglePerm(user.id, sec.id, 'canDelete', perm.canDelete)}
+                                className="w-4 h-4 accent-black rounded cursor-pointer" />
+                          }
+                        </td>
+                        <td />
+                      </tr>
+                    );
+                  }),
+                ])}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <p className="mt-4 text-xs text-gray-400">
+          Администратор имеет полный доступ ко всем разделам и не отображается в этом списке.
+        </p>
       </div>
     </div>
   );
@@ -2224,11 +2495,20 @@ export function ManagerPanel({
   const [isAuth, setIsAuth] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [tab, setTab] = useState<TabId>('prices');
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [managerLoginName, setManagerLoginName] = useState<string | null>(null);
+  const [permissions, setPermissions] = useState<ManagerSession['permissions']>(null);
+  const [showAdmin, setShowAdmin] = useState(false);
 
   // On mount, check whether the browser already has a valid server session
   useEffect(() => {
-    void checkManagerSession().then(ok => {
-      setIsAuth(ok);
+    void checkManagerSession().then(session => {
+      if (session) {
+        setIsAuth(true);
+        setIsAdmin(session.isAdmin);
+        setManagerLoginName(session.managerLogin);
+        setPermissions(session.permissions);
+      }
       setSessionChecked(true);
     });
   }, []);
@@ -2242,8 +2522,23 @@ export function ManagerPanel({
   const logout = async () => {
     await managerLogout();
     setIsAuth(false);
+    setIsAdmin(false);
+    setPermissions(null);
+    setShowAdmin(false);
     onClose();
   };
+
+  const handleLoginSuccess = (session: ManagerSession) => {
+    setIsAuth(true);
+    setIsAdmin(session.isAdmin);
+    setManagerLoginName(session.managerLogin);
+    setPermissions(session.permissions);
+  };
+
+  // Filter TABS by permissions for non-admin users
+  const visibleTabs = isAdmin
+    ? TABS
+    : TABS.filter(t => permissions?.[t.id]?.canRead ?? false);
 
   return (
     <>
@@ -2260,7 +2555,7 @@ export function ManagerPanel({
               className="absolute top-4 right-4 z-10 w-9 h-9 flex items-center justify-center rounded-full bg-white shadow text-gray-500 hover:text-black transition-colors">
               <X size={15} />
             </button>
-            <LoginScreen onSuccess={() => setIsAuth(true)} />
+            <LoginScreen onSuccess={handleLoginSuccess} />
           </>
         ) : (
           <>
@@ -2273,10 +2568,21 @@ export function ManagerPanel({
                   <div className="text-sm text-gray-400">Кабинет менеджера</div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <button onClick={logout}
-                    className="flex items-center gap-1.5 text-gray-400 hover:text-white text-xs transition-colors">
-                    <LogOut size={13} /> Выйти
-                  </button>
+                  <div className="flex flex-col items-end gap-0.5">
+                    {managerLoginName && (
+                      <span className="text-xs text-gray-500">{managerLoginName}</span>
+                    )}
+                    <button onClick={logout}
+                      className="flex items-center gap-1.5 text-gray-400 hover:text-white text-xs transition-colors">
+                      <LogOut size={13} /> Выйти
+                    </button>
+                    {isAdmin && (
+                      <button onClick={() => { setShowAdmin(true); }}
+                        className="flex items-center gap-1.5 text-gray-500 hover:text-white text-xs transition-colors">
+                        <Shield size={11} /> Администратор
+                      </button>
+                    )}
+                  </div>
                   <button onClick={onClose}
                     className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white transition-colors">
                     <X size={14} />
@@ -2284,27 +2590,34 @@ export function ManagerPanel({
                 </div>
               </div>
 
-              {/* Tabs */}
-              <div className="max-w-5xl mx-auto px-6 flex gap-1 pb-0">
-                {TABS.map(t => {
-                  const Icon = t.icon;
-                  return (
-                    <button key={t.id} onClick={() => setTab(t.id)}
-                      className={`flex items-center gap-2 px-4 py-3 text-sm font-bold border-b-2 transition-all ${
-                        tab === t.id
-                          ? 'border-[#7ec662] text-white'
-                          : 'border-transparent text-gray-500 hover:text-gray-300'
-                      }`}>
-                      <Icon size={14} />
-                      {t.label}
-                    </button>
-                  );
-                })}
-              </div>
+              {/* Tabs — hidden while admin panel is open */}
+              {!showAdmin && (
+                <div className="max-w-5xl mx-auto px-6 flex gap-1 pb-0">
+                  {visibleTabs.map(t => {
+                    const Icon = t.icon;
+                    return (
+                      <button key={t.id} onClick={() => setTab(t.id)}
+                        className={`flex items-center gap-2 px-4 py-3 text-sm font-bold border-b-2 transition-all ${
+                          tab === t.id
+                            ? 'border-[#7ec662] text-white'
+                            : 'border-transparent text-gray-500 hover:text-gray-300'
+                        }`}>
+                        <Icon size={14} />
+                        {t.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
+            {/* Admin panel (replaces tab content) */}
+            {showAdmin && isAdmin && (
+              <TabAdmin onBack={() => setShowAdmin(false)} />
+            )}
+
             {/* Tab content */}
-            <div className="flex-1 overflow-y-auto">
+            <div className={`flex-1 overflow-y-auto ${showAdmin ? 'hidden' : ''}`}>
               {tab === 'prices' && (
                 <TabPrices
                   panelOverrides={panelOverrides}

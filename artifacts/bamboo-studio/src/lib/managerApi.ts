@@ -7,14 +7,28 @@
  * after the login call completes.
  */
 
-/** Send the manager password to the server; returns true on success. */
-export async function managerLogin(password: string): Promise<boolean> {
+export interface ManagerSession {
+  isManager: boolean;
+  /** true = admin (MANAGER_PASSWORD); false = regular manager user. Old sessions without the field → treated as admin. */
+  isAdmin: boolean;
+  managerId: number | null;
+  managerLogin: string | null;
+  /** Per-section permissions; null for admin (all allowed). */
+  permissions: Record<string, { canRead: boolean; canEdit: boolean; canDelete: boolean }> | null;
+}
+
+/**
+ * Login to the manager cabinet.
+ * Leave login empty (or pass "admin") to log in as the master administrator.
+ * Pass a user login + password to log in as a regular manager user.
+ */
+export async function managerLogin(login: string, password: string): Promise<boolean> {
   try {
     const r = await fetch('/api/manager/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ password }),
+      body: JSON.stringify({ login: login.trim() || undefined, password }),
     });
     return r.ok;
   } catch {
@@ -33,17 +47,30 @@ export async function managerLogout(): Promise<void> {
 }
 
 /**
- * Check whether the browser already has an active manager session
- * (used on page reload to skip re-login).
+ * Check whether the browser already has an active manager session.
+ * Returns the full session info, or null if not authenticated.
  */
-export async function checkManagerSession(): Promise<boolean> {
+export async function checkManagerSession(): Promise<ManagerSession | null> {
   try {
     const r = await fetch('/api/manager/session', { credentials: 'include' });
-    if (!r.ok) return false;
-    const data = await r.json() as { isManager?: boolean };
-    return data.isManager === true;
+    if (!r.ok) return null;
+    const data = await r.json() as {
+      isManager?: boolean;
+      isAdmin?: boolean;
+      managerId?: number | null;
+      managerLogin?: string | null;
+      permissions?: Record<string, { canRead: boolean; canEdit: boolean; canDelete: boolean }> | null;
+    };
+    if (!data.isManager) return null;
+    return {
+      isManager:    true,
+      isAdmin:      data.isAdmin ?? true, // old sessions without field → treat as admin
+      managerId:    data.managerId ?? null,
+      managerLogin: data.managerLogin ?? null,
+      permissions:  data.permissions ?? null,
+    };
   } catch {
-    return false;
+    return null;
   }
 }
 

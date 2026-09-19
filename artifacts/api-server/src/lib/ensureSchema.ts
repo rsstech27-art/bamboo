@@ -70,5 +70,28 @@ export async function ensureSchema(): Promise<void> {
   await db.execute(sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS color TEXT`);
   await db.execute(sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS size TEXT`);
 
+  // 8. manager_users — sub-accounts for the manager cabinet
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS manager_users (
+      id            SERIAL       PRIMARY KEY,
+      login         TEXT         UNIQUE NOT NULL,
+      password_hash TEXT         NOT NULL,
+      created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  // 9. manager_permissions — per-section access for each manager user
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS manager_permissions (
+      id         SERIAL   PRIMARY KEY,
+      user_id    INTEGER  NOT NULL REFERENCES manager_users(id) ON DELETE CASCADE,
+      section    TEXT     NOT NULL,
+      can_read   BOOLEAN  NOT NULL DEFAULT TRUE,
+      can_edit   BOOLEAN  NOT NULL DEFAULT FALSE,
+      can_delete BOOLEAN  NOT NULL DEFAULT FALSE,
+      UNIQUE(user_id, section)
+    )
+  `);
+
   logger.info("Schema check complete.");
 }

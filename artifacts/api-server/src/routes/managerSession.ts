@@ -52,20 +52,13 @@ function safePasswordEqual(a: string, b: string): boolean {
 
 /**
  * POST /api/manager/login
- * Body: { password: string }
- * Verifies the password against MANAGER_PASSWORD env var and sets an
- * HttpOnly session cookie on success.
+ * Body: { login?: string, password: string }
+ *
+ * Two login modes:
+ *  • Admin — login omitted or empty → validates against MANAGER_PASSWORD.
+ *  • User  — login provided → validates against manager_users table.
  */
-router.post("/manager/login", (req, res) => {
-  const MANAGER_PASSWORD = process.env["MANAGER_PASSWORD"];
-
-  if (!MANAGER_PASSWORD) {
-    // Server is not configured — fail closed, never let anyone in
-    return void res.status(503).json({
-      error: "Manager access is not configured on this server.",
-    });
-  }
-
+router.post("/manager/login", async (req, res) => {
   const ip = getClientIp(req);
   if (!checkRateLimit(ip)) {
     return void res.status(429).json({
@@ -73,27 +66,93 @@ router.post("/manager/login", (req, res) => {
     });
   }
 
-  const { password } = req.body as { password?: string };
+  const { login, password } = req.body as { login?: string; password?: string };
 
-  if (!password || !safePasswordEqual(password, MANAGER_PASSWORD)) {
+  if (!password) {
     recordFailure(ip);
-    return void res.status(401).json({ error: "Invalid password." });
+    return void res.status(400).json({ error: "Password required." });
   }
 
-  clearAttempts(ip);
-  // Regenerate session ID after successful auth to prevent session fixation
-  req.session.regenerate((regenErr) => {
-    if (regenErr) {
-      return void res.status(500).json({ error: "Session error." });
+  // ── Admin login (no login field, or login = "admin") ────────────────────────
+  if (!login || login.trim() === "" || login.trim().toLowerCase() === "admin") {
+    const MANAGER_PASSWORD = process.env["MANAGER_PASSWORD"];
+    if (!MANAGER_PASSWORD) {
+      return void res.status(503).json({
+        error: "Manager access is not configured on this server.",
+      });
     }
-    req.session.isManager = true;
-    req.session.save((saveErr) => {
-      if (saveErr) {
-        return void res.status(500).json({ error: "Session save failed." });
-      }
-      res.json({ ok: true });
+    if (!safePasswordEqual(password, MANAGER_PASSWORD)) {
+      recordFailure(ip);
+      return void res.status(401).json({ error: "Неверные учётные данные." });
+    }
+    clearAttempts(ip);
+    return void req.session.regenerate((regenErr) => {
+      if (regenErr) return void res.status(500).json({ error: "Session error." });
+      req.session.isManager = true;
+      req.session.isAdmin   = true;
+      req.session.save((saveErr) => {
+        if (saveErr) return void res.status(500).json({ error: "Session save failed." });
+        res.json({ ok: true, isAdmin: true });
+      });
     });
-  });
+  }
+
+  // ── Manager user login ────────────────────────────────────────────────────
+  try {
+    const { db } = await import("@workspace/db");
+    const { sql } = await import("drizzle-orm");
+
+    const userResult = await db.execute(sql`
+      SELECT id, password_hash FROM manager_users WHERE login = ${login.trim()}
+    `);
+
+    if (userResult.rows.length === 0) {
+      recordFailure(ip);
+      return void res.status(401).json({ error: "Неверные учётные данные." });
+    }
+
+    const user = userResult.rows[0];
+    const inputHash = createHash("sha256").update(password, "utf8").digest("hex");
+    const storedHash = user.password_hash as string;
+
+    if (!timingSafeEqual(
+      Buffer.from(inputHash,  "utf8"),
+      Buffer.from(storedHash, "utf8"),
+    )) {
+      recordFailure(ip);
+      return void res.status(401).json({ error: "Неверные учётные данные." });
+    }
+
+    // Load permissions for this user
+    const permsResult = await db.execute(sql`
+      SELECT section, can_read, can_edit, can_delete
+      FROM manager_permissions WHERE user_id = ${user.id}
+    `);
+    const permissions: Record<string, { canRead: boolean; canEdit: boolean; canDelete: boolean }> = {};
+    for (const p of permsResult.rows) {
+      permissions[p.section as string] = {
+        canRead:   Boolean(p.can_read),
+        canEdit:   Boolean(p.can_edit),
+        canDelete: Boolean(p.can_delete),
+      };
+    }
+
+    clearAttempts(ip);
+    return void req.session.regenerate((regenErr) => {
+      if (regenErr) return void res.status(500).json({ error: "Session error." });
+      req.session.isManager    = true;
+      req.session.isAdmin      = false;
+      req.session.managerId    = user.id as number;
+      req.session.managerLogin = login.trim();
+      req.session.managerPerms = permissions;
+      req.session.save((saveErr) => {
+        if (saveErr) return void res.status(500).json({ error: "Session save failed." });
+        res.json({ ok: true, isAdmin: false, login: login.trim(), permissions });
+      });
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Login failed." });
+  }
 });
 
 /**
@@ -112,10 +171,20 @@ router.post("/manager/logout", requireManagerSession, (req, res) => {
 
 /**
  * GET /api/manager/session
- * Returns whether the caller has an active manager session (used on page reload).
+ * Returns the current session info (used on page reload).
  */
 router.get("/manager/session", (req, res) => {
-  res.json({ isManager: req.session?.isManager === true });
+  if (!req.session?.isManager) {
+    return void res.json({ isManager: false });
+  }
+  res.json({
+    isManager:    true,
+    // Old sessions without isAdmin are treated as admin (backward compat)
+    isAdmin:      req.session.isAdmin ?? true,
+    managerId:    req.session.managerId ?? null,
+    managerLogin: req.session.managerLogin ?? null,
+    permissions:  req.session.managerPerms ?? null,
+  });
 });
 
 export default router;
