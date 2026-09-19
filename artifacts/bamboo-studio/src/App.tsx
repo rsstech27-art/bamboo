@@ -2328,11 +2328,19 @@ const BambooStudio = () => {
       if (style.endsWith('_light')) return 'light';
       return style;
     };
-    const profileRuns: Record<string, number[]> = {};
+    // Separate vertical and horizontal profile runs so the KP shows them as distinct line items.
+    // Vertical: divider/joint profiles between/around panels; Horizontal: hMolding bars.
+    const profileRunsV: Record<string, number[]> = {};
+    const profileRunsH: Record<string, number[]> = {};
     const addRuns = (style: Exclude<MoldingStyle, 'none'>, lengthMm: number, count: number) => {
       if (count <= 0 || lengthMm <= 0) return;
       const key = normMoldKpKey(style);
-      (profileRuns[key] ??= []).push(...Array(count).fill(lengthMm));
+      (profileRunsV[key] ??= []).push(...Array(count).fill(lengthMm));
+    };
+    const addRunsH = (style: Exclude<MoldingStyle, 'none'>, lengthMm: number, count: number) => {
+      if (count <= 0 || lengthMm <= 0) return;
+      const key = normMoldKpKey(style);
+      (profileRunsH[key] ??= []).push(...Array(count).fill(lengthMm));
     };
     // Column zone: needed early so profile joints can cover the FULL perimeter
     const isColumn = wallZone === 'column';
@@ -2491,7 +2499,7 @@ const BambooStudio = () => {
         if (metalJoints > 0) addRuns('metallic', hMm, metalJoints);
         if (isColumn) columnVisibleJoints += totalJoints; // column geometry uses all joints
       }
-      if (cfg.hMoldingStyle !== 'none') addRuns(cfg.hMoldingStyle, wMm, cfg.hMoldingCount);
+      if (cfg.hMoldingStyle !== 'none') addRunsH(cfg.hMoldingStyle as Exclude<MoldingStyle,'none'>, wMm, cfg.hMoldingPositions.length);
 
       // Mandatory horizontal row-join profiles: when the wall/column face is taller than one panel
       // (PANEL_H_MM = 2800 mm for vertical orientation, PANEL_W_MM = 1220 mm for horizontal TV),
@@ -2617,16 +2625,23 @@ const BambooStudio = () => {
       const style = visStyle && visStyle !== 'none' ? visStyle : 'black';
       addRuns(style, topReveal.heightMm, 2); // left side + right side of transom panel
     }
-    // Pack each style's runs into 3 m pieces (offcuts reused project-wide)
+    // Pack each style's runs into 3 m pieces (offcuts reused per direction).
+    // Vertical and horizontal are packed separately and shown as distinct KP rows so
+    // the user can see exactly what drives each count.
     let profilePiecesTotal = 0;
-    for (const style of Object.keys(profileRuns) as Array<Exclude<MoldingStyle, 'none'>>) {
-      const pieces = packProfileRuns(profileRuns[style]!);
-      profilePiecesTotal += pieces;
-      if (pieces > 0) {
-        const info = MOLDING_INFO[style];
-        addItem(info.article + '-3M', `${getEffectiveMoldingName(style, moldingNameOverrides)} (3 м, раскрой оптимизирован)`, pieces, getEffectiveMoldingPrice(style));
+    const packAndAdd = (runs: Record<string, number[]>, suffix: string) => {
+      for (const style of Object.keys(runs) as Array<Exclude<MoldingStyle, 'none'>>) {
+        const pieces = packProfileRuns(runs[style]!);
+        profilePiecesTotal += pieces;
+        if (pieces > 0) {
+          const info = MOLDING_INFO[style];
+          const label = `${getEffectiveMoldingName(style, moldingNameOverrides)}${suffix} (3 м, раскрой оптимизирован)`;
+          addItem(info.article + '-3M', label, pieces, getEffectiveMoldingPrice(style));
+        }
       }
-    }
+    };
+    packAndAdd(profileRunsV, ' верт.');
+    packAndAdd(profileRunsH, ' гориз.');
     // Торцевой профиль: selected sides × wall dimension, packed into 3 m pieces
     {
       const ep = edgeProfileSidesRef.current;
@@ -2916,7 +2931,10 @@ const BambooStudio = () => {
           addItem(mat.article, `Панель «${matLabel(mat)}»`, 0, getPanelPrice(mat.id));
           panelArticles.add(mat.article);
         }
-        // Largest-remainder split of the wall target across ITS articles
+        // Largest-remainder split of the wall target across ITS articles.
+        // Guarantee minimum 1 for every article actually present on this wall:
+        // steal from the highest-count slot so minority panels (e.g. silver accent)
+        // never round to 0 when a neighbouring article dominates.
         const entries = [...cnt.entries()];
         const cntSum = entries.reduce((s, [, n]) => s + n, 0);
         const sc = entries.map(([, n]) => (n * target) / cntSum);
@@ -2925,6 +2943,13 @@ const BambooStudio = () => {
         sc.map((v, i) => ({ i, frac: v - Math.floor(v) }))
           .sort((a, b) => b.frac - a.frac)
           .forEach(({ i }) => { if (r > 0) { fl[i]++; r--; } });
+        // Ensure no used article gets 0 — take from the highest slot if needed
+        entries.forEach(([, n], i) => {
+          if (n > 0 && fl[i] === 0) {
+            const maxI = fl.reduce((mi, v, j) => (v > fl[mi] ? j : mi), 0);
+            if (fl[maxI] > 1) { fl[maxI]--; fl[i] = 1; }
+          }
+        });
         entries.forEach(([a], i) => bump(a, fl[i]));
       });
       // One article can span several rows (e.g. regular + «с загибом на угол»):
@@ -2963,11 +2988,24 @@ const BambooStudio = () => {
     }
     const panelsTableCost = items.filter(it => panelArticles.has(it.article))
       .reduce((s, it) => s + it.qty * it.price, 0);
-    // Glue: 1 unit per panel, price from manager settings
-    if (panelsTableTotal > 0) {
+    // Glue: 1 unit per INSTALLED panel (every visual sector, including wrap continuations).
+    // panelsTableTotal counts purchased/calculated panels (may skip wrap sectors).
+    // Use full visual sector count instead so glue = exactly one per installed panel.
+    const glueCount = (() => {
+      if (columnCalc) return columnCalc.needed;
+      if (windowCut)  return windowCut.panels;
+      if (tvSurfaceCut) return tvSurfaceCut.panels;
+      let n = 0;
+      for (let q = 0; q < nQuads; q++) n += kpCfgs[q].panelCount;
+      if (tvBuiltinCut)      n += tvBuiltinCut.panels;
+      if (tvBuiltinOuterCut) n += tvBuiltinOuterCut.panels;
+      if (doorCut)           n += doorCut.panels;
+      return n;
+    })();
+    if (glueCount > 0) {
       const glueDef = DEFAULT_EXTRAS.find(e => e.id === 'glue');
       const gluePrice = extrasOverrides['glue'] ?? glueDef?.defaultPrice ?? 0;
-      if (gluePrice > 0) addItem('AW-GLUE', 'Клей AllWall', panelsTableTotal, gluePrice);
+      if (gluePrice > 0) addItem('AW-GLUE', 'Клей AllWall', glueCount, gluePrice);
     }
     // Final total = the table itself (calculated panel quantities + 3 m profile pieces + glue)
     const finalTotal = items.reduce((sum, it) => sum + it.qty * it.price, 0);
