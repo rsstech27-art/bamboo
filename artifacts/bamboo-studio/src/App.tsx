@@ -1522,8 +1522,15 @@ const BambooStudio = () => {
           //   → seam is cutH from top
           const topSeamRatio = cutH / cfg.wallHeightMm;
 
-          if (hasTop)    drawHSeam(topSeamRatio);
-          if (hasBottom) drawHSeam(bottomSeamRatio);
+          if (hasTop && hasBottom) {
+            // Both: split cut equally — half from top, half from bottom
+            const halfCut = cutH / 2;
+            drawHSeam(halfCut / cfg.wallHeightMm);
+            drawHSeam((cfg.wallHeightMm - halfCut) / cfg.wallHeightMm);
+          } else {
+            if (hasTop)    drawHSeam(topSeamRatio);
+            if (hasBottom) drawHSeam(bottomSeamRatio);
+          }
 
           // Middle seams: interior full-panel row boundaries, always drawn
           for (let ri = 1; ri <= rowCount - 2; ri++) {
