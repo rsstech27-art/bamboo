@@ -1191,6 +1191,47 @@ const BambooStudio = () => {
       // Draw moldings on tempCanvas BEFORE mask so eraser can erase through them
       const curMoldingStyle = cfg.moldingStyle;
       const curMoldingWidth = cfg.moldingWidth;
+
+      // ── Shared helper: stroke a profile line with gradient for a given molding style ──
+      const drawMoldLine = (
+        x1: number, y1: number, x2: number, y2: number,
+        style: Exclude<MoldingStyle, 'none'>, lw: number,
+      ) => {
+        const ddx = x2 - x1, ddy = y2 - y1, ll = Math.sqrt(ddx * ddx + ddy * ddy);
+        if (ll < 1) return;
+        const ppx = -ddy / ll, ppy = ddx / ll, hhw = lw / 2;
+        const mmx = (x1 + x2) / 2, mmy = (y1 + y2) / 2;
+        const g = tCtx.createLinearGradient(mmx + ppx * hhw, mmy + ppy * hhw, mmx - ppx * hhw, mmy - ppy * hhw);
+        if (style === 'gold') {
+          g.addColorStop(0, '#5a3d00'); g.addColorStop(0.15, '#b8860b'); g.addColorStop(0.35, '#ffd700');
+          g.addColorStop(0.5, '#fff8c0'); g.addColorStop(0.65, '#ffd700'); g.addColorStop(0.85, '#b8860b'); g.addColorStop(1, '#5a3d00');
+        } else if (style === 'black') {
+          g.addColorStop(0, '#0a0a0a'); g.addColorStop(0.25, '#1c1c1c'); g.addColorStop(0.5, '#383838');
+          g.addColorStop(0.75, '#1c1c1c'); g.addColorStop(1, '#0a0a0a');
+        } else if (style === 'metallic') {
+          g.addColorStop(0, '#4a4a4a'); g.addColorStop(0.2, '#9a9a9a'); g.addColorStop(0.45, '#e8e8e8');
+          g.addColorStop(0.5, '#ffffff'); g.addColorStop(0.55, '#e8e8e8'); g.addColorStop(0.8, '#9a9a9a'); g.addColorStop(1, '#4a4a4a');
+        } else if (style === 'brass') {
+          g.addColorStop(0, '#2c1f00'); g.addColorStop(0.15, '#7a5918'); g.addColorStop(0.35, '#c49a27');
+          g.addColorStop(0.5, '#e8c95a'); g.addColorStop(0.65, '#c49a27'); g.addColorStop(0.85, '#7a5918'); g.addColorStop(1, '#2c1f00');
+        } else if (style === 'gap') {
+          g.addColorStop(0, '#3a3a3a'); g.addColorStop(0.2, '#aaaaaa'); g.addColorStop(0.42, '#d8d8d8');
+          g.addColorStop(0.46, '#111111'); g.addColorStop(0.54, '#111111'); g.addColorStop(0.58, '#d8d8d8');
+          g.addColorStop(0.8, '#aaaaaa'); g.addColorStop(1, '#3a3a3a');
+        } else { // light
+          g.addColorStop(0, 'rgba(255,160,50,0)'); g.addColorStop(0.3, 'rgba(255,220,100,0.85)');
+          g.addColorStop(0.5, '#fffde0'); g.addColorStop(0.7, 'rgba(255,220,100,0.85)'); g.addColorStop(1, 'rgba(255,160,50,0)');
+        }
+        tCtx.save();
+        tCtx.strokeStyle = g;
+        tCtx.lineWidth = style === 'gap' ? Math.max(lw * 2, 4) : lw;
+        tCtx.lineCap = 'butt';
+        if (style === 'light') { tCtx.shadowColor = 'rgba(255,210,80,0.85)'; tCtx.shadowBlur = lw * 10; }
+        tCtx.beginPath(); tCtx.moveTo(x1, y1); tCtx.lineTo(x2, y2); tCtx.stroke();
+        tCtx.restore();
+      };
+
+      // User-set vertical profile joints at divider positions
       if (curMoldingStyle !== 'none' && cfg.dividerPositions.length > 0) {
         cfg.dividerPositions.forEach((ratio) => {
           // Profiles are always VERTICAL lines (top→bottom) regardless of panel orientation.
@@ -1199,86 +1240,38 @@ const BambooStudio = () => {
           const aY = qp[0].y + (qp[1].y - qp[0].y) * ratio;
           const bX = qp[3].x + (qp[2].x - qp[3].x) * ratio;
           const bY = qp[3].y + (qp[2].y - qp[3].y) * ratio;
-          // Rename for molding gradient calculation below
-          const topX = aX, topY = aY, botX = bX, botY = bY;
-
-          const dx = botX - topX;
-          const dy = botY - topY;
-          const len = Math.sqrt(dx * dx + dy * dy);
-          const px = -dy / len;
-          const py = dx / len;
-          const hw = curMoldingWidth / 2;
-          const midX = (topX + botX) / 2;
-          const midY = (topY + botY) / 2;
-
-          const grad = tCtx.createLinearGradient(
-            midX + px * hw, midY + py * hw,
-            midX - px * hw, midY - py * hw
-          );
-
-          if (curMoldingStyle === 'gold') {
-            grad.addColorStop(0,    '#5a3d00');
-            grad.addColorStop(0.15, '#b8860b');
-            grad.addColorStop(0.35, '#ffd700');
-            grad.addColorStop(0.5,  '#fff8c0');
-            grad.addColorStop(0.65, '#ffd700');
-            grad.addColorStop(0.85, '#b8860b');
-            grad.addColorStop(1,    '#5a3d00');
-          } else if (curMoldingStyle === 'black') {
-            grad.addColorStop(0,    '#0a0a0a');
-            grad.addColorStop(0.25, '#1c1c1c');
-            grad.addColorStop(0.5,  '#383838');
-            grad.addColorStop(0.75, '#1c1c1c');
-            grad.addColorStop(1,    '#0a0a0a');
-          } else if (curMoldingStyle === 'metallic') {
-            grad.addColorStop(0,    '#4a4a4a');
-            grad.addColorStop(0.2,  '#9a9a9a');
-            grad.addColorStop(0.45, '#e8e8e8');
-            grad.addColorStop(0.5,  '#ffffff');
-            grad.addColorStop(0.55, '#e8e8e8');
-            grad.addColorStop(0.8,  '#9a9a9a');
-            grad.addColorStop(1,    '#4a4a4a');
-          } else if (curMoldingStyle === 'brass') {
-            grad.addColorStop(0,    '#2c1f00');
-            grad.addColorStop(0.15, '#7a5918');
-            grad.addColorStop(0.35, '#c49a27');
-            grad.addColorStop(0.5,  '#e8c95a');
-            grad.addColorStop(0.65, '#c49a27');
-            grad.addColorStop(0.85, '#7a5918');
-            grad.addColorStop(1,    '#2c1f00');
-          } else if (curMoldingStyle === 'gap') {
-            // Silver/chrome profile with visible dark slot (разрыв)
-            grad.addColorStop(0,    '#3a3a3a');
-            grad.addColorStop(0.2,  '#aaaaaa');
-            grad.addColorStop(0.42, '#d8d8d8');
-            grad.addColorStop(0.46, '#111111');
-            grad.addColorStop(0.54, '#111111');
-            grad.addColorStop(0.58, '#d8d8d8');
-            grad.addColorStop(0.8,  '#aaaaaa');
-            grad.addColorStop(1,    '#3a3a3a');
-          } else if (curMoldingStyle === 'light') {
-            // Warm white glow — gradient acts as core; shadowBlur adds halo
-            grad.addColorStop(0,   'rgba(255,160,50,0)');
-            grad.addColorStop(0.3, 'rgba(255,220,100,0.85)');
-            grad.addColorStop(0.5, '#fffde0');
-            grad.addColorStop(0.7, 'rgba(255,220,100,0.85)');
-            grad.addColorStop(1,   'rgba(255,160,50,0)');
-          }
-
-          tCtx.save();
-          tCtx.strokeStyle = grad;
-          tCtx.lineWidth = curMoldingStyle === 'gap' ? Math.max(curMoldingWidth * 2, 4) : curMoldingWidth;
-          tCtx.lineCap = 'butt';
-          if (curMoldingStyle === 'light') {
-            tCtx.shadowColor = 'rgba(255,210,80,0.85)';
-            tCtx.shadowBlur = curMoldingWidth * 10;
-          }
-          tCtx.beginPath();
-          tCtx.moveTo(topX, topY);
-          tCtx.lineTo(botX, botY);
-          tCtx.stroke();
-          tCtx.restore();
+          drawMoldLine(aX, aY, bX, bY, curMoldingStyle, curMoldingWidth);
         });
+      }
+
+      // Auto-mandatory vertical joints: physical panel boundaries within sectors wider than one panel.
+      // Vertical panels: one column = PANEL_W_MM (1220 mm).
+      // Horizontal TV panels: one column = PANEL_H_MM (2800 mm).
+      {
+        const isHorizTvV = wallZoneRef.current === 'tv' && isHoriz;
+        const colStepV = isHorizTvV ? PANEL_H_MM : PANEL_W_MM;
+        const autoVStyle: Exclude<MoldingStyle, 'none'> =
+          curMoldingStyle !== 'none' ? curMoldingStyle as Exclude<MoldingStyle, 'none'> : 'metallic';
+        const autoVWidth = curMoldingStyle !== 'none' ? curMoldingWidth : 2;
+        if (cfg.wallWidthMm > 0) {
+          const secBounds = getSectorBounds(cfg.dividerPositions, cfg.panelCount);
+          secBounds.forEach(({ start: sR, end: eR }) => {
+            const sectorMm = cfg.wallWidthMm * (eR - sR);
+            if (sectorMm <= colStepV) return;
+            const nJoints = Math.floor(sectorMm / colStepV);
+            for (let j = 1; j <= nJoints; j++) {
+              const ratio = sR + (j * colStepV) / cfg.wallWidthMm;
+              if (ratio >= eR - 0.001) continue;
+              // Skip if a user divider already sits within 0.5% of this position
+              if (cfg.dividerPositions.some(d => Math.abs(d - ratio) < 0.005)) continue;
+              const topX = qp[0].x + (qp[1].x - qp[0].x) * ratio;
+              const topY = qp[0].y + (qp[1].y - qp[0].y) * ratio;
+              const botX = qp[3].x + (qp[2].x - qp[3].x) * ratio;
+              const botY = qp[3].y + (qp[2].y - qp[3].y) * ratio;
+              drawMoldLine(topX, topY, botX, botY, autoVStyle, autoVWidth);
+            }
+          });
+        }
       }
 
       // Draw horizontal moldings on tempCanvas BEFORE mask (also eraseable)
@@ -1294,81 +1287,9 @@ const BambooStudio = () => {
           const rx = qp[1].x + (qp[2].x - qp[1].x) * r;
           const ry = qp[1].y + (qp[2].y - qp[1].y) * r;
 
-          const dx = rx - lx;
-          const dy = ry - ly;
-          const len = Math.sqrt(dx * dx + dy * dy);
-          // Perpendicular unit vector (for gradient across molding thickness)
-          const px = -dy / len;
-          const py = dx / len;
-          const hw = curHMoldingWidth / 2;
           const midX = (lx + rx) / 2;
           const midY = (ly + ry) / 2;
-
-          const hGrad = tCtx.createLinearGradient(
-            midX + px * hw, midY + py * hw,
-            midX - px * hw, midY - py * hw
-          );
-
-          if (curHMoldingStyle === 'gold') {
-            hGrad.addColorStop(0,    '#5a3d00');
-            hGrad.addColorStop(0.15, '#b8860b');
-            hGrad.addColorStop(0.35, '#ffd700');
-            hGrad.addColorStop(0.5,  '#fff8c0');
-            hGrad.addColorStop(0.65, '#ffd700');
-            hGrad.addColorStop(0.85, '#b8860b');
-            hGrad.addColorStop(1,    '#5a3d00');
-          } else if (curHMoldingStyle === 'black') {
-            hGrad.addColorStop(0,    '#0a0a0a');
-            hGrad.addColorStop(0.25, '#1c1c1c');
-            hGrad.addColorStop(0.5,  '#383838');
-            hGrad.addColorStop(0.75, '#1c1c1c');
-            hGrad.addColorStop(1,    '#0a0a0a');
-          } else if (curHMoldingStyle === 'metallic') {
-            hGrad.addColorStop(0,    '#4a4a4a');
-            hGrad.addColorStop(0.2,  '#9a9a9a');
-            hGrad.addColorStop(0.45, '#e8e8e8');
-            hGrad.addColorStop(0.5,  '#ffffff');
-            hGrad.addColorStop(0.55, '#e8e8e8');
-            hGrad.addColorStop(0.8,  '#9a9a9a');
-            hGrad.addColorStop(1,    '#4a4a4a');
-          } else if (curHMoldingStyle === 'brass') {
-            hGrad.addColorStop(0,    '#2c1f00');
-            hGrad.addColorStop(0.15, '#7a5918');
-            hGrad.addColorStop(0.35, '#c49a27');
-            hGrad.addColorStop(0.5,  '#e8c95a');
-            hGrad.addColorStop(0.65, '#c49a27');
-            hGrad.addColorStop(0.85, '#7a5918');
-            hGrad.addColorStop(1,    '#2c1f00');
-          } else if (curHMoldingStyle === 'gap') {
-            hGrad.addColorStop(0,    '#3a3a3a');
-            hGrad.addColorStop(0.2,  '#aaaaaa');
-            hGrad.addColorStop(0.42, '#d8d8d8');
-            hGrad.addColorStop(0.46, '#111111');
-            hGrad.addColorStop(0.54, '#111111');
-            hGrad.addColorStop(0.58, '#d8d8d8');
-            hGrad.addColorStop(0.8,  '#aaaaaa');
-            hGrad.addColorStop(1,    '#3a3a3a');
-          } else if (curHMoldingStyle === 'light') {
-            hGrad.addColorStop(0,   'rgba(255,160,50,0)');
-            hGrad.addColorStop(0.3, 'rgba(255,220,100,0.85)');
-            hGrad.addColorStop(0.5, '#fffde0');
-            hGrad.addColorStop(0.7, 'rgba(255,220,100,0.85)');
-            hGrad.addColorStop(1,   'rgba(255,160,50,0)');
-          }
-
-          tCtx.save();
-          tCtx.strokeStyle = hGrad;
-          tCtx.lineWidth = curHMoldingStyle === 'gap' ? Math.max(curHMoldingWidth * 2, 4) : curHMoldingWidth;
-          tCtx.lineCap = 'butt';
-          if (curHMoldingStyle === 'light') {
-            tCtx.shadowColor = 'rgba(255,210,80,0.85)';
-            tCtx.shadowBlur = curHMoldingWidth * 10;
-          }
-          tCtx.beginPath();
-          tCtx.moveTo(lx, ly);
-          tCtx.lineTo(rx, ry);
-          tCtx.stroke();
-          tCtx.restore();
+          drawMoldLine(lx, ly, rx, ry, curHMoldingStyle, curHMoldingWidth);
 
           // Draw drag handle (visible when not erasing and not exporting)
           if (isActive && !curIsErasing && !forExportRef.current) {
@@ -1399,6 +1320,33 @@ const BambooStudio = () => {
             tCtx.restore();
           }
         });
+      }
+
+      // Auto-mandatory horizontal row joints: when wall is taller than one panel row.
+      // Vertical panels: row height = PANEL_H_MM (2800 mm = 280 cm).
+      // Horizontal TV panels: row height = PANEL_W_MM (1220 mm).
+      {
+        const isHorizTvH = wallZoneRef.current === 'tv' && isHoriz;
+        const singleRowH = isHorizTvH ? PANEL_W_MM : PANEL_H_MM;
+        const autoHStyle: Exclude<MoldingStyle, 'none'> =
+          curHMoldingStyle !== 'none' ? curHMoldingStyle as Exclude<MoldingStyle, 'none'> :
+          curMoldingStyle !== 'none' ? curMoldingStyle as Exclude<MoldingStyle, 'none'> : 'metallic';
+        const autoHWidth = curHMoldingStyle !== 'none' ? curHMoldingWidth :
+          curMoldingStyle !== 'none' ? curMoldingWidth : 2;
+        if (cfg.wallHeightMm > singleRowH) {
+          const rowCount = Math.ceil(cfg.wallHeightMm / singleRowH);
+          for (let ri = 1; ri < rowCount; ri++) {
+            const ratio = (ri * singleRowH) / cfg.wallHeightMm;
+            if (ratio >= 1) continue;
+            // Skip if a user hMolding position already sits within 0.5% of this ratio
+            if (curHPositions.some(p => Math.abs(p - ratio) < 0.005)) continue;
+            const lx = qp[0].x + (qp[3].x - qp[0].x) * ratio;
+            const ly = qp[0].y + (qp[3].y - qp[0].y) * ratio;
+            const rx = qp[1].x + (qp[2].x - qp[1].x) * ratio;
+            const ry = qp[1].y + (qp[2].y - qp[1].y) * ratio;
+            drawMoldLine(lx, ly, rx, ry, autoHStyle, autoHWidth);
+          }
+        }
       }
       }; // end renderQuad
 
