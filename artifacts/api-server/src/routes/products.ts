@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { productsTable, insertProductSchema } from "@workspace/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, and, ne, isNull, or } from "drizzle-orm";
 import { PANEL_CATALOG } from "../data/panel-catalog";
 import { requireManagerSession } from "../middleware/managerAuth";
 
@@ -55,6 +55,34 @@ router.post("/products/seed-catalog", requireManagerSession, async (_req, res) =
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: "Failed to seed catalog", detail: msg });
+  }
+});
+
+// PUT /api/products/sync-series-price — must come before /products/:id
+// Updates cost of all panel products belonging to a given series name
+router.put("/products/sync-series-price", requireManagerSession, async (req, res) => {
+  try {
+    const { series, cost } = req.body as { series?: string; cost?: number };
+    if (!series || typeof series !== "string") {
+      return void res.status(400).json({ error: "series is required" });
+    }
+    if (typeof cost !== "number" || !Number.isFinite(cost) || cost < 0) {
+      return void res.status(400).json({ error: "cost must be a non-negative number" });
+    }
+    const result = await db
+      .update(productsTable)
+      .set({ cost, updatedAt: new Date() })
+      .where(
+        and(
+          eq(productsTable.series, series),
+          or(isNull(productsTable.category), ne(productsTable.category, "molding")),
+        ),
+      )
+      .returning({ id: productsTable.id });
+    res.json({ updated: result.length });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: "Failed to sync series price", detail: msg });
   }
 });
 

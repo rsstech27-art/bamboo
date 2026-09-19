@@ -266,6 +266,18 @@ export function useManagerPrices() {
     saveLS(LS_PANEL_KEY, next as Record<string, unknown>);
     setPanelOverrides(next);
     void persist('panel_prices', next);
+
+    // Sync product costs for all panels in this series
+    const seriesName =
+      seriesNameOverridesRef.current[seriesId] ||
+      DEFAULT_SERIES_PRICES.find(s => s.id === seriesId)?.name;
+    if (seriesName) {
+      void managerFetch('/api/products/sync-series-price', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ series: seriesName, cost: price }),
+      });
+    }
   }, [persist]);
 
   const setMoldingPrice = useCallback((styleId: string, price: number) => {
@@ -313,11 +325,31 @@ export function useManagerPrices() {
   const updateCustomSeries = useCallback((id: string, name: string, price: number) => {
     const trimmed = name.trim();
     if (!trimmed || !Number.isFinite(price) || price <= 0) return;
+    const prev = customSeriesRef.current.find(s => s.id === id);
     const next = customSeriesRef.current.map(s => s.id === id ? { ...s, name: trimmed, price: Math.round(price) } : s);
     customSeriesRef.current = next;
     saveArrLS(LS_CUSTOM_SERIES_KEY, next);
     setCustomSeries(next);
     void persist('custom_series', next);
+
+    // Sync product costs. If the series name changed, update by old name first,
+    // then by new name (covers both cases in one pass — API matches by name).
+    const oldName = prev?.name;
+    const newName = trimmed;
+    if (oldName && oldName !== newName) {
+      // Name changed: sync old name to new price (products still carry old name)
+      void managerFetch('/api/products/sync-series-price', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ series: oldName, cost: Math.round(price) }),
+      });
+    }
+    // Always sync new name (covers price-only change and post-rename)
+    void managerFetch('/api/products/sync-series-price', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ series: newName, cost: Math.round(price) }),
+    });
   }, [persist]);
 
   const addCustomSeries = useCallback((name: string, price: number) => {
