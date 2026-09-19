@@ -46,12 +46,13 @@ export type SeriesDefinition = {
 };
 
 // ── localStorage keys (used only as optimistic cache) ────────────────────────
-const LS_PANEL_KEY         = 'aw_manager_panel_prices';
-const LS_MOLDING_KEY       = 'aw_manager_molding_prices';
-const LS_SERIES_NAMES_KEY  = 'aw_manager_series_names';
-const LS_MOLDING_NAMES_KEY = 'aw_manager_molding_names';
-const LS_CUSTOM_SERIES_KEY  = 'aw_manager_custom_series';
-const LS_EXTRAS_KEY        = 'aw_manager_extras_prices';
+const LS_PANEL_KEY           = 'aw_manager_panel_prices';
+const LS_MOLDING_KEY         = 'aw_manager_molding_prices';
+const LS_SERIES_NAMES_KEY    = 'aw_manager_series_names';
+const LS_MOLDING_NAMES_KEY   = 'aw_manager_molding_names';
+const LS_CUSTOM_SERIES_KEY   = 'aw_manager_custom_series';
+const LS_CUSTOM_MOLDINGS_KEY = 'aw_manager_custom_moldings';
+const LS_EXTRAS_KEY          = 'aw_manager_extras_prices';
 
 function loadLS(key: string): Record<string, unknown> {
   try { const r = localStorage.getItem(key); return r ? JSON.parse(r) as Record<string, unknown> : {}; }
@@ -71,6 +72,7 @@ async function fetchSettings(): Promise<{
   series_names?: SeriesNames;
   molding_names?: SeriesNames;
   custom_series?: SeriesDefinition[];
+  custom_moldings?: SeriesDefinition[];
   extras_prices?: PriceMap;
 }> {
   try {
@@ -115,9 +117,13 @@ export function useManagerPrices() {
     try {
       const raw = localStorage.getItem(LS_CUSTOM_SERIES_KEY);
       return raw ? JSON.parse(raw) as SeriesDefinition[] : [];
-    } catch {
-      return [];
-    }
+    } catch { return []; }
+  });
+  const [customMoldings, setCustomMoldings] = useState<SeriesDefinition[]>(() => {
+    try {
+      const raw = localStorage.getItem(LS_CUSTOM_MOLDINGS_KEY);
+      return raw ? JSON.parse(raw) as SeriesDefinition[] : [];
+    } catch { return []; }
   });
 
   // Refs for use in callbacks without stale closures
@@ -141,6 +147,14 @@ export function useManagerPrices() {
         );
         setCustomSeries(valid);
         try { localStorage.setItem(LS_CUSTOM_SERIES_KEY, JSON.stringify(valid)); } catch { /* ignore */ }
+      }
+      if (Array.isArray(remote.custom_moldings)) {
+        const valid = remote.custom_moldings.filter(s =>
+          s && typeof s.id === 'string' && typeof s.name === 'string' &&
+          typeof s.price === 'number' && s.price > 0
+        );
+        setCustomMoldings(valid);
+        try { localStorage.setItem(LS_CUSTOM_MOLDINGS_KEY, JSON.stringify(valid)); } catch { /* ignore */ }
       }
     });
   }, []);
@@ -187,6 +201,26 @@ export function useManagerPrices() {
     });
   }, []);
 
+  const deleteCustomSeries = useCallback((id: string) => {
+    setCustomSeries(prev => {
+      const next = prev.filter(s => s.id !== id);
+      try { localStorage.setItem(LS_CUSTOM_SERIES_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      void putSetting('custom_series', next as unknown as Record<string, unknown>);
+      return next;
+    });
+  }, []);
+
+  const updateCustomSeries = useCallback((id: string, name: string, price: number) => {
+    const trimmed = name.trim();
+    if (!trimmed || !Number.isFinite(price) || price <= 0) return;
+    setCustomSeries(prev => {
+      const next = prev.map(s => s.id === id ? { ...s, name: trimmed, price: Math.round(price) } : s);
+      try { localStorage.setItem(LS_CUSTOM_SERIES_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      void putSetting('custom_series', next as unknown as Record<string, unknown>);
+      return next;
+    });
+  }, []);
+
   const addCustomSeries = useCallback((name: string, price: number) => {
     const trimmed = name.trim();
     if (!trimmed) throw new Error('Введите название серии');
@@ -219,6 +253,50 @@ export function useManagerPrices() {
     void putSetting('custom_series', next as unknown as Record<string, unknown>);
     return created;
   }, [customSeries, seriesNameOverrides]);
+
+  const addCustomMolding = useCallback((name: string, price: number) => {
+    const trimmed = name.trim();
+    if (!trimmed) throw new Error('Введите название профиля');
+    if (!Number.isFinite(price) || price <= 0) throw new Error('Укажите стоимость больше нуля');
+    const allNames = [
+      ...DEFAULT_MOLDING_PRICES.map(m => moldingNameOverrides[m.id] || m.name),
+      ...customMoldings.map(m => m.name),
+    ];
+    if (allNames.some(n => n.localeCompare(trimmed, 'ru', { sensitivity: 'accent' }) === 0)) {
+      throw new Error('Профиль с таким названием уже существует');
+    }
+    const slug = trimmed.toLocaleLowerCase('ru').replace(/[^a-zа-яё0-9]+/gi, '-').replace(/^-+|-+$/g, '') || 'profile';
+    const usedIds = new Set([...DEFAULT_MOLDING_PRICES.map(m => m.id), ...customMoldings.map(m => m.id)]);
+    let id = `custom-molding-${slug}`;
+    let suffix = 2;
+    while (usedIds.has(id)) id = `custom-molding-${slug}-${suffix++}`;
+    const created: SeriesDefinition = { id, name: trimmed, price: Math.round(price), custom: true };
+    const next = [...customMoldings, created];
+    setCustomMoldings(next);
+    try { localStorage.setItem(LS_CUSTOM_MOLDINGS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+    void putSetting('custom_moldings', next as unknown as Record<string, unknown>);
+    return created;
+  }, [customMoldings, moldingNameOverrides]);
+
+  const deleteCustomMolding = useCallback((id: string) => {
+    setCustomMoldings(prev => {
+      const next = prev.filter(m => m.id !== id);
+      try { localStorage.setItem(LS_CUSTOM_MOLDINGS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      void putSetting('custom_moldings', next as unknown as Record<string, unknown>);
+      return next;
+    });
+  }, []);
+
+  const updateCustomMolding = useCallback((id: string, name: string, price: number) => {
+    const trimmed = name.trim();
+    if (!trimmed || !Number.isFinite(price) || price <= 0) return;
+    setCustomMoldings(prev => {
+      const next = prev.map(m => m.id === id ? { ...m, name: trimmed, price: Math.round(price) } : m);
+      try { localStorage.setItem(LS_CUSTOM_MOLDINGS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      void putSetting('custom_moldings', next as unknown as Record<string, unknown>);
+      return next;
+    });
+  }, []);
 
   const setExtrasPrice = useCallback((id: string, price: number) => {
     setExtrasOverrides(prev => {
@@ -259,6 +337,14 @@ export function useManagerPrices() {
       setCustomSeries(valid);
       try { localStorage.setItem(LS_CUSTOM_SERIES_KEY, JSON.stringify(valid)); } catch { /* ignore */ }
     }
+    if (Array.isArray(remote.custom_moldings)) {
+      const valid = remote.custom_moldings.filter(s =>
+        s && typeof s.id === 'string' && typeof s.name === 'string' &&
+        typeof s.price === 'number' && s.price > 0
+      );
+      setCustomMoldings(valid);
+      try { localStorage.setItem(LS_CUSTOM_MOLDINGS_KEY, JSON.stringify(valid)); } catch { /* ignore */ }
+    }
   }, []);
 
   const seriesDefinitions = useMemo<SeriesDefinition[]>(() => [
@@ -280,6 +366,7 @@ export function useManagerPrices() {
     seriesNameOverrides,
     moldingNameOverrides,
     customSeries,
+    customMoldings,
     seriesDefinitions,
     extrasOverrides,
     panelOverridesRef,
@@ -289,6 +376,11 @@ export function useManagerPrices() {
     setSeriesName,
     setMoldingName,
     addCustomSeries,
+    deleteCustomSeries,
+    updateCustomSeries,
+    addCustomMolding,
+    deleteCustomMolding,
+    updateCustomMolding,
     setExtrasPrice,
     resetPrices,
     reloadSettings,

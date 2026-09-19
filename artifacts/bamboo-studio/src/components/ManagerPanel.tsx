@@ -127,83 +127,7 @@ function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
 // Tab: Цены — price + editable series name per row
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Single row: editable name on the left, editable price on the right */
-function SeriesRow({ seriesId, defaultName, defaultPrice, nameOverride, priceOverride, onNameChange, onPriceChange }: {
-  seriesId: string;
-  defaultName: string;
-  defaultPrice: number;
-  nameOverride?: string;
-  priceOverride?: number;
-  onNameChange: (v: string) => void;
-  onPriceChange: (v: number) => void;
-}) {
-  const effectiveName  = nameOverride  ?? defaultName;
-  const effectivePrice = priceOverride ?? defaultPrice;
-  const nameModified  = nameOverride  !== undefined && nameOverride  !== defaultName;
-  const priceModified = priceOverride !== undefined && priceOverride !== defaultPrice;
-
-  const [nameText,  setNameText]  = useState(effectiveName);
-  const [priceText, setPriceText] = useState(String(effectivePrice));
-
-  useEffect(() => { setNameText(nameOverride ?? defaultName); },   [nameOverride,  defaultName]);
-  useEffect(() => { setPriceText(String(priceOverride ?? defaultPrice)); }, [priceOverride, defaultPrice]);
-
-  const commitName  = () => {
-    const v = nameText.trim();
-    onNameChange(v); // empty string → revert to default (handled in hook)
-    if (!v) setNameText(defaultName);
-  };
-  const commitPrice = () => {
-    const v = parseInt(priceText.replace(/\s/g, ''), 10);
-    if (!isNaN(v) && v > 0) { onPriceChange(v); setPriceText(String(v)); }
-    else setPriceText(String(effectivePrice));
-  };
-
-  const anyModified = nameModified || priceModified;
-
-  return (
-    <div className={`flex items-center gap-2 py-2.5 border-b border-gray-100 last:border-0 ${anyModified ? 'bg-green-50/50 -mx-4 px-4 rounded-lg' : ''}`}>
-      {/* Editable name */}
-      <input
-        value={nameText}
-        onChange={e => setNameText(e.target.value)}
-        onBlur={commitName}
-        onKeyDown={e => e.key === 'Enter' && commitName()}
-        title="Нажмите для редактирования названия"
-        className={`flex-1 text-sm px-2 py-1.5 rounded-lg border outline-none transition-colors min-w-0
-          ${nameModified
-            ? 'border-[#7ec662] bg-green-50 text-green-800 font-semibold'
-            : 'border-transparent bg-transparent hover:border-gray-200 focus:border-black focus:bg-white text-gray-700'
-          }`}
-      />
-      {/* Default name hint when modified */}
-      {nameModified && (
-        <span className="text-xs text-gray-400 line-through shrink-0 hidden sm:block">{defaultName}</span>
-      )}
-      {/* Default price hint when modified */}
-      {priceModified && (
-        <span className="text-xs text-gray-400 line-through shrink-0">{defaultPrice.toLocaleString('ru-RU')}</span>
-      )}
-      {/* Editable price */}
-      <div className="flex items-center gap-1 shrink-0">
-        <input
-          type="text" inputMode="numeric" value={priceText}
-          onChange={e => setPriceText(e.target.value)}
-          onBlur={commitPrice}
-          onKeyDown={e => e.key === 'Enter' && commitPrice()}
-          className={`w-24 text-right text-sm px-2 py-1.5 rounded-lg border outline-none transition-colors
-            ${priceModified
-              ? 'border-[#7ec662] bg-green-50 text-green-800 font-bold'
-              : 'border-gray-200 bg-gray-50 focus:border-black focus:bg-white text-gray-700'
-            }`}
-        />
-        <span className="text-xs text-gray-400">₽</span>
-      </div>
-    </div>
-  );
-}
-
-/** Reusable editable-name + editable-price row (used for both series and moldings) */
+/** Editable-name + editable-price row for default (built-in) series/moldings */
 function EditableRow({ defaultName, defaultPrice, nameOverride, priceOverride, onNameChange, onPriceChange, unitLabel = '₽' }: {
   defaultName: string;
   defaultPrice: number;
@@ -215,14 +139,12 @@ function EditableRow({ defaultName, defaultPrice, nameOverride, priceOverride, o
 }) {
   const effectiveName  = nameOverride  ?? defaultName;
   const effectivePrice = priceOverride ?? defaultPrice;
-  const nameModified  = nameOverride  !== undefined && nameOverride  !== defaultName;
-  const priceModified = priceOverride !== undefined && priceOverride !== defaultPrice;
 
   const [nameText,  setNameText]  = useState(effectiveName);
   const [priceText, setPriceText] = useState(String(effectivePrice));
 
-  useEffect(() => { setNameText(nameOverride ?? defaultName); },              [nameOverride,  defaultName]);
-  useEffect(() => { setPriceText(String(priceOverride ?? defaultPrice)); },   [priceOverride, defaultPrice]);
+  useEffect(() => { setNameText(nameOverride ?? defaultName); },            [nameOverride, defaultName]);
+  useEffect(() => { setPriceText(String(priceOverride ?? defaultPrice)); }, [priceOverride, defaultPrice]);
 
   const commitName = () => {
     const v = nameText.trim();
@@ -235,40 +157,23 @@ function EditableRow({ defaultName, defaultPrice, nameOverride, priceOverride, o
     else setPriceText(String(effectivePrice));
   };
 
-  const anyModified = nameModified || priceModified;
-
   return (
-    <div className={`flex items-center gap-2 py-2.5 border-b border-gray-100 last:border-0 ${anyModified ? 'bg-green-50/50 -mx-4 px-4 rounded-lg' : ''}`}>
-      {/* Editable name */}
+    <div className="flex items-center gap-2 py-2.5 border-b border-gray-100 last:border-0">
       <input
         value={nameText}
         onChange={e => setNameText(e.target.value)}
         onBlur={commitName}
         onKeyDown={e => e.key === 'Enter' && commitName()}
         title="Нажмите для редактирования названия"
-        className={`flex-1 text-sm px-2 py-1.5 rounded-lg border outline-none transition-colors min-w-0
-          ${nameModified
-            ? 'border-[#7ec662] bg-green-50 text-green-800 font-semibold'
-            : 'border-transparent bg-transparent hover:border-gray-200 focus:border-black focus:bg-white text-gray-700'
-          }`}
+        className="flex-1 text-sm px-2 py-1.5 rounded-lg border border-transparent bg-transparent hover:border-gray-200 focus:border-black focus:bg-white text-gray-700 outline-none transition-colors min-w-0"
       />
-      {nameModified && (
-        <span className="text-xs text-gray-400 line-through shrink-0 hidden sm:block">{defaultName}</span>
-      )}
-      {priceModified && (
-        <span className="text-xs text-gray-400 line-through shrink-0">{defaultPrice.toLocaleString('ru-RU')}</span>
-      )}
       <div className="flex items-center gap-1 shrink-0">
         <input
           type="text" inputMode="numeric" value={priceText}
           onChange={e => setPriceText(e.target.value)}
           onBlur={commitPrice}
           onKeyDown={e => e.key === 'Enter' && commitPrice()}
-          className={`w-24 text-right text-sm px-2 py-1.5 rounded-lg border outline-none transition-colors
-            ${priceModified
-              ? 'border-[#7ec662] bg-green-50 text-green-800 font-bold'
-              : 'border-gray-200 bg-gray-50 focus:border-black focus:bg-white text-gray-700'
-            }`}
+          className="w-24 text-right text-sm px-2 py-1.5 rounded-lg border border-gray-200 bg-gray-50 focus:border-black focus:bg-white text-gray-700 outline-none transition-colors"
         />
         <span className="text-xs text-gray-400">{unitLabel}</span>
       </div>
@@ -276,8 +181,67 @@ function EditableRow({ defaultName, defaultPrice, nameOverride, priceOverride, o
   );
 }
 
-function AddSeriesForm({ onAdd }: {
+/** Editable row for custom (user-added) items — same look as EditableRow, plus delete button */
+function CustomItemRow({ item, onUpdate, onDelete, unitLabel = '₽/панель' }: {
+  item: SeriesDefinition;
+  onUpdate: (name: string, price: number) => void;
+  onDelete: () => void;
+  unitLabel?: string;
+}) {
+  const [nameText,  setNameText]  = useState(item.name);
+  const [priceText, setPriceText] = useState(String(item.price));
+
+  useEffect(() => { setNameText(item.name);         }, [item.name]);
+  useEffect(() => { setPriceText(String(item.price)); }, [item.price]);
+
+  const commitName = () => {
+    const v = nameText.trim();
+    if (!v) { setNameText(item.name); return; }
+    const p = parseInt(priceText.replace(/\s/g, ''), 10);
+    onUpdate(v, !isNaN(p) && p > 0 ? p : item.price);
+  };
+  const commitPrice = () => {
+    const v = parseInt(priceText.replace(/\s/g, ''), 10);
+    if (!isNaN(v) && v > 0) { setPriceText(String(v)); onUpdate(nameText.trim() || item.name, v); }
+    else setPriceText(String(item.price));
+  };
+
+  return (
+    <div className="flex items-center gap-2 py-2.5 border-b border-gray-100 last:border-0">
+      <input
+        value={nameText}
+        onChange={e => setNameText(e.target.value)}
+        onBlur={commitName}
+        onKeyDown={e => e.key === 'Enter' && commitName()}
+        title="Нажмите для редактирования"
+        className="flex-1 text-sm px-2 py-1.5 rounded-lg border border-transparent bg-transparent hover:border-gray-200 focus:border-black focus:bg-white text-gray-700 outline-none transition-colors min-w-0"
+      />
+      <div className="flex items-center gap-1 shrink-0">
+        <input
+          type="text" inputMode="numeric" value={priceText}
+          onChange={e => setPriceText(e.target.value)}
+          onBlur={commitPrice}
+          onKeyDown={e => e.key === 'Enter' && commitPrice()}
+          className="w-24 text-right text-sm px-2 py-1.5 rounded-lg border border-gray-200 bg-gray-50 focus:border-black focus:bg-white text-gray-700 outline-none transition-colors"
+        />
+        <span className="text-xs text-gray-400">{unitLabel}</span>
+      </div>
+      <button onClick={() => { if (confirm(`Удалить «${item.name}»?`)) onDelete(); }}
+        title="Удалить" className="p-1.5 text-gray-300 hover:text-red-500 transition-colors shrink-0">
+        <Trash2 size={13} />
+      </button>
+    </div>
+  );
+}
+
+function AddItemForm({ onAdd, buttonLabel = 'Добавить серию', formTitle = 'Новая серия', pricePlaceholder = '5000', priceLabel = 'Цена, ₽/панель', namePlaceholder = 'Название серии', errorFallback = 'Не удалось добавить' }: {
   onAdd: (name: string, price: number) => void;
+  buttonLabel?: string;
+  formTitle?: string;
+  pricePlaceholder?: string;
+  priceLabel?: string;
+  namePlaceholder?: string;
+  errorFallback?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
@@ -293,7 +257,7 @@ function AddSeriesForm({ onAdd }: {
       setPrice('');
       setOpen(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось добавить серию');
+      setError(err instanceof Error ? err.message : errorFallback);
     }
   };
 
@@ -301,7 +265,7 @@ function AddSeriesForm({ onAdd }: {
     return (
       <button onClick={() => setOpen(true)}
         className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 hover:border-black text-gray-500 hover:text-black text-sm font-bold py-3 rounded-xl transition-colors">
-        <Plus size={15} /> Добавить серию
+        <Plus size={15} /> {buttonLabel}
       </button>
     );
   }
@@ -309,7 +273,7 @@ function AddSeriesForm({ onAdd }: {
   return (
     <form onSubmit={submit} className="bg-white border border-gray-200 rounded-xl p-4 space-y-3 shadow-sm">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-black text-gray-900">Новая серия</span>
+        <span className="text-sm font-black text-gray-900">{formTitle}</span>
         <button type="button" onClick={() => { setOpen(false); setError(null); }}
           className="text-gray-400 hover:text-black"><X size={15} /></button>
       </div>
@@ -317,13 +281,13 @@ function AddSeriesForm({ onAdd }: {
         <div>
           <label className="block text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-1">Название</label>
           <input value={name} onChange={e => setName(e.target.value)} autoFocus
-            placeholder="Название серии"
+            placeholder={namePlaceholder}
             className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-black" />
         </div>
         <div>
-          <label className="block text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-1">Цена, ₽/панель</label>
+          <label className="block text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-1">{priceLabel}</label>
           <input value={price} onChange={e => setPrice(e.target.value)}
-            type="number" min="1" placeholder="5000"
+            type="number" min="1" placeholder={pricePlaceholder}
             className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-black" />
         </div>
       </div>
@@ -336,42 +300,52 @@ function AddSeriesForm({ onAdd }: {
   );
 }
 
-function TabPrices({ panelOverrides, moldingOverrides, seriesNameOverrides, moldingNameOverrides, customSeries, onUpdatePanel, onUpdateMolding, onUpdateSeriesName, onUpdateMoldingName, onAddSeries, onReset, extrasOverrides, onUpdateExtras }: {
+function TabPrices({
+  panelOverrides, moldingOverrides, seriesNameOverrides, moldingNameOverrides,
+  customSeries, customMoldings,
+  onUpdatePanel, onUpdateMolding, onUpdateSeriesName, onUpdateMoldingName,
+  onAddSeries, onDeleteSeries, onUpdateCustomSeries,
+  onAddMolding, onDeleteMolding, onUpdateCustomMolding,
+  onReset, extrasOverrides, onUpdateExtras,
+}: {
   panelOverrides: PriceMap;
   moldingOverrides: PriceMap;
   seriesNameOverrides: SeriesNames;
   moldingNameOverrides: SeriesNames;
   customSeries: SeriesDefinition[];
+  customMoldings: SeriesDefinition[];
   onUpdatePanel: (id: string, p: number) => void;
   onUpdateMolding: (id: string, p: number) => void;
   onUpdateSeriesName: (id: string, name: string) => void;
   onUpdateMoldingName: (id: string, name: string) => void;
   onAddSeries: (name: string, price: number) => void;
+  onDeleteSeries: (id: string) => void;
+  onUpdateCustomSeries: (id: string, name: string, price: number) => void;
+  onAddMolding: (name: string, price: number) => void;
+  onDeleteMolding: (id: string) => void;
+  onUpdateCustomMolding: (id: string, name: string, price: number) => void;
   onReset: () => void;
   extrasOverrides: PriceMap;
   onUpdateExtras: (id: string, price: number) => void;
 }) {
-  const [moldingsOpen, setMoldingsOpen] = useState(false);
+  const [moldingsOpen, setMoldingsOpen] = useState(true);
   const [extrasOpen, setExtrasOpen] = useState(false);
-  const modifiedPrices =
-    Object.keys(panelOverrides).filter(k => panelOverrides[k] !== DEFAULT_SERIES_PRICES.find(s => s.id === k)?.defaultPrice).length +
-    Object.keys(moldingOverrides).filter(k => moldingOverrides[k] !== DEFAULT_MOLDING_PRICES.find(m => m.id === k)?.defaultPrice).length;
-  const modifiedNames = Object.keys(seriesNameOverrides).length + Object.keys(moldingNameOverrides).length;
-  const modifiedExtras = Object.keys(extrasOverrides).filter(k => extrasOverrides[k] !== DEFAULT_EXTRAS.find(e => e.id === k)?.defaultPrice).length;
-  const totalModified = modifiedPrices + modifiedNames + modifiedExtras;
 
   return (
     <div className="max-w-xl mx-auto space-y-6 py-6 px-4">
-      {totalModified > 0 && (
-        <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
-          <span className="text-sm text-green-700 font-medium">Изменено: {totalModified} — сохранено</span>
-          <button onClick={() => { if (confirm('Сбросить все цены и названия?')) onReset(); }}
-            className="flex items-center gap-1.5 text-xs font-bold text-green-700 hover:text-green-900 border border-green-300 rounded-lg px-3 py-1.5 transition-colors bg-white">
-            <RotateCcw size={11} /> Сбросить всё
+      {/* Reset bar — only shown when there are overrides */}
+      {(Object.keys(panelOverrides).length > 0 || Object.keys(moldingOverrides).length > 0 ||
+        Object.keys(seriesNameOverrides).length > 0 || Object.keys(moldingNameOverrides).length > 0) && (
+        <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+          <span className="text-sm text-gray-600 font-medium">Есть изменённые цены / названия</span>
+          <button onClick={() => { if (confirm('Сбросить все цены и названия к значениям по умолчанию?')) onReset(); }}
+            className="flex items-center gap-1.5 text-xs font-bold text-gray-600 hover:text-black border border-gray-300 rounded-lg px-3 py-1.5 transition-colors bg-white">
+            <RotateCcw size={11} /> Сбросить
           </button>
         </div>
       )}
 
+      {/* ── Серии панелей ── */}
       <section>
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
@@ -393,23 +367,25 @@ function TabPrices({ panelOverrides, moldingOverrides, seriesNameOverrides, mold
             />
           ))}
           {customSeries.map(s => (
-            <div key={s.id} className="flex items-center gap-2 py-2.5 border-t border-gray-100">
-              <span className="flex-1 text-sm px-2 py-1.5 text-gray-700 font-semibold min-w-0 truncate">{s.name}</span>
-              <span className="text-[9px] font-bold uppercase tracking-wide text-[#5a9d43] bg-green-50 rounded-md px-2 py-1">Добавлена</span>
-              <span className="text-sm font-bold text-gray-700">{s.price.toLocaleString('ru-RU')} ₽</span>
-            </div>
+            <CustomItemRow
+              key={s.id}
+              item={s}
+              onUpdate={(name, price) => onUpdateCustomSeries(s.id, name, price)}
+              onDelete={() => onDeleteSeries(s.id)}
+              unitLabel="₽/панель"
+            />
           ))}
         </div>
         <div className="mt-3">
-          <AddSeriesForm onAdd={onAddSeries} />
+          <AddItemForm onAdd={onAddSeries} buttonLabel="Добавить серию" formTitle="Новая серия"
+            namePlaceholder="Название серии" priceLabel="Цена, ₽/панель" errorFallback="Не удалось добавить серию" />
         </div>
       </section>
 
+      {/* ── Профили ── */}
       <section>
-        <button
-          onClick={() => setMoldingsOpen(v => !v)}
-          className="w-full flex items-center justify-between group mb-3"
-        >
+        <button onClick={() => setMoldingsOpen(v => !v)}
+          className="w-full flex items-center justify-between group mb-3">
           <div className="flex items-center gap-2">
             <ChevronRight size={13} className={`text-gray-400 transition-transform ${moldingsOpen ? 'rotate-90' : ''}`} />
             <h3 className="text-xs font-black uppercase tracking-widest text-gray-500 group-hover:text-gray-700 transition-colors">Профили</h3>
@@ -417,34 +393,45 @@ function TabPrices({ panelOverrides, moldingOverrides, seriesNameOverrides, mold
           <span className="text-[10px] text-gray-400">Название · Цена (₽/3 м)</span>
         </button>
         {moldingsOpen && (
-          <div className="bg-white border border-gray-100 rounded-xl px-4 shadow-sm">
-            {DEFAULT_MOLDING_PRICES.map(m => (
-              <EditableRow
-                key={m.id}
-                defaultName={m.name}
-                defaultPrice={m.defaultPrice}
-                nameOverride={moldingNameOverrides[m.id]}
-                priceOverride={moldingOverrides[m.id]}
-                onNameChange={name => onUpdateMoldingName(m.id, name)}
-                onPriceChange={price => onUpdateMolding(m.id, price)}
-              />
-            ))}
-          </div>
+          <>
+            <div className="bg-white border border-gray-100 rounded-xl px-4 shadow-sm">
+              {DEFAULT_MOLDING_PRICES.map(m => (
+                <EditableRow
+                  key={m.id}
+                  defaultName={m.name}
+                  defaultPrice={m.defaultPrice}
+                  nameOverride={moldingNameOverrides[m.id]}
+                  priceOverride={moldingOverrides[m.id]}
+                  onNameChange={name => onUpdateMoldingName(m.id, name)}
+                  onPriceChange={price => onUpdateMolding(m.id, price)}
+                />
+              ))}
+              {customMoldings.map(m => (
+                <CustomItemRow
+                  key={m.id}
+                  item={m}
+                  onUpdate={(name, price) => onUpdateCustomMolding(m.id, name, price)}
+                  onDelete={() => onDeleteMolding(m.id)}
+                  unitLabel="₽/3 м"
+                />
+              ))}
+            </div>
+            <div className="mt-3">
+              <AddItemForm onAdd={onAddMolding} buttonLabel="Добавить профиль" formTitle="Новый профиль"
+                namePlaceholder="Название профиля" priceLabel="Цена, ₽/3 м" pricePlaceholder="990"
+                errorFallback="Не удалось добавить профиль" />
+            </div>
+          </>
         )}
       </section>
 
-      {/* Дополнительно — доп. товары (клей и пр.) */}
+      {/* ── Дополнительно (клей и пр.) ── */}
       <section>
-        <button
-          onClick={() => setExtrasOpen(v => !v)}
-          className="w-full flex items-center justify-between group mb-3"
-        >
+        <button onClick={() => setExtrasOpen(v => !v)}
+          className="w-full flex items-center justify-between group mb-3">
           <div className="flex items-center gap-2">
             <ChevronRight size={13} className={`text-gray-400 transition-transform ${extrasOpen ? 'rotate-90' : ''}`} />
             <h3 className="text-xs font-black uppercase tracking-widest text-gray-500 group-hover:text-gray-700 transition-colors">Дополнительно</h3>
-            {modifiedExtras > 0 && (
-              <span className="text-[9px] font-bold bg-green-100 text-green-700 rounded-md px-1.5 py-0.5">{modifiedExtras} изм.</span>
-            )}
           </div>
           <span className="text-[10px] text-gray-400">Цена за единицу</span>
         </button>
@@ -466,8 +453,8 @@ function TabPrices({ panelOverrides, moldingOverrides, seriesNameOverrides, mold
       </section>
 
       <p className="text-xs text-gray-400 text-center pb-4">
-        Клик по любому названию — редактировать. Очистите поле чтобы вернуть оригинал.
-        Изменения сохраняются и доступны менеджерам после обновления страницы.
+        Кликните на любое поле для редактирования. Очистите название, чтобы вернуть исходное.
+        Изменения сохраняются автоматически.
       </p>
     </div>
   );
@@ -1191,8 +1178,8 @@ function TabProducts({ seriesOptions, onPhotoChange, onSettingsChange, extrasOve
         </div>
       )}
 
-      {/* ── Фильтр по сериям ── */}
-      {!loading && availableSeries.length > 0 && (
+      {/* ── Фильтр по сериям + быстрые разделы ── */}
+      {!loading && (
         <div className="flex flex-wrap gap-2">
           <button
             onClick={() => setSeriesFilter(null)}
@@ -1204,8 +1191,7 @@ function TabProducts({ seriesOptions, onPhotoChange, onSettingsChange, extrasOve
             Все
           </button>
           {availableSeries.map(s => (
-            <button
-              key={s}
+            <button key={s}
               onClick={() => setSeriesFilter(seriesFilter === s ? null : s)}
               className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
                 seriesFilter === s
@@ -1220,31 +1206,77 @@ function TabProducts({ seriesOptions, onPhotoChange, onSettingsChange, extrasOve
               </span>
             </button>
           ))}
+          {/* Быстрый переход к разделам */}
+          <div className="w-px bg-gray-200 self-stretch mx-1" />
+          {[{ id: '__profiles__', label: 'Профили' }, { id: '__glue__', label: 'Клей' }].map(chip => (
+            <button key={chip.id}
+              onClick={() => setSeriesFilter(seriesFilter === chip.id ? null : chip.id)}
+              className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
+                seriesFilter === chip.id
+                  ? 'bg-black text-white border-black'
+                  : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400 hover:text-gray-800'
+              }`}>
+              {chip.label}
+            </button>
+          ))}
         </div>
       )}
 
-      {/* ── Список товаров ── */}
-      {visibleProducts.length === 0 && !loading && seriesFilter && (
-        <div className="text-center py-8 text-gray-400 text-sm">
-          В серии «{seriesFilter}» нет товаров
-        </div>
+      {/* ── Список товаров (скрыт при выборе специального раздела) ── */}
+      {!seriesFilter?.startsWith('__') && (
+        <>
+          {visibleProducts.length === 0 && !loading && seriesFilter && (
+            <div className="text-center py-8 text-gray-400 text-sm">
+              В серии «{seriesFilter}» нет товаров
+            </div>
+          )}
+          {visibleProducts.map(p => (
+            <ProductCard
+              key={p.id}
+              product={p}
+              onEdit={() => { setEditingProduct(p); setCreating(false); }}
+              onDelete={() => del(p.id)}
+            />
+          ))}
+        </>
       )}
 
-      {visibleProducts.map(p => (
-        <ProductCard
-          key={p.id}
-          product={p}
-          onEdit={() => { setEditingProduct(p); setCreating(false); }}
-          onDelete={() => del(p.id)}
-        />
-      ))}
-
-      {/* ── Дополнительные товары (клей и пр.) ── */}
-      {extrasOverrides !== undefined && DEFAULT_EXTRAS.length > 0 && (
+      {/* ── Профили (показывается всегда или при фильтре __profiles__) ── */}
+      {(seriesFilter === null || seriesFilter === '__profiles__') && extrasOverrides !== undefined && (
         <div className="mt-4">
           <div className="flex items-center gap-2 mb-3">
             <ChevronRight size={13} className="text-gray-400" />
-            <span className="text-xs font-black uppercase tracking-widest text-gray-500">Дополнительные товары</span>
+            <span className="text-xs font-black uppercase tracking-widest text-gray-500">Профили</span>
+            <span className="text-[10px] text-gray-400">— цена задаётся в разделе Цены</span>
+          </div>
+          <div className="space-y-2">
+            {DEFAULT_MOLDING_PRICES.map(m => {
+              const price = extrasOverrides[m.id] !== undefined ? extrasOverrides[m.id] : m.defaultPrice;
+              return (
+                <div key={m.id} className="bg-white border border-gray-100 rounded-2xl px-4 py-3 flex items-center gap-4 shadow-sm">
+                  <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
+                    <Package size={18} className="text-gray-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-bold text-gray-900">{m.name}</div>
+                    <div className="text-xs text-gray-400 mt-0.5">{m.article}</div>
+                  </div>
+                  <div className="shrink-0 text-sm font-bold text-gray-700">
+                    {price > 0 ? `${price.toLocaleString('ru-RU')} ₽/3 м` : <span className="text-gray-400 font-normal">не задана</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Клей и дополнительные товары ── */}
+      {(seriesFilter === null || seriesFilter === '__glue__') && extrasOverrides !== undefined && DEFAULT_EXTRAS.length > 0 && (
+        <div className="mt-4">
+          <div className="flex items-center gap-2 mb-3">
+            <ChevronRight size={13} className="text-gray-400" />
+            <span className="text-xs font-black uppercase tracking-widest text-gray-500">Клей и доп. товары</span>
             <span className="text-[10px] text-gray-400">— цена задаётся в разделе Цены</span>
           </div>
           <div className="space-y-2">
@@ -1259,7 +1291,7 @@ function TabProducts({ seriesOptions, onPhotoChange, onSettingsChange, extrasOve
                     <div className="text-sm font-bold text-gray-900">{e.name}</div>
                     <div className="text-xs text-gray-400 mt-0.5">{e.article}</div>
                   </div>
-                  <div className="shrink-0 text-sm font-bold text-[#7ec662]">
+                  <div className="shrink-0 text-sm font-bold text-gray-700">
                     {price > 0 ? `${price.toLocaleString('ru-RU')} ₽` : <span className="text-gray-400 font-normal">не задана</span>}
                   </div>
                 </div>
@@ -1761,12 +1793,18 @@ interface Props {
   seriesNameOverrides: SeriesNames;
   moldingNameOverrides: SeriesNames;
   customSeries: SeriesDefinition[];
+  customMoldings: SeriesDefinition[];
   seriesDefinitions: SeriesDefinition[];
   onUpdatePanel: (id: string, p: number) => void;
   onUpdateMolding: (id: string, p: number) => void;
   onUpdateSeriesName: (id: string, name: string) => void;
   onUpdateMoldingName: (id: string, name: string) => void;
   onAddSeries: (name: string, price: number) => void;
+  onDeleteSeries: (id: string) => void;
+  onUpdateCustomSeries: (id: string, name: string, price: number) => void;
+  onAddMolding: (name: string, price: number) => void;
+  onDeleteMolding: (id: string) => void;
+  onUpdateCustomMolding: (id: string, name: string, price: number) => void;
   onReset: () => void;
   extrasOverrides: PriceMap;
   onUpdateExtras: (id: string, price: number) => void;
@@ -1777,9 +1815,11 @@ interface Props {
 
 export function ManagerPanel({
   panelOverrides, moldingOverrides, seriesNameOverrides, moldingNameOverrides,
-  customSeries, seriesDefinitions,
+  customSeries, customMoldings, seriesDefinitions,
   onUpdatePanel, onUpdateMolding, onUpdateSeriesName, onUpdateMoldingName,
-  onAddSeries, onReset, onClose, onPhotoChange, onSettingsChange,
+  onAddSeries, onDeleteSeries, onUpdateCustomSeries,
+  onAddMolding, onDeleteMolding, onUpdateCustomMolding,
+  onReset, onClose, onPhotoChange, onSettingsChange,
   extrasOverrides, onUpdateExtras,
 }: Props) {
   const [isAuth, setIsAuth] = useState(false);
@@ -1873,11 +1913,17 @@ export function ManagerPanel({
                   seriesNameOverrides={seriesNameOverrides}
                   moldingNameOverrides={moldingNameOverrides}
                   customSeries={customSeries}
+                  customMoldings={customMoldings}
                   onUpdatePanel={onUpdatePanel}
                   onUpdateMolding={onUpdateMolding}
                   onUpdateSeriesName={onUpdateSeriesName}
                   onUpdateMoldingName={onUpdateMoldingName}
                   onAddSeries={onAddSeries}
+                  onDeleteSeries={onDeleteSeries}
+                  onUpdateCustomSeries={onUpdateCustomSeries}
+                  onAddMolding={onAddMolding}
+                  onDeleteMolding={onDeleteMolding}
+                  onUpdateCustomMolding={onUpdateCustomMolding}
                   onReset={onReset}
                   extrasOverrides={extrasOverrides}
                   onUpdateExtras={onUpdateExtras}
