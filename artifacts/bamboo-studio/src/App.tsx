@@ -3274,11 +3274,9 @@ const BambooStudio = () => {
       { id: 'black',    label: 'Чрн',  preview: `bg-gradient-${dir} from-black via-gray-600 to-black` },
       { id: 'metallic', label: 'Мтл',  preview: `bg-gradient-${dir} from-gray-500 via-white to-gray-500` },
       { id: 'brass',    label: 'Лтн',  preview: `bg-gradient-${dir} from-yellow-950 via-yellow-500 to-yellow-950` },
-      { id: 'gap',      label: 'Рзр',  preview: `bg-gradient-${dir} from-gray-600 via-gray-200 to-gray-600` },
-      { id: 'light',    label: 'Свт',  preview: `bg-gradient-${dir} from-amber-200 via-yellow-50 to-amber-200` },
     ];
     return (
-      <div className="grid grid-cols-7 gap-1">
+      <div className="grid grid-cols-5 gap-1">
         {opts.map(o => (
           <button key={o.id} onClick={() => onChange(o.id)}
             className={`flex flex-col items-center gap-1 transition-all ${value === o.id ? 'opacity-100' : 'opacity-40'}`}>
@@ -3987,9 +3985,22 @@ const BambooStudio = () => {
               <div className="bg-white rounded-2xl p-3 shadow-sm">
                 <div className="flex items-center gap-1 mb-2">
                   <div className="w-0.5 h-3 bg-yellow-500 rounded-full"/>
-                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Молдинг В.</span>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Профиль вертик.</span>
                 </div>
                 <MoldingStyleRow value={moldingStyle} onChange={(v) => { pushHistory(); setMoldingStyle(v); if (v !== 'none') setMoldingWidth(1); }} vertical={true}/>
+                <div className="grid grid-cols-2 gap-1 mt-1">
+                  {([
+                    { id: 'light' as MoldingStyle, label: 'С подсветкой' },
+                    { id: 'gap'   as MoldingStyle, label: 'С разрывом' },
+                  ]).map(({ id, label }) => (
+                    <button key={id} onClick={() => { pushHistory(); setMoldingStyle(prev => prev === id ? 'none' : id); }}
+                      className={`py-1.5 rounded-lg text-[8px] font-bold transition-all active:scale-95 ${
+                        moldingStyle === id ? 'bg-black text-white' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
+                      }`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
                 {panelCount >= 2 && (() => {
                   const hasNoMetalAdj = Array.from({ length: panelCount - 1 }, (_, j) => j).some(j => {
                     const l = sectorMaterials[j], r = sectorMaterials[j + 1];
@@ -4038,9 +4049,22 @@ const BambooStudio = () => {
               <div className="bg-white rounded-2xl p-3 shadow-sm">
                 <div className="flex items-center gap-1 mb-2">
                   <div className="w-3 h-0.5 bg-yellow-500 rounded-full"/>
-                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Молдинг Г.</span>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Профиль горизонт.</span>
                 </div>
                 <MoldingStyleRow value={hMoldingStyle} onChange={(v) => { pushHistory(); setHMoldingStyle(v); if (v !== 'none') setHMoldingWidth(1); }} vertical={false}/>
+                <div className="grid grid-cols-2 gap-1 mt-1">
+                  {([
+                    { id: 'light' as MoldingStyle, label: 'С подсветкой' },
+                    { id: 'gap'   as MoldingStyle, label: 'С разрывом' },
+                  ]).map(({ id, label }) => (
+                    <button key={id} onClick={() => { pushHistory(); setHMoldingStyle(prev => prev === id ? 'none' : id); }}
+                      className={`py-1.5 rounded-lg text-[8px] font-bold transition-all active:scale-95 ${
+                        hMoldingStyle === id ? 'bg-black text-white' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
+                      }`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
                 {hMoldingStyle !== 'none' && (
                   <div className="mt-2 space-y-1.5">
                     <div>
@@ -4080,7 +4104,7 @@ const BambooStudio = () => {
               <div className="bg-white rounded-2xl p-3 shadow-sm">
                 <div className="flex items-center gap-1 mb-2">
                   <div className="w-3 h-3 border-[2px] border-gray-400 rounded-sm"/>
-                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Торцы</span>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Профиль торц.</span>
                 </div>
                 <div className="grid grid-cols-2 gap-1 mb-2">
                   {([['top', 'Верх'], ['bottom', 'Низ'], ['left', 'Лево'], ['right', 'Право']] as const).map(([side, label]) => (
