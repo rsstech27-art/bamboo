@@ -1104,8 +1104,8 @@ const BambooStudio = () => {
               g.addColorStop(0.5, '#fff8c0'); g.addColorStop(0.65, '#ffd700'); g.addColorStop(0.85, '#b8860b'); g.addColorStop(1, '#5a3d00');
               break;
             case 'black':
-              g.addColorStop(0, '#0a0a0a'); g.addColorStop(0.25, '#1c1c1c'); g.addColorStop(0.5, '#383838');
-              g.addColorStop(0.75, '#1c1c1c'); g.addColorStop(1, '#0a0a0a');
+              g.addColorStop(0, '#000000'); g.addColorStop(0.2, '#0c0c0c'); g.addColorStop(0.45, '#181818');
+              g.addColorStop(0.5, '#1e1e1e'); g.addColorStop(0.55, '#181818'); g.addColorStop(0.8, '#0c0c0c'); g.addColorStop(1, '#000000');
               break;
             case 'brass':
               g.addColorStop(0, '#2c1f00'); g.addColorStop(0.15, '#7a5918'); g.addColorStop(0.35, '#c49a27');
