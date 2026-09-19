@@ -4176,19 +4176,6 @@ const BambooStudio = () => {
                   <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Профиль вертик.</span>
                 </div>
                 <MoldingStyleRow value={moldingStyle} onChange={(v) => { pushHistory(); setMoldingStyle(v); if (v !== 'none') setMoldingWidth(1); }} vertical={true}/>
-                <div className="grid grid-cols-2 gap-1 mt-1">
-                  {([
-                    { id: 'light' as MoldingStyle, label: 'С подсветкой' },
-                    { id: 'gap'   as MoldingStyle, label: 'С разрывом' },
-                  ]).map(({ id, label }) => (
-                    <button key={id} onClick={() => { pushHistory(); setMoldingStyle(prev => prev === id ? 'none' : id); }}
-                      className={`py-1.5 rounded-lg text-[8px] font-bold transition-all active:scale-95 ${
-                        moldingStyle === id ? 'bg-black text-white' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
-                      }`}>
-                      {label}
-                    </button>
-                  ))}
-                </div>
                 {panelCount >= 2 && (() => {
                   const hasNoMetalAdj = Array.from({ length: panelCount - 1 }, (_, j) => j).some(j => {
                     const l = sectorMaterials[j], r = sectorMaterials[j + 1];
@@ -4240,19 +4227,6 @@ const BambooStudio = () => {
                   <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Профиль горизонт.</span>
                 </div>
                 <MoldingStyleRow value={hMoldingStyle} onChange={(v) => { pushHistory(); setHMoldingStyle(v); if (v !== 'none') setHMoldingWidth(1); }} vertical={false}/>
-                <div className="grid grid-cols-2 gap-1 mt-1">
-                  {([
-                    { id: 'light' as MoldingStyle, label: 'С подсветкой' },
-                    { id: 'gap'   as MoldingStyle, label: 'С разрывом' },
-                  ]).map(({ id, label }) => (
-                    <button key={id} onClick={() => { pushHistory(); setHMoldingStyle(prev => prev === id ? 'none' : id); }}
-                      className={`py-1.5 rounded-lg text-[8px] font-bold transition-all active:scale-95 ${
-                        hMoldingStyle === id ? 'bg-black text-white' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
-                      }`}>
-                      {label}
-                    </button>
-                  ))}
-                </div>
                 {hMoldingStyle !== 'none' && (
                   <div className="mt-2 space-y-1.5">
                     <div>
