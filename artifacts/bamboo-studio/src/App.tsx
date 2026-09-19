@@ -1446,11 +1446,26 @@ const BambooStudio = () => {
           curMoldingStyle !== 'none' ? curMoldingWidth : 2;
         if (cfg.wallHeightMm > singleRowH) {
           const rowCount = Math.ceil(cfg.wallHeightMm / singleRowH);
+          const jpp = cfg.jointProfilePosition ?? ['bottom'];
           for (let ri = 1; ri < rowCount; ri++) {
             const ratio = (ri * singleRowH) / cfg.wallHeightMm;
             if (ratio >= 1) continue;
             // Skip if a user hMolding position already sits within 0.5% of this ratio
             if (curHPositions.some(p => Math.abs(p - ratio) < 0.005)) continue;
+            // Determine seam visibility based on jointProfilePosition checkboxes:
+            // first seam (ri=1) = 'top', last seam (ri=rowCount-1) = 'bottom',
+            // middle seams (between first and last) are always shown.
+            const isFirst = ri === 1;
+            const isLast  = ri === rowCount - 1;
+            if (isFirst && isLast) {
+              // Only one seam — visible if either checkbox is ticked
+              if (!jpp.includes('bottom') && !jpp.includes('top')) continue;
+            } else if (isFirst) {
+              if (!jpp.includes('top')) continue;
+            } else if (isLast) {
+              if (!jpp.includes('bottom')) continue;
+            }
+            // Middle seams always drawn (ri > 1 && ri < rowCount - 1)
             const lx = qp[0].x + (qp[3].x - qp[0].x) * ratio;
             const ly = qp[0].y + (qp[3].y - qp[0].y) * ratio;
             const rx = qp[1].x + (qp[2].x - qp[1].x) * ratio;
