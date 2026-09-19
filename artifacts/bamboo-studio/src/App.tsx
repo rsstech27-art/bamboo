@@ -2077,6 +2077,14 @@ const BambooStudio = () => {
     const asIdx = activeSurfaceRef.current;
     const q = pts.length >= asIdx * 4 + 4 ? pts.slice(asIdx * 4, asIdx * 4 + 4) : pts.slice(0, 4);
     const positions = hMoldingPositionsRef.current;
+    // Distance from point (cx,cy) to line segment (lx,ly)-(rx,ry)
+    const distToSeg = (lx: number, ly: number, rx: number, ry: number) => {
+      const dx = rx - lx, dy = ry - ly;
+      const lenSq = dx * dx + dy * dy;
+      if (lenSq === 0) return Math.sqrt((cx - lx) ** 2 + (cy - ly) ** 2);
+      const t = Math.max(0, Math.min(1, ((cx - lx) * dx + (cy - ly) * dy) / lenSq));
+      return Math.sqrt((cx - (lx + t * dx)) ** 2 + (cy - (ly + t * dy)) ** 2);
+    };
     for (let i = 0; i < positions.length; i++) {
       const r = positions[i];
       const lx = q[0].x + (q[3].x - q[0].x) * r;
@@ -2085,7 +2093,9 @@ const BambooStudio = () => {
       const ry = q[1].y + (q[2].y - q[1].y) * r;
       const midX = (lx + rx) / 2;
       const midY = (ly + ry) / 2;
+      // Hit the drag handle (14px radius) OR anywhere along the visible line (8px)
       if (Math.sqrt((cx - midX) ** 2 + (cy - midY) ** 2) <= 14) return i;
+      if (distToSeg(lx, ly, rx, ry) <= 8) return i;
     }
     return -1;
   }, []);
