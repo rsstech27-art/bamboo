@@ -1582,7 +1582,7 @@ const BambooStudio = () => {
               const hw = 5;
               tCtx.save();
               tCtx.strokeStyle = 'rgba(0,0,0,0.82)';
-              tCtx.lineWidth = 3;
+              tCtx.lineWidth = 1.5;
               tCtx.lineCap = 'butt';
               tCtx.beginPath();
               tCtx.moveTo(p1.x, p1.y);
