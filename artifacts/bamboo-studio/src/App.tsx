@@ -3302,12 +3302,8 @@ const BambooStudio = () => {
       <header className="sticky top-0 z-50 bg-[#1c1c1c] text-white">
         <div className="max-w-7xl mx-auto flex items-center justify-between px-6 h-16">
           {/* Logo */}
-          <a href="https://allwall.ru" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 shrink-0">
-            <img src="/favicon.jpg" alt="ALL WALL" className="h-9 w-9 object-contain rounded"/>
-            <div className="leading-none">
-              <div className="font-black text-base tracking-widest">ALL WALL</div>
-              <div className="text-[9px] text-gray-400 tracking-widest uppercase mt-0.5">Технология быстрого монтажа</div>
-            </div>
+          <a href="https://allwall.ru" target="_blank" rel="noopener noreferrer" className="flex items-center shrink-0">
+            <img src={`${BASE}logo.webp`} alt="ALL WALL" className="h-10 object-contain"/>
           </a>
 
           {/* Nav links */}
@@ -3510,7 +3506,7 @@ const BambooStudio = () => {
                 <h3 className="text-xl font-black text-gray-900 mb-1.5">Выберите тип зоны</h3>
                 <p className="text-sm text-gray-400">Какой участок стены вы хотите оформить?</p>
               </div>
-              <div className="grid grid-cols-3 gap-4 w-full max-w-4xl">
+              <div className="grid grid-cols-3 gap-3 w-full max-w-3xl px-2">
                 {([
                   { id: 'wall',       label: 'Стена',            img: `${BASE}zones/wall.jpg` },
                   { id: 'wall-niche', label: 'Стена с выступом', img: `${BASE}zones/wall-niche.jpg` },
@@ -3527,9 +3523,9 @@ const BambooStudio = () => {
                       // Window / TV / Door: an extra screen to pick the type first
                       if (zone.id !== 'window' && zone.id !== 'tv' && zone.id !== 'door') setStep('upload');
                     }}
-                    className="flex flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-gray-50 hover:border-black hover:shadow-lg transition-all active:scale-95 group text-left"
+                    className="flex flex-col overflow-hidden rounded-xl border-2 border-gray-100 bg-gray-50 hover:border-black hover:shadow-md transition-all active:scale-95 group text-left"
                   >
-                    <div className="w-full h-52 bg-gray-200 overflow-hidden relative">
+                    <div className="w-full h-36 bg-gray-200 overflow-hidden relative">
                       <img
                         src={zone.img}
                         alt={zone.label}
@@ -3537,8 +3533,8 @@ const BambooStudio = () => {
                         onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                       />
                     </div>
-                    <div className="px-4 py-3">
-                      <span className="text-sm font-black uppercase tracking-wide text-gray-800 group-hover:text-black">{zone.label}</span>
+                    <div className="px-3 py-2">
+                      <span className="text-xs font-black uppercase tracking-wide text-gray-800 group-hover:text-black leading-tight">{zone.label}</span>
                     </div>
                   </button>
                 ))}
@@ -4549,12 +4545,8 @@ const BambooStudio = () => {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-10 pb-10 border-b border-white/10">
             {/* Brand */}
             <div className="md:col-span-1">
-              <div className="flex items-center gap-2.5 mb-4">
-                <img src="/favicon.jpg" alt="ALL WALL" className="h-8 w-8 object-contain rounded"/>
-                <div>
-                  <div className="font-black text-sm tracking-widest">ALL WALL</div>
-                  <div className="text-[8px] text-gray-500 tracking-widest uppercase">Технология быстрого монтажа</div>
-                </div>
+              <div className="flex items-center mb-4">
+                <img src={`${BASE}logo.webp`} alt="ALL WALL" className="h-8 object-contain"/>
               </div>
               <p className="text-gray-400 text-xs leading-relaxed">
                 Стеновые панели нового поколения. Быстрый монтаж. Премиальный результат.
