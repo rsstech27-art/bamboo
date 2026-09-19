@@ -336,7 +336,8 @@ function makeEqualDividers(count: number): number[] {
   return dividers;
 }
 
-type MoldingStyle = 'none' | 'gold' | 'black' | 'metallic' | 'brass' | 'bronze' | 'gap' | 'light';
+type MoldingStyle = 'none' | 'gold' | 'black' | 'metallic' | 'brass' | 'bronze' | 'gap' | 'light'
+  | 'black_gap' | 'black_light' | 'metallic_gap' | 'metallic_light' | 'bronze_gap' | 'bronze_light';
 type SurfaceConfig = {
   panelCount: number;
   dividerPositions: number[];
@@ -1056,44 +1057,78 @@ const BambooStudio = () => {
 
       // ── Shared helper: stroke a profile line with gradient for a given molding style ──
       // Available to both renderQuad (inner joints) and the column corner pass below.
+      // Parse a combined molding style ('black_gap', 'bronze_light', etc.) into color + modifier.
+      // Legacy 'gap' → metallic color + gap modifier; 'light' → black color + light modifier.
+      const parseMoldStyle = (style: string): { color: string; modifier: 'normal' | 'gap' | 'light' } => {
+        if (style.endsWith('_gap'))   return { color: style.slice(0, -4), modifier: 'gap' };
+        if (style.endsWith('_light')) return { color: style.slice(0, -6), modifier: 'light' };
+        if (style === 'gap')   return { color: 'metallic', modifier: 'gap' };
+        if (style === 'light') return { color: 'black',    modifier: 'light' };
+        return { color: style, modifier: 'normal' };
+      };
+
       const drawMoldLine = (
         x1: number, y1: number, x2: number, y2: number,
         style: Exclude<MoldingStyle, 'none'>, lw: number,
       ) => {
         const ddx = x2 - x1, ddy = y2 - y1, ll = Math.sqrt(ddx * ddx + ddy * ddy);
         if (ll < 1) return;
-        const ppx = -ddy / ll, ppy = ddx / ll, hhw = lw / 2;
+        const ppx = -ddy / ll, ppy = ddx / ll;
         const mmx = (x1 + x2) / 2, mmy = (y1 + y2) / 2;
-        const g = tCtx.createLinearGradient(mmx + ppx * hhw, mmy + ppy * hhw, mmx - ppx * hhw, mmy - ppy * hhw);
-        if (style === 'gold') {
-          g.addColorStop(0, '#5a3d00'); g.addColorStop(0.15, '#b8860b'); g.addColorStop(0.35, '#ffd700');
-          g.addColorStop(0.5, '#fff8c0'); g.addColorStop(0.65, '#ffd700'); g.addColorStop(0.85, '#b8860b'); g.addColorStop(1, '#5a3d00');
-        } else if (style === 'black') {
-          g.addColorStop(0, '#0a0a0a'); g.addColorStop(0.25, '#1c1c1c'); g.addColorStop(0.5, '#383838');
-          g.addColorStop(0.75, '#1c1c1c'); g.addColorStop(1, '#0a0a0a');
-        } else if (style === 'metallic') {
-          g.addColorStop(0, '#4a4a4a'); g.addColorStop(0.2, '#9a9a9a'); g.addColorStop(0.45, '#e8e8e8');
-          g.addColorStop(0.5, '#ffffff'); g.addColorStop(0.55, '#e8e8e8'); g.addColorStop(0.8, '#9a9a9a'); g.addColorStop(1, '#4a4a4a');
-        } else if (style === 'brass') {
-          g.addColorStop(0, '#2c1f00'); g.addColorStop(0.15, '#7a5918'); g.addColorStop(0.35, '#c49a27');
-          g.addColorStop(0.5, '#e8c95a'); g.addColorStop(0.65, '#c49a27'); g.addColorStop(0.85, '#7a5918'); g.addColorStop(1, '#2c1f00');
-        } else if (style === 'bronze') {
-          g.addColorStop(0, '#1a0a00'); g.addColorStop(0.15, '#5a2e0a'); g.addColorStop(0.35, '#a0602a');
-          g.addColorStop(0.5, '#c8844a'); g.addColorStop(0.65, '#a0602a'); g.addColorStop(0.85, '#5a2e0a'); g.addColorStop(1, '#1a0a00');
-        } else if (style === 'gap') {
-          g.addColorStop(0, '#3a3a3a'); g.addColorStop(0.2, '#aaaaaa'); g.addColorStop(0.42, '#d8d8d8');
-          g.addColorStop(0.46, '#111111'); g.addColorStop(0.54, '#111111'); g.addColorStop(0.58, '#d8d8d8');
-          g.addColorStop(0.8, '#aaaaaa'); g.addColorStop(1, '#3a3a3a');
-        } else { // light
-          g.addColorStop(0, 'rgba(255,160,50,0)'); g.addColorStop(0.3, 'rgba(255,220,100,0.85)');
-          g.addColorStop(0.5, '#fffde0'); g.addColorStop(0.7, 'rgba(255,220,100,0.85)'); g.addColorStop(1, 'rgba(255,160,50,0)');
-        }
+
+        const { color, modifier } = parseMoldStyle(style);
+
+        // Build a color gradient perpendicular to the line, centered at (cx, cy)
+        const buildGrad = (cx: number, cy: number, hw: number) => {
+          const g = tCtx.createLinearGradient(cx + ppx * hw, cy + ppy * hw, cx - ppx * hw, cy - ppy * hw);
+          switch (color) {
+            case 'gold':
+              g.addColorStop(0, '#5a3d00'); g.addColorStop(0.15, '#b8860b'); g.addColorStop(0.35, '#ffd700');
+              g.addColorStop(0.5, '#fff8c0'); g.addColorStop(0.65, '#ffd700'); g.addColorStop(0.85, '#b8860b'); g.addColorStop(1, '#5a3d00');
+              break;
+            case 'black':
+              g.addColorStop(0, '#0a0a0a'); g.addColorStop(0.25, '#1c1c1c'); g.addColorStop(0.5, '#383838');
+              g.addColorStop(0.75, '#1c1c1c'); g.addColorStop(1, '#0a0a0a');
+              break;
+            case 'brass':
+              g.addColorStop(0, '#2c1f00'); g.addColorStop(0.15, '#7a5918'); g.addColorStop(0.35, '#c49a27');
+              g.addColorStop(0.5, '#e8c95a'); g.addColorStop(0.65, '#c49a27'); g.addColorStop(0.85, '#7a5918'); g.addColorStop(1, '#2c1f00');
+              break;
+            case 'bronze':
+              g.addColorStop(0, '#1a0a00'); g.addColorStop(0.15, '#5a2e0a'); g.addColorStop(0.35, '#a0602a');
+              g.addColorStop(0.5, '#c8844a'); g.addColorStop(0.65, '#a0602a'); g.addColorStop(0.85, '#5a2e0a'); g.addColorStop(1, '#1a0a00');
+              break;
+            default: // metallic (and any unknown)
+              g.addColorStop(0, '#4a4a4a'); g.addColorStop(0.2, '#9a9a9a'); g.addColorStop(0.45, '#e8e8e8');
+              g.addColorStop(0.5, '#ffffff'); g.addColorStop(0.55, '#e8e8e8'); g.addColorStop(0.8, '#9a9a9a'); g.addColorStop(1, '#4a4a4a');
+          }
+          return g;
+        };
+
         tCtx.save();
-        tCtx.strokeStyle = g;
-        tCtx.lineWidth = style === 'gap' ? Math.max(lw * 2, 4) : lw;
         tCtx.lineCap = 'butt';
-        if (style === 'light') { tCtx.shadowColor = 'rgba(255,210,80,0.85)'; tCtx.shadowBlur = lw * 10; }
-        tCtx.beginPath(); tCtx.moveTo(x1, y1); tCtx.lineTo(x2, y2); tCtx.stroke();
+
+        if (modifier === 'gap') {
+          // Two parallel thin stripes of the base color — gap between them
+          const stripeW = Math.max(lw * 0.38, 1.5);
+          const offset  = lw * 0.38;
+          for (const sign of [1, -1]) {
+            const cx = mmx + ppx * offset * sign, cy = mmy + ppy * offset * sign;
+            tCtx.strokeStyle = buildGrad(cx, cy, stripeW / 2);
+            tCtx.lineWidth = stripeW;
+            tCtx.beginPath();
+            tCtx.moveTo(x1 + ppx * offset * sign, y1 + ppy * offset * sign);
+            tCtx.lineTo(x2 + ppx * offset * sign, y2 + ppy * offset * sign);
+            tCtx.stroke();
+          }
+        } else {
+          // Normal single stripe (with optional glow for 'light')
+          if (modifier === 'light') { tCtx.shadowColor = 'rgba(255,210,80,0.85)'; tCtx.shadowBlur = lw * 10; }
+          tCtx.strokeStyle = buildGrad(mmx, mmy, lw / 2);
+          tCtx.lineWidth = lw;
+          tCtx.beginPath(); tCtx.moveTo(x1, y1); tCtx.lineTo(x2, y2); tCtx.stroke();
+        }
+
         tCtx.restore();
       };
 
@@ -1370,7 +1405,7 @@ const BambooStudio = () => {
         const isHorizTvV = wallZoneRef.current === 'tv' && isHoriz;
         const colStepV = isHorizTvV ? PANEL_H_MM : PANEL_W_MM;
         const autoVStyle: Exclude<MoldingStyle, 'none'> =
-          curMoldingStyle !== 'none' ? curMoldingStyle as Exclude<MoldingStyle, 'none'> : 'metallic';
+          curMoldingStyle !== 'none' ? curMoldingStyle as Exclude<MoldingStyle, 'none'> : 'black';
         const autoVWidth = curMoldingStyle !== 'none' ? curMoldingWidth : 2;
         if (cfg.wallWidthMm > 0) {
           const secBounds = getSectorBounds(cfg.dividerPositions, cfg.panelCount);
@@ -1449,7 +1484,7 @@ const BambooStudio = () => {
         const singleRowH = isHorizTvH ? PANEL_W_MM : PANEL_H_MM;
         const autoHStyle: Exclude<MoldingStyle, 'none'> =
           curHMoldingStyle !== 'none' ? curHMoldingStyle as Exclude<MoldingStyle, 'none'> :
-          curMoldingStyle !== 'none' ? curMoldingStyle as Exclude<MoldingStyle, 'none'> : 'metallic';
+          curMoldingStyle !== 'none' ? curMoldingStyle as Exclude<MoldingStyle, 'none'> : 'black';
         const autoHWidth = curHMoldingStyle !== 'none' ? curHMoldingWidth :
           curMoldingStyle !== 'none' ? curMoldingWidth : 2;
         if (cfg.wallHeightMm > singleRowH) {
@@ -2293,10 +2328,18 @@ const BambooStudio = () => {
     }
     // ── Profiles counted in 3 m pieces, like panels: collect required RUN LENGTHS
     // per style, then pack them into 3 m pieces with offcut reuse (packProfileRuns).
-    const profileRuns: Partial<Record<Exclude<MoldingStyle, 'none'>, number[]>> = {};
+    // Combined styles (e.g. 'black_gap') normalise to their KP billing key ('gap'),
+    // since the gap/light modifier drives the product type; colour is visual only.
+    const normMoldKpKey = (style: string): string => {
+      if (style.endsWith('_gap'))   return 'gap';
+      if (style.endsWith('_light')) return 'light';
+      return style;
+    };
+    const profileRuns: Record<string, number[]> = {};
     const addRuns = (style: Exclude<MoldingStyle, 'none'>, lengthMm: number, count: number) => {
       if (count <= 0 || lengthMm <= 0) return;
-      (profileRuns[style] ??= []).push(...Array(count).fill(lengthMm));
+      const key = normMoldKpKey(style);
+      (profileRuns[key] ??= []).push(...Array(count).fill(lengthMm));
     };
     // Column zone: needed early so profile joints can cover the FULL perimeter
     const isColumn = wallZone === 'column';
@@ -2458,9 +2501,9 @@ const BambooStudio = () => {
         const singleRowH = isHorizTv ? PANEL_W_MM : PANEL_H_MM;
         const rowJoints = Math.max(0, Math.ceil(hMm / singleRowH) - 1);
         if (rowJoints > 0) {
-          // Prefer the wall's chosen molding style; fall back to mandatory metallic
+          // Prefer the wall's chosen molding style; fall back to black
           const rowJointStyle: Exclude<MoldingStyle, 'none'> =
-            cfg.moldingStyle !== 'none' ? cfg.moldingStyle as Exclude<MoldingStyle, 'none'> : 'metallic';
+            cfg.moldingStyle !== 'none' ? cfg.moldingStyle as Exclude<MoldingStyle, 'none'> : 'black';
           addRuns(rowJointStyle, wMm, rowJoints);
         }
       }
@@ -2506,7 +2549,7 @@ const BambooStudio = () => {
       const colH = columnHeightMm > 0 ? columnHeightMm : PANEL_H_MM;
       const visStyle = kpCfgs.find(c => c.moldingStyle !== 'none')?.moldingStyle;
       const colStyle: Exclude<MoldingStyle, 'none'> =
-        visStyle && visStyle !== 'none' ? visStyle as Exclude<MoldingStyle, 'none'> : 'metallic';
+        visStyle && visStyle !== 'none' ? visStyle as Exclude<MoldingStyle, 'none'> : 'black';
       // Vertical joints on hidden faces
       if (hiddenJoints > 0) {
         addRuns(colStyle, colH, hiddenJoints);
@@ -2538,14 +2581,14 @@ const BambooStudio = () => {
     // 2 vertical (window height) + 1 horizontal (window width). «Загиб» ⇒ none.
     if (isWindowAny && winJoint === 'profile') {
       const winStyle = kpCfgs.find(cfg => cfg.moldingStyle !== 'none')?.moldingStyle;
-      const style = winStyle && winStyle !== 'none' ? winStyle : 'metallic';
+      const style = winStyle && winStyle !== 'none' ? winStyle : 'black';
       if (winHeightMm > 0) addRuns(style, winHeightMm, 2);
       if (winWidthMm > 0) addRuns(style, winWidthMm, 1);
     }
     // Built-in TV: profiles at the cutout perimeter joints (along width×2 + height×2)
     if (isTvBuiltin && tvCutoutJoint === 'profile' && tvCutoutWidthMm > 0 && tvCutoutHeightMm > 0) {
       const visStyle = kpCfgs.find(cfg => cfg.moldingStyle !== 'none')?.moldingStyle;
-      const style = visStyle && visStyle !== 'none' ? visStyle : 'metallic';
+      const style = visStyle && visStyle !== 'none' ? visStyle : 'black';
       addRuns(style, tvCutoutHeightMm, 2); // left + right vertical joints
       addRuns(style, tvCutoutWidthMm, 2);  // top + bottom horizontal joints
     }
@@ -2554,14 +2597,14 @@ const BambooStudio = () => {
       const faceW = kpCfgs[0]?.wallWidthMm ?? 0;
       const faceH = kpCfgs[0]?.wallHeightMm ?? 0;
       const visStyle = kpCfgs.find(cfg => cfg.moldingStyle !== 'none')?.moldingStyle;
-      const style = visStyle && visStyle !== 'none' ? visStyle : 'metallic';
+      const style = visStyle && visStyle !== 'none' ? visStyle : 'black';
       if (faceH > 0) addRuns(style, faceH, 2); // 2 вертикальных: левый и правый угол
       if (faceW > 0) addRuns(style, faceW, 2); // 2 горизонтальных: верхний и нижний угол
     }
     // Door zone: profiles at reveal corners (2 vertical + 1 horizontal) — only when joint=profile
     if (isDoor && doorJoint === 'profile' && doorCut) {
       const visStyle = kpCfgs.find(cfg => cfg.moldingStyle !== 'none')?.moldingStyle;
-      const style = visStyle && visStyle !== 'none' ? visStyle : 'metallic';
+      const style = visStyle && visStyle !== 'none' ? visStyle : 'black';
       addRuns(style, leftReveal.heightMm, 1);
       addRuns(style, rightReveal.heightMm, 1);
       addRuns(style, topReveal.widthMm, 1);
@@ -2571,7 +2614,7 @@ const BambooStudio = () => {
     // 2 vertical profiles, each as tall as the transom height.
     if (isDoor && doorType === 'with-transom' && topReveal.heightMm > 0) {
       const visStyle = kpCfgs.find(cfg => cfg.moldingStyle !== 'none')?.moldingStyle;
-      const style = visStyle && visStyle !== 'none' ? visStyle : 'metallic';
+      const style = visStyle && visStyle !== 'none' ? visStyle : 'black';
       addRuns(style, topReveal.heightMm, 2); // left side + right side of transom panel
     }
     // Pack each style's runs into 3 m pieces (offcuts reused project-wide)
@@ -3353,26 +3396,68 @@ const BambooStudio = () => {
     }
   };
 
+  // Parse combined molding style value → { color, modifier }
+  const decodeMoldStyle = (val: string): { color: string; modifier: 'normal' | 'gap' | 'light' } => {
+    if (val.endsWith('_gap'))   return { color: val.slice(0, -4), modifier: 'gap' };
+    if (val.endsWith('_light')) return { color: val.slice(0, -6), modifier: 'light' };
+    if (val === 'gap')   return { color: 'black', modifier: 'gap' };
+    if (val === 'light') return { color: 'black', modifier: 'light' };
+    return { color: val === 'none' ? 'none' : val, modifier: 'normal' };
+  };
+  const encodeMoldStyle = (color: string, mod: 'normal' | 'gap' | 'light'): MoldingStyle => {
+    if (color === 'none') return 'none';
+    if (mod === 'gap')   return `${color}_gap`   as MoldingStyle;
+    if (mod === 'light') return `${color}_light` as MoldingStyle;
+    return color as MoldingStyle;
+  };
+
   // Compact molding style selector used in both v/h molding panels
+  // Row 1: colour (Нет / Чрн / Мтл / Брнз)
+  // Row 2: modifier – обычный / с разрывом / с подсветкой (hidden when colour = Нет)
   const MoldingStyleRow = ({
     value, onChange, vertical,
   }: { value: string; onChange: (v: MoldingStyle) => void; vertical: boolean }) => {
     const dir = vertical ? 'to-r' : 'to-b';
-    const opts: Array<{ id: MoldingStyle; label: string; preview: string }> = [
+    const { color: curColor, modifier: curMod } = decodeMoldStyle(value);
+
+    const colorOpts: Array<{ id: string; label: string; preview: string }> = [
       { id: 'none',     label: 'Нет',  preview: 'bg-gray-100' },
       { id: 'black',    label: 'Чрн',  preview: `bg-gradient-${dir} from-black via-gray-600 to-black` },
       { id: 'metallic', label: 'Мтл',  preview: `bg-gradient-${dir} from-gray-500 via-white to-gray-500` },
       { id: 'bronze',   label: 'Брнз', preview: `bg-gradient-${dir} from-amber-950 via-amber-700 to-amber-950` },
     ];
+    const modOpts: Array<{ id: 'normal' | 'gap' | 'light'; label: string }> = [
+      { id: 'normal', label: 'Обычный' },
+      { id: 'gap',    label: 'С разрывом' },
+      { id: 'light',  label: 'С подсветкой' },
+    ];
+
     return (
-      <div className="grid grid-cols-4 gap-1">
-        {opts.map(o => (
-          <button key={o.id} onClick={() => onChange(o.id)}
-            className={`flex flex-col items-center gap-1 transition-all ${value === o.id ? 'opacity-100' : 'opacity-40'}`}>
-            <div className={`w-full h-5 rounded border-[1.5px] ${o.preview} ${value === o.id ? 'border-black shadow-sm' : 'border-transparent'}`} />
-            <span className="text-[7px] font-bold uppercase text-gray-500 leading-none">{o.label}</span>
-          </button>
-        ))}
+      <div className="flex flex-col gap-1.5">
+        {/* colour row */}
+        <div className="grid grid-cols-4 gap-1">
+          {colorOpts.map(o => (
+            <button key={o.id} onClick={() => onChange(encodeMoldStyle(o.id, o.id === 'none' ? 'normal' : curMod))}
+              className={`flex flex-col items-center gap-1 transition-all ${curColor === o.id ? 'opacity-100' : 'opacity-40'}`}>
+              <div className={`w-full h-5 rounded border-[1.5px] ${o.preview} ${curColor === o.id ? 'border-black shadow-sm' : 'border-transparent'}`} />
+              <span className="text-[7px] font-bold uppercase text-gray-500 leading-none">{o.label}</span>
+            </button>
+          ))}
+        </div>
+        {/* modifier row — only when a colour is chosen */}
+        {curColor !== 'none' && (
+          <div className="grid grid-cols-3 gap-1">
+            {modOpts.map(m => (
+              <button key={m.id} onClick={() => onChange(encodeMoldStyle(curColor, m.id))}
+                className={`text-[7px] font-bold uppercase py-[3px] rounded border transition-all
+                  ${curMod === m.id
+                    ? 'bg-gray-900 text-white border-gray-900'
+                    : 'bg-gray-100 text-gray-500 border-transparent hover:bg-gray-200'}`}>
+                {m.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     );
   };
