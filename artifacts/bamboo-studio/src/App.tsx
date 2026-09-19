@@ -2122,44 +2122,24 @@ const BambooStudio = () => {
     // Dragging a horizontal molding
     if (!isErasing && draggingHMoldingIndexRef.current !== null) {
       const idx = draggingHMoldingIndexRef.current;
-      const newRatio = canvasYToWallRatio(x, y);
+      const rawRatio = canvasYToWallRatio(x, y);
       const wallH = wallHeightMmRef.current;
 
+      // Snap to nearest 2800 mm grid mark when wall height is known.
+      // Each valid position is a whole multiple of (PANEL_H_MM / wallH).
+      let snappedRatio = rawRatio;
+      if (wallH > PANEL_H_MM) {
+        const step = PANEL_H_MM / wallH;           // ratio per panel-height
+        const gridIdx = Math.max(1, Math.round(rawRatio / step)); // ≥ 1 step from top
+        snappedRatio = Math.min(gridIdx * step, 0.98); // clamp away from bottom edge
+      }
+
       setHMoldingPositions(prev => {
-        // 1. Move the dragged profile to its new position
         const updated = [...prev];
-        updated[idx] = newRatio;
+        updated[idx] = snappedRatio;
         const sorted = [...updated].sort((a, b) => a - b);
-
-        // 2. Auto-spawn: fill any gap > 280 cm (PANEL_H_MM) with new profiles
-        if (wallH > PANEL_H_MM) {
-          const threshold = PANEL_H_MM / wallH; // ratio = 280cm / wall height
-          const edges = [0, ...sorted, 1];
-          const extras: number[] = [];
-          for (let i = 0; i < edges.length - 1; i++) {
-            const gap = edges[i + 1] - edges[i];
-            if (gap > threshold + 0.001) {
-              const n = Math.floor(gap / threshold);
-              for (let j = 1; j <= n; j++) {
-                const p = edges[i] + j * threshold;
-                if (p < edges[i + 1] - 0.001 &&
-                    !sorted.some(s => Math.abs(s - p) < 0.001)) {
-                  extras.push(p);
-                }
-              }
-            }
-          }
-          if (extras.length > 0) {
-            const final = [...sorted, ...extras].sort((a, b) => a - b);
-            // Keep dragging index pointing at the profile the user grabbed
-            const newDragIdx = final.findIndex(p => Math.abs(p - newRatio) < 0.001);
-            if (newDragIdx !== -1) draggingHMoldingIndexRef.current = newDragIdx;
-            return final;
-          }
-        }
-
-        // No auto-spawn: update dragging index after sort
-        const newDragIdx = sorted.findIndex(p => Math.abs(p - newRatio) < 0.001);
+        // Keep dragging index in sync after sort
+        const newDragIdx = sorted.findIndex(p => Math.abs(p - snappedRatio) < 0.001);
         if (newDragIdx !== -1) draggingHMoldingIndexRef.current = newDragIdx;
         return sorted;
       });
