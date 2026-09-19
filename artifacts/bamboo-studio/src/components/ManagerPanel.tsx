@@ -2583,7 +2583,7 @@ export function ManagerPanel({
               </div>
 
               {/* Tabs row */}
-              <div className="max-w-5xl mx-auto px-6 flex gap-1 pb-0">
+              <div className="max-w-5xl mx-auto px-6 flex gap-1 pb-0 items-end">
                 {visibleTabs.map(t => {
                   const Icon = t.icon;
                   return (
@@ -2599,15 +2599,18 @@ export function ManagerPanel({
                   );
                 })}
                 {isAdmin && (
-                  <button onClick={() => setShowAdmin(true)}
-                    className={`flex items-center gap-2 px-4 py-3 text-sm font-bold border-b-2 transition-all ${
-                      showAdmin
-                        ? 'border-[#7ec662] text-white'
-                        : 'border-transparent text-gray-500 hover:text-gray-300'
-                    }`}>
-                    <Shield size={14} />
-                    Администратор
-                  </button>
+                  <>
+                    <div className="flex-1" />
+                    <button onClick={() => setShowAdmin(true)}
+                      className={`flex items-center gap-2 px-4 py-3 text-sm font-bold border-b-2 transition-all ${
+                        showAdmin
+                          ? 'border-[#7ec662] text-white'
+                          : 'border-transparent text-gray-500 hover:text-gray-300'
+                      }`}>
+                      <Shield size={14} />
+                      Администратор
+                    </button>
+                  </>
                 )}
               </div>
             </div>
