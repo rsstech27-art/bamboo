@@ -281,14 +281,13 @@ type Point = { x: number; y: number };
 
 const PanelThumb = ({ panel, selected, onClick }: { panel: Panel; selected: boolean; onClick: () => void }) => (
   <button onClick={onClick}
-    className={`rounded-xl overflow-hidden border-2 transition-all active:scale-95 ${selected ? 'border-black shadow-md scale-[1.03]' : 'border-transparent hover:border-gray-200'}`}>
+    className={`rounded-lg overflow-hidden border-2 transition-all active:scale-95 flex flex-col ${selected ? 'border-black shadow-md scale-[1.03]' : 'border-transparent hover:border-gray-200'}`}>
     {panel.texture
-      ? <img src={panel.texture} className="w-full h-12 object-cover" alt={panel.name} loading="lazy"/>
-      : <div className="w-full h-12" style={{ backgroundColor: panel.color }}/>
+      ? <img src={panel.texture} className="w-full aspect-square object-cover" alt={panel.name} loading="lazy"/>
+      : <div className="w-full aspect-square" style={{ backgroundColor: panel.color }}/>
     }
-    <div className="bg-white px-1 pb-1 pt-0.5">
-      <div className="text-[7px] font-bold text-center text-gray-600 leading-tight">{panel.name}</div>
-      <div className="text-[6px] text-center text-gray-300 font-mono">{panel.article}</div>
+    <div className="bg-white px-0.5 pb-0.5 pt-px flex-1">
+      <div className="text-[6px] font-bold text-center text-gray-600 leading-tight truncate">{panel.name}</div>
     </div>
   </button>
 );
@@ -315,7 +314,7 @@ const SeriesAccordion = ({
           <span className="text-[8px] text-gray-400 ml-1">{openIds.has(s.id) ? '▲' : '▼'}</span>
         </button>
         {openIds.has(s.id) && (
-          <div className="grid grid-cols-2 gap-1.5 p-1.5 bg-white">
+          <div className="grid grid-cols-3 gap-1 p-1.5 bg-white">
             {s.panels.map(panel => (
               <PanelThumb key={panel.id} panel={panel}
                 selected={selectedId === panel.id}
@@ -1527,10 +1526,12 @@ const BambooStudio = () => {
           const ly = qp[0].y + (qp[3].y - qp[0].y) * r;
           const rx = qp[1].x + (qp[2].x - qp[1].x) * r;
           const ry = qp[1].y + (qp[2].y - qp[1].y) * r;
-          drawMoldLine(lx, ly, rx, ry, autoHStyle, Math.max(autoHWidth, 3));
+          // Forced row-join: always single stripe (no gap/light), width same as regular profile.
+          const seamColor = parseMoldStyle(autoHStyle).color as Exclude<MoldingStyle, 'none'>;
+          drawMoldLine(lx, ly, rx, ry, seamColor, autoHWidth);
         };
 
-        if (cfg.wallHeightMm > singleRowH) {
+        if (!allNoProfile && cfg.wallHeightMm > singleRowH) {
           const rowCount = Math.ceil(cfg.wallHeightMm / singleRowH);
           // cutH = height of the partial panel at the extension end
           const cutH = cfg.wallHeightMm - (rowCount - 1) * singleRowH;
