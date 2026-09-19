@@ -1,5 +1,7 @@
 import { Router, type IRouter } from "express";
 import { timingSafeEqual, createHash } from "crypto";
+import { db } from "@workspace/db";
+import { sql } from "drizzle-orm";
 import { requireManagerSession } from "../middleware/managerAuth";
 
 const router: IRouter = Router();
@@ -99,9 +101,6 @@ router.post("/manager/login", async (req, res) => {
 
   // ── Manager user login ────────────────────────────────────────────────────
   try {
-    const { db } = await import("@workspace/db");
-    const { sql } = await import("drizzle-orm");
-
     const userResult = await db.execute(sql`
       SELECT id, password_hash FROM manager_users WHERE login = ${login.trim()}
     `);
