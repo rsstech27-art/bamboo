@@ -357,9 +357,9 @@ const defaultSurfaceConfig = (): SurfaceConfig => ({
   panelCount: 5,
   dividerPositions: makeEqualDividers(5),
   sectorMaterials: {},
-  moldingStyle: 'none',
+  moldingStyle: 'black',
   moldingWidth: 1,
-  hMoldingStyle: 'none',
+  hMoldingStyle: 'black',
   hMoldingCount: 1,
   hMoldingWidth: 1,
   hMoldingPositions: [0.5],
@@ -565,9 +565,9 @@ const BambooStudio = () => {
   const [isDrawing, setIsDrawing] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [isDraggingDivider, setIsDraggingDivider] = useState(false);
-  const [moldingStyle, setMoldingStyle] = useState<MoldingStyle>('none');
+  const [moldingStyle, setMoldingStyle] = useState<MoldingStyle>('black');
   const [moldingWidth, setMoldingWidth] = useState(1);
-  const [hMoldingStyle, setHMoldingStyle] = useState<MoldingStyle>('none');
+  const [hMoldingStyle, setHMoldingStyle] = useState<MoldingStyle>('black');
   const [edgeProfileSides, setEdgeProfileSides] = useState({ top: false, bottom: false, left: false, right: false });
   const [hMoldingCount, setHMoldingCount] = useState(1);
   const [hMoldingWidth, setHMoldingWidth] = useState(1);
@@ -632,9 +632,9 @@ const BambooStudio = () => {
   const isErasingRef = useRef(false);
   const draggingDividerIndexRef = useRef<number | null>(null);
   const forExportRef = useRef(false);
-  const moldingStyleRef = useRef<MoldingStyle>('none');
+  const moldingStyleRef = useRef<MoldingStyle>('black');
   const moldingWidthRef = useRef(1);
-  const hMoldingStyleRef = useRef<MoldingStyle>('none');
+  const hMoldingStyleRef = useRef<MoldingStyle>('black');
   const edgeProfileSidesRef = useRef({ top: false, bottom: false, left: false, right: false });
   const hMoldingCountRef = useRef(1);
   const hMoldingWidthRef = useRef(1);
@@ -3846,6 +3846,83 @@ const BambooStudio = () => {
           {/* EDIT step tools */}
           {step === 'edit' && (<>
 
+            {/* Размеры стены */}
+            {wallZone !== 'column' && wallZone !== 'window' && (
+            <div className="bg-white rounded-2xl p-4 shadow-sm">
+              <div className="flex items-center gap-1.5 mb-2.5">
+                <Columns size={12} className="text-gray-400"/>
+                <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">{wallZone === 'tv' ? (tvType === 'surface' ? 'ТВ-зона накладная — Основная плоскость' : `ТВ-зона — ${TV_ZONE_LABELS[activeSurface]}`) : wallZone === 'door' ? 'Размеры стены с дверью' : `Размеры стены ${activeSurface + 1}`}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 mb-2">
+                <label className="block">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase">Ширина, см</span>
+                  <MeterInput placeholder="напр. 360" valueMm={wallWidthMm} onChangeMm={(v) => { pushHistory(); setWallWidthMm(v); }} />
+                </label>
+                <label className="block">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase">Высота, см</span>
+                  <MeterInput placeholder="напр. 270" valueMm={wallHeightMm} onChangeMm={(v) => { pushHistory(); setWallHeightMm(v); }} />
+                </label>
+              </div>
+              <p className="text-[8px] text-gray-400 mb-1.5">Панель: 280 × 122 см ({PANEL_AREA_M2.toFixed(2).replace('.', ',')} м²)</p>
+              {wallWidthMm > 0 && wallHeightMm > 0 && (() => {
+                const areaM2 = (wallWidthMm / 1000) * (wallHeightMm / 1000);
+                const cols = Math.ceil(wallWidthMm / PANEL_W_MM);
+                const opt = optimizedPanelCalc(cols, wallHeightMm);
+                const enough = panelCount >= cols;
+                const tooTall = wallHeightMm > PANEL_H_MM;
+                return (
+                  <div className="space-y-1">
+                    <p className="text-[9px] font-bold text-gray-600">Площадь стены: {areaM2.toFixed(2).replace('.', ',')} м²</p>
+                    <p className={`text-[9px] font-bold ${enough ? 'text-[#5a9c3e]' : 'text-amber-600'}`}>
+                      {enough
+                        ? `✓ Панелей в ряду достаточно: ${panelCount} (по ширине ${cols})`
+                        : `⚠ По ширине нужно ${cols} ${panelsWord(cols)} в ряду — в проекте ${panelCount}`}
+                    </p>
+                    {!enough && (
+                      <button onClick={() => handleChangePanelCount(cols)}
+                        className="w-full py-1.5 text-[9px] font-bold rounded-lg bg-[#7ec662] text-white hover:bg-[#6db453] transition-all active:scale-95">
+                        Установить {cols} {panelsWord(cols)} в ряд
+                      </button>
+                    )}
+                    {tooTall && (
+                      <div className="space-y-1.5">
+                        <p className="text-[9px] font-bold text-amber-600">
+                          {`⚠ Высота стены больше 2,8 м — ${opt.fullRows} ${rowsWord(opt.fullRows)} по высоте, всего ${opt.needed} ${panelsWord(opt.needed)} (в расчёте КП учтено)`}
+                        </p>
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 space-y-1">
+                          <p className="text-[9px] font-black text-amber-700 uppercase tracking-wide">Стыковочный профиль</p>
+                          {(['bottom', 'top'] as const).map(pos => {
+                            const label = pos === 'bottom' ? 'Снизу' : 'Сверху';
+                            const checked = jointProfilePosition.includes(pos);
+                            return (
+                              <label key={pos} className="flex items-center gap-2 cursor-pointer group">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => {
+                                    pushHistory();
+                                    setJointProfilePosition(prev =>
+                                      prev.includes(pos)
+                                        ? prev.filter(p => p !== pos)
+                                        : [...prev, pos]
+                                    );
+                                  }}
+                                  className="w-3 h-3 accent-amber-600 cursor-pointer"
+                                />
+                                <span className="text-[9px] font-bold text-amber-800 group-hover:text-amber-900">{label}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    <p className="text-[8px] text-gray-400">Ширина панели в проекте: {Math.round(wallWidthMm / panelCount / 10)} см (макс. 122 см)</p>
+                  </div>
+                );
+              })()}
+            </div>
+            )}
+
             {/* Панели + Ластик — компактный ряд */}
             <div className={`grid gap-1.5 ${wallZone !== 'door' ? 'grid-cols-2' : 'grid-cols-1'}`}>
               <div className="bg-white rounded-2xl p-3 shadow-sm">
@@ -3985,83 +4062,6 @@ const BambooStudio = () => {
                 );
               })()}
             </div>
-
-            {/* Размеры стены */}
-            {wallZone !== 'column' && wallZone !== 'window' && (
-            <div className="bg-white rounded-2xl p-4 shadow-sm">
-              <div className="flex items-center gap-1.5 mb-2.5">
-                <Columns size={12} className="text-gray-400"/>
-                <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">{wallZone === 'tv' ? (tvType === 'surface' ? 'ТВ-зона накладная — Основная плоскость' : `ТВ-зона — ${TV_ZONE_LABELS[activeSurface]}`) : wallZone === 'door' ? 'Размеры стены с дверью' : `Размеры стены ${activeSurface + 1}`}</span>
-              </div>
-              <div className="grid grid-cols-2 gap-2 mb-2">
-                <label className="block">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase">Ширина, см</span>
-                  <MeterInput placeholder="напр. 360" valueMm={wallWidthMm} onChangeMm={(v) => { pushHistory(); setWallWidthMm(v); }} />
-                </label>
-                <label className="block">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase">Высота, см</span>
-                  <MeterInput placeholder="напр. 270" valueMm={wallHeightMm} onChangeMm={(v) => { pushHistory(); setWallHeightMm(v); }} />
-                </label>
-              </div>
-              <p className="text-[8px] text-gray-400 mb-1.5">Панель: 280 × 122 см ({PANEL_AREA_M2.toFixed(2).replace('.', ',')} м²)</p>
-              {wallWidthMm > 0 && wallHeightMm > 0 && (() => {
-                const areaM2 = (wallWidthMm / 1000) * (wallHeightMm / 1000);
-                const cols = Math.ceil(wallWidthMm / PANEL_W_MM);
-                const opt = optimizedPanelCalc(cols, wallHeightMm);
-                const enough = panelCount >= cols;
-                const tooTall = wallHeightMm > PANEL_H_MM;
-                return (
-                  <div className="space-y-1">
-                    <p className="text-[9px] font-bold text-gray-600">Площадь стены: {areaM2.toFixed(2).replace('.', ',')} м²</p>
-                    <p className={`text-[9px] font-bold ${enough ? 'text-[#5a9c3e]' : 'text-amber-600'}`}>
-                      {enough
-                        ? `✓ Панелей в ряду достаточно: ${panelCount} (по ширине ${cols})`
-                        : `⚠ По ширине нужно ${cols} ${panelsWord(cols)} в ряду — в проекте ${panelCount}`}
-                    </p>
-                    {!enough && (
-                      <button onClick={() => handleChangePanelCount(cols)}
-                        className="w-full py-1.5 text-[9px] font-bold rounded-lg bg-[#7ec662] text-white hover:bg-[#6db453] transition-all active:scale-95">
-                        Установить {cols} {panelsWord(cols)} в ряд
-                      </button>
-                    )}
-                    {tooTall && (
-                      <div className="space-y-1.5">
-                        <p className="text-[9px] font-bold text-amber-600">
-                          {`⚠ Высота стены больше 2,8 м — ${opt.fullRows} ${rowsWord(opt.fullRows)} по высоте, всего ${opt.needed} ${panelsWord(opt.needed)} (в расчёте КП учтено)`}
-                        </p>
-                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 space-y-1">
-                          <p className="text-[9px] font-black text-amber-700 uppercase tracking-wide">Стыковочный профиль</p>
-                          {(['bottom', 'top'] as const).map(pos => {
-                            const label = pos === 'bottom' ? 'Снизу' : 'Сверху';
-                            const checked = jointProfilePosition.includes(pos);
-                            return (
-                              <label key={pos} className="flex items-center gap-2 cursor-pointer group">
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={() => {
-                                    pushHistory();
-                                    setJointProfilePosition(prev =>
-                                      prev.includes(pos)
-                                        ? prev.filter(p => p !== pos)
-                                        : [...prev, pos]
-                                    );
-                                  }}
-                                  className="w-3 h-3 accent-amber-600 cursor-pointer"
-                                />
-                                <span className="text-[9px] font-bold text-amber-800 group-hover:text-amber-900">{label}</span>
-                              </label>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                    <p className="text-[8px] text-gray-400">Ширина панели в проекте: {Math.round(wallWidthMm / panelCount / 10)} см (макс. 122 см)</p>
-                  </div>
-                );
-              })()}
-            </div>
-            )}
 
             {/* Молдинги В + Г — ряд */}
             <div className={`grid gap-1.5 ${panelCount > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
