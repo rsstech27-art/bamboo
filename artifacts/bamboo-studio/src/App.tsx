@@ -2379,7 +2379,28 @@ const BambooStudio = () => {
       const wrappedCorners = wrapJunctionsRef.current
         .slice(0, Math.max(0, nQuads - 1))
         .filter((w, j) => w && (cornerTypesRef.current[j] ?? 'external') === 'external').length;
-      return { perRow, opt, needed: neededTotal, areaM2, projCost, projCount, calcCost, wrappedCorners, hiddenCount, hiddenSel, hiddenNames: hiddenSel.map(p => p.name) };
+      // Per-panel-type qty for filler strips (donors) when height > one row.
+      // Each unique article needs: fullRows × faceCount + ceil(faceCount / stripsPerPanel) donors.
+      const qtyByArticle = new Map<string, number>();
+      {
+        const faceByArticle = new Map<string, number>();
+        for (let q = 0; q < nQuads; q++) {
+          const cfg = kpCfgs[q];
+          const wL = q > 0 && (wrapJunctionsRef.current[q - 1] ?? false)
+            && (cornerTypesRef.current[q - 1] ?? 'external') === 'external';
+          for (let sIdx = 0; sIdx < cfg.panelCount; sIdx++) {
+            if (sIdx === 0 && wL) continue;
+            const mat = cfg.sectorMaterials[sIdx] ?? BAMBOO_PANELS[0];
+            faceByArticle.set(mat.article, (faceByArticle.get(mat.article) ?? 0) + 1);
+          }
+        }
+        const spp = opt.remMm > 0 ? Math.max(1, Math.floor(PANEL_H_MM / opt.remMm)) : 0;
+        faceByArticle.forEach((faceCount, article) => {
+          const donors = (opt.remMm > 0 && spp > 0) ? Math.ceil(faceCount / spp) : 0;
+          qtyByArticle.set(article, opt.fullRows * faceCount + donors);
+        });
+      }
+      return { perRow, opt, needed: neededTotal, areaM2, projCost, projCount, calcCost, wrappedCorners, hiddenCount, hiddenSel, hiddenNames: hiddenSel.map(p => p.name), qtyByArticle };
     })() : null;
 
     // Wall dimension calculations: if dimensions are set, the calculated
@@ -2478,10 +2499,15 @@ const BambooStudio = () => {
           }
         });
       }
-      // The table must land on the FULL calculated need (faces + height donor panels):
-      // scale all panel lines (visible + hidden) up to columnCalc.needed
+      // Per-type qty: each visible panel article gets fullRows*faceCount + per-type donors.
+      // This ensures filler strips for tall columns use the matching panel, not an average.
+      items.filter(it => panelArticles.has(it.article) &&
+          !columnCalc.hiddenSel.some((h: typeof columnCalc.hiddenSel[0]) => h.article === it.article))
+        .forEach(it => {
+          const q = columnCalc.qtyByArticle.get(it.article);
+          if (q !== undefined) it.qty = q;
+        });
       panelsTableTotal = columnCalc.needed;
-      scaleQtys(items.filter(it => panelArticles.has(it.article)), panelsTableTotal);
     } else if (windowCut) {
       // Standard window: the table lands on the cutting calc (offcuts reused);
       // qty spread over the panels marked on откос/подоконник
@@ -2715,45 +2741,6 @@ const BambooStudio = () => {
       y += 40;
     });
 
-    // Wall dimensions & area check
-    if (wallCalcs.length > 0) {
-      y += 18;
-      c.fillStyle = '#111111'; c.font = 'bold 18px sans-serif';
-      c.fillText(wallZone === 'tv' ? 'Размеры ТВ-зоны и расход материала' : 'Размеры стен и расход материала', 60, y + 10);
-      y += 34;
-      c.font = '16px sans-serif';
-      let totalWallArea = 0;
-      wallCalcs.forEach(({ cfg, q, opt, fullPerRow, remW, ownPanels, calcCost }) => {
-        const wCm = Math.round(cfg.wallWidthMm / 10), hCm = Math.round(cfg.wallHeightMm / 10);
-        const area = (wCm / 100) * (hCm / 100);
-        totalWallArea += area;
-        const heightNote = opt.donorPanels > 0
-          ? ` · докрой по высоте: ${opt.donorPanels} ${panelsWord(opt.donorPanels)} режется на полосы ${(opt.remMm / 10).toFixed(0)} см (${opt.stripsPerPanel} шт. из панели)`
-          : opt.fullRows > 1 ? ` · ${opt.fullRows} ${rowsWord(opt.fullRows)} по высоте` : '';
-        const widthNote = remW > 0
-          ? ` · целых панелей: ${ownPanels} + полоса ${(remW / 10).toFixed(0)} см на ряд из общего докроя`
-          : ` · целых панелей: ${ownPanels}`;
-        c.fillStyle = '#333333';
-        c.fillText(
-          `Стена ${q + 1}: ${wCm} × ${hCm} см · ${area.toFixed(2).replace('.', ',')} м² · панелей в проекте: ${cfg.panelCount}${widthNote}${heightNote}`,
-          60, y + 8, W - 120);
-        y += 28;
-      });
-      if (sharedPanelsTotal > 0) {
-        c.fillStyle = '#5a9c3e'; c.font = 'bold 16px sans-serif';
-        c.fillText(
-          `Докрой по ширине: узкие полосы всех стен кроятся из общих панелей — ${sharedPanelsTotal} ${panelsWord(sharedPanelsTotal)}${savedPanelsTotal > 0 ? ` (экономия ${savedPanelsTotal} ${panelsWord(savedPanelsTotal)} — остатки идут в работу)` : ''}`,
-          60, y + 8, W - 120);
-        y += 26;
-        c.font = '16px sans-serif';
-      }
-      c.fillStyle = '#555555'; c.font = 'bold 16px sans-serif';
-      c.fillText(
-        `Панель 280 × 122 см (${PANEL_AREA_M2.toFixed(2).replace('.', ',')} м²) · общая площадь стен: ${totalWallArea.toFixed(2).replace('.', ',')} м²`,
-        60, y + 8, W - 120);
-      y += 26;
-      y += 4;
-    }
 
     // Column block: shape, sizes, perimeter, area, panels, cost
     if (columnCalc) {
@@ -3178,12 +3165,6 @@ const BambooStudio = () => {
       <section ref={toolRef} id="tool" className="flex flex-col bg-[#ebebed] h-screen">
         {/* ── App Nav ── */}
         <nav className="h-10 shrink-0 border-b border-gray-200 bg-white/90 backdrop-blur-xl flex justify-between items-center px-4 z-40">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 bg-black rounded-lg flex items-center justify-center">
-              <Layout className="text-white w-4 h-4" />
-            </div>
-            <span className="font-bold text-sm tracking-tight">BambooStudio Pro</span>
-          </div>
           <div className="flex items-center gap-3">
             {step === 'edit' && (
               <button onClick={undo} disabled={historyLen === 0}
