@@ -1803,21 +1803,7 @@ const BambooStudio = () => {
             ];
             edgeSideDefs.forEach(([active, p1, p2]) => {
               if (!active) return;
-              const dx = p2.x - p1.x, dy = p2.y - p1.y;
-              const len = Math.sqrt(dx * dx + dy * dy) || 1;
-              const px = -dy / len, py = dx / len;
-              const mX = (p1.x + p2.x) / 2, mY = (p1.y + p2.y) / 2;
-              const hw = 5;
-              const edgeCol = { black: '#111111', metallic: '#c8c8c8', bronze: '#9a5520' }[edgeProfileColorRef.current] ?? '#111111';
-              tCtx.save();
-              tCtx.strokeStyle = edgeCol;
-              tCtx.lineWidth = 2;
-              tCtx.lineCap = 'butt';
-              tCtx.beginPath();
-              tCtx.moveTo(p1.x, p1.y);
-              tCtx.lineTo(p2.x, p2.y);
-              tCtx.stroke();
-              tCtx.restore();
+              drawMoldLine(p1.x, p1.y, p2.x, p2.y, edgeProfileColorRef.current as Exclude<MoldingStyle, 'none'>, 2);
             });
           }
         }
@@ -2127,7 +2113,7 @@ const BambooStudio = () => {
   useEffect(() => {
     if (!image) return;
     drawFullScene();
-  }, [points, doorOpeningPoints, doorMarkMode, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, lightMode, cylHighlightPos, activeSurface, cornerTypes, wrapJunctions, wallZone, columnShape, drawFullScene, image, panelOrientation]);
+  }, [points, doorOpeningPoints, doorMarkMode, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, lightMode, cylHighlightPos, activeSurface, cornerTypes, wrapJunctions, wallZone, columnShape, drawFullScene, image, panelOrientation, edgeProfileSides, edgeProfileColor]);
 
   const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = mainCanvasRef.current;
