@@ -345,6 +345,8 @@ type SurfaceConfig = {
   hMoldingCount: number;
   hMoldingWidth: number;
   hMoldingPositions: number[];
+  vMoldingPositions: number[];
+  vMoldingCount: number;
   wallWidthMm: number;   // 0 = not specified
   wallHeightMm: number;  // 0 = not specified
   panelOrientation: 'vertical' | 'horizontal';
@@ -359,6 +361,8 @@ const defaultSurfaceConfig = (): SurfaceConfig => ({
   hMoldingCount: 1,
   hMoldingWidth: 1,
   hMoldingPositions: [0.5],
+  vMoldingPositions: [],
+  vMoldingCount: 1,
   wallWidthMm: 0,
   wallHeightMm: 0,
   panelOrientation: 'vertical',
@@ -561,6 +565,8 @@ const BambooStudio = () => {
   const [hMoldingCount, setHMoldingCount] = useState(1);
   const [hMoldingWidth, setHMoldingWidth] = useState(1);
   const [hMoldingPositions, setHMoldingPositions] = useState<number[]>([0.5]);
+  const [vMoldingPositions, setVMoldingPositions] = useState<number[]>([]);
+  const [vMoldingCount, setVMoldingCount] = useState(1);
   const [openSeries, setOpenSeries] = useState<Set<string>>(() => new Set(['metall-25']));
   const [footerCatalogOpen, setFooterCatalogOpen] = useState(false);
   const [lightMode, setLightMode] = useState<'off' | 'morning' | 'evening'>('off');
@@ -625,6 +631,9 @@ const BambooStudio = () => {
   const hMoldingWidthRef = useRef(1);
   const hMoldingPositionsRef = useRef<number[]>([0.5]);
   const draggingHMoldingIndexRef = useRef<number | null>(null);
+  const draggingVMoldingIndexRef = useRef<number | null>(null);
+  const vMoldingPositionsRef = useRef<number[]>([]);
+  const vMoldingCountRef = useRef(1);
   const rulerRef = useRef<HTMLDivElement>(null);
   const rulerDraggingIdxRef = useRef<number | null>(null);
   const [panelOrientation, setPanelOrientation] = useState<'vertical' | 'horizontal'>('vertical');
@@ -655,6 +664,8 @@ const BambooStudio = () => {
     hMoldingCount: number;
     hMoldingWidth: number;
     hMoldingPositions: number[];
+    vMoldingPositions: number[];
+    vMoldingCount: number;
     panelOrientation: 'vertical' | 'horizontal';
     edgeProfileSides: { top: boolean; bottom: boolean; left: boolean; right: boolean };
   };
@@ -678,6 +689,8 @@ const BambooStudio = () => {
       hMoldingCount: hMoldingCountRef.current,
       hMoldingWidth: hMoldingWidthRef.current,
       hMoldingPositions: [...hMoldingPositionsRef.current],
+      vMoldingPositions: [...vMoldingPositionsRef.current],
+      vMoldingCount: vMoldingCountRef.current,
       panelOrientation: panelOrientationRef.current,
       edgeProfileSides: { ...edgeProfileSidesRef.current },
     });
@@ -706,6 +719,8 @@ const BambooStudio = () => {
       setHMoldingCount(prev.hMoldingCount);
       setHMoldingWidth(prev.hMoldingWidth);
       setHMoldingPositions(prev.hMoldingPositions);
+      setVMoldingPositions(prev.vMoldingPositions);
+      setVMoldingCount(prev.vMoldingCount);
       setPanelOrientation(prev.panelOrientation);
     } else {
       // Snapshot belongs to another surface — restore its stored config directly
@@ -723,6 +738,8 @@ const BambooStudio = () => {
         hMoldingCount: prev.hMoldingCount,
         hMoldingWidth: prev.hMoldingWidth,
         hMoldingPositions: prev.hMoldingPositions,
+        vMoldingPositions: prev.vMoldingPositions,
+        vMoldingCount: prev.vMoldingCount,
         panelOrientation: prev.panelOrientation,
       };
       // Force redraw (stored configs are read from refs during draw)
@@ -744,6 +761,8 @@ const BambooStudio = () => {
   useEffect(() => { hMoldingCountRef.current = hMoldingCount; }, [hMoldingCount]);
   useEffect(() => { hMoldingWidthRef.current = hMoldingWidth; }, [hMoldingWidth]);
   useEffect(() => { hMoldingPositionsRef.current = hMoldingPositions; }, [hMoldingPositions]);
+  useEffect(() => { vMoldingPositionsRef.current = vMoldingPositions; }, [vMoldingPositions]);
+  useEffect(() => { vMoldingCountRef.current = vMoldingCount; }, [vMoldingCount]);
   useEffect(() => { panelOrientationRef.current = panelOrientation; }, [panelOrientation]);
   useEffect(() => { edgeProfileSidesRef.current = edgeProfileSides; }, [edgeProfileSides]);
   useEffect(() => { lightModeRef.current = lightMode; }, [lightMode]);
@@ -770,10 +789,11 @@ const BambooStudio = () => {
       panelCount, dividerPositions, sectorMaterials,
       moldingStyle, moldingWidth,
       hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions,
+      vMoldingPositions, vMoldingCount,
       wallWidthMm, wallHeightMm,
       panelOrientation,
     };
-  }, [activeSurface, panelCount, dividerPositions, sectorMaterials, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, wallWidthMm, wallHeightMm, panelOrientation]);
+  }, [activeSurface, panelCount, dividerPositions, sectorMaterials, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, vMoldingPositions, vMoldingCount, wallWidthMm, wallHeightMm, panelOrientation]);
 
   // Ctrl+Z global undo
   useEffect(() => {
@@ -800,6 +820,8 @@ const BambooStudio = () => {
       hMoldingCount: hMoldingCountRef.current,
       hMoldingWidth: hMoldingWidthRef.current,
       hMoldingPositions: [...hMoldingPositionsRef.current],
+      vMoldingPositions: [...vMoldingPositionsRef.current],
+      vMoldingCount: vMoldingCountRef.current,
       wallWidthMm: wallWidthMmRef.current,
       wallHeightMm: wallHeightMmRef.current,
       panelOrientation: panelOrientationRef.current,
@@ -817,6 +839,8 @@ const BambooStudio = () => {
     setHMoldingCount(cfg.hMoldingCount);
     setHMoldingWidth(cfg.hMoldingWidth);
     setHMoldingPositions(cfg.hMoldingPositions);
+    setVMoldingPositions(cfg.vMoldingPositions ?? []);
+    setVMoldingCount(cfg.vMoldingCount ?? 1);
     setWallWidthMm(cfg.wallWidthMm);
     setWallHeightMm(cfg.wallHeightMm);
     setPanelOrientation(cfg.panelOrientation ?? 'vertical');
@@ -1245,6 +1269,37 @@ const BambooStudio = () => {
         });
       }
 
+      // Decorative vertical profiles: arbitrary positions, same style, no sector split
+      if (curMoldingStyle !== 'none' && cfg.vMoldingPositions.length > 0) {
+        cfg.vMoldingPositions.forEach((ratio, vi) => {
+          const aX = qp[0].x + (qp[1].x - qp[0].x) * ratio;
+          const aY = qp[0].y + (qp[1].y - qp[0].y) * ratio;
+          const bX = qp[3].x + (qp[2].x - qp[3].x) * ratio;
+          const bY = qp[3].y + (qp[2].y - qp[3].y) * ratio;
+          drawMoldLine(aX, aY, bX, bY, curMoldingStyle, curMoldingWidth);
+          // Drag handle (visible when active, not erasing, not exporting)
+          if (isActive && !curIsErasing && !forExportRef.current) {
+            const midX = (aX + bX) / 2, midY = (aY + bY) / 2;
+            tCtx.save();
+            tCtx.strokeStyle = 'rgba(255,255,255,0.6)';
+            tCtx.lineWidth = 2;
+            tCtx.setLineDash([6, 4]);
+            tCtx.beginPath(); tCtx.moveTo(aX, aY); tCtx.lineTo(bX, bY); tCtx.stroke();
+            tCtx.restore();
+            tCtx.save();
+            tCtx.fillStyle = 'white';
+            tCtx.strokeStyle = 'rgba(0,0,0,0.3)';
+            tCtx.lineWidth = 1.5; tCtx.setLineDash([]);
+            tCtx.beginPath(); tCtx.arc(midX, midY, 8, 0, Math.PI * 2); tCtx.fill(); tCtx.stroke();
+            tCtx.fillStyle = '#555';
+            tCtx.font = 'bold 10px sans-serif';
+            tCtx.textAlign = 'center'; tCtx.textBaseline = 'middle';
+            tCtx.fillText('↔', midX, midY);
+            tCtx.restore();
+          }
+        });
+      }
+
       // Auto-mandatory vertical joints: physical panel boundaries within sectors wider than one panel.
       // Vertical panels: one column = PANEL_W_MM (1220 mm).
       // Horizontal TV panels: one column = PANEL_H_MM (2800 mm).
@@ -1365,6 +1420,8 @@ const BambooStudio = () => {
         hMoldingCount: hMoldingCountRef.current,
         hMoldingWidth: hMoldingWidthRef.current,
         hMoldingPositions: hMoldingPositionsRef.current,
+        vMoldingPositions: vMoldingPositionsRef.current,
+        vMoldingCount: vMoldingCountRef.current,
         wallWidthMm: wallWidthMmRef.current,
         wallHeightMm: wallHeightMmRef.current,
         panelOrientation: panelOrientationRef.current,
@@ -1807,6 +1864,24 @@ const BambooStudio = () => {
     return -1;
   }, []);
 
+  const findNearVMolding = useCallback((cx: number, cy: number): number => {
+    const pts = pointsRef.current;
+    if (pts.length < 4) return -1;
+    const asIdx = activeSurfaceRef.current;
+    const q = pts.length >= asIdx * 4 + 4 ? pts.slice(asIdx * 4, asIdx * 4 + 4) : pts.slice(0, 4);
+    const positions = vMoldingPositionsRef.current;
+    for (let i = 0; i < positions.length; i++) {
+      const r = positions[i];
+      const aX = q[0].x + (q[1].x - q[0].x) * r;
+      const aY = q[0].y + (q[1].y - q[0].y) * r;
+      const bX = q[3].x + (q[2].x - q[3].x) * r;
+      const bY = q[3].y + (q[2].y - q[3].y) * r;
+      const midX = (aX + bX) / 2, midY = (aY + bY) / 2;
+      if (Math.sqrt((cx - midX) ** 2 + (cy - midY) ** 2) <= 14) return i;
+    }
+    return -1;
+  }, []);
+
   // Initialize canvas only when image changes
   useEffect(() => {
     if (!image || !containerRef.current || !mainCanvasRef.current || !maskCanvasRef.current) return;
@@ -1865,6 +1940,12 @@ const BambooStudio = () => {
       draggingHMoldingIndexRef.current = hIdx;
       return;
     }
+    const vIdx = findNearVMolding(x, y);
+    if (vIdx !== -1) {
+      pushHistory();
+      draggingVMoldingIndexRef.current = vIdx;
+      return;
+    }
     const divIdx = findNearDivider(x, y);
     if (divIdx !== -1) {
       pushHistory();
@@ -1877,6 +1958,7 @@ const BambooStudio = () => {
     setIsDrawing(false);
     draggingDividerIndexRef.current = null;
     draggingHMoldingIndexRef.current = null;
+    draggingVMoldingIndexRef.current = null;
     setIsDraggingDivider(false);
   };
 
@@ -1893,6 +1975,18 @@ const BambooStudio = () => {
       setHMoldingPositions(prev => {
         const updated = [...prev];
         updated[idx] = newRatio;
+        return [...updated].sort((a, b) => a - b);
+      });
+      return;
+    }
+
+    // Dragging a decorative vertical molding
+    if (!isErasing && draggingVMoldingIndexRef.current !== null) {
+      const idx = draggingVMoldingIndexRef.current;
+      const newRatio = canvasXToWallRatio(x, y);
+      setVMoldingPositions(prev => {
+        const updated = [...prev];
+        updated[idx] = Math.max(0.01, Math.min(0.99, newRatio));
         return [...updated].sort((a, b) => a - b);
       });
       return;
@@ -1939,6 +2033,8 @@ const BambooStudio = () => {
     if (step === 'edit' && !isErasing && mainCanvasRef.current) {
       if (findNearHMolding(x, y) !== -1) {
         mainCanvasRef.current.style.cursor = 'ns-resize';
+      } else if (findNearVMolding(x, y) !== -1) {
+        mainCanvasRef.current.style.cursor = 'ew-resize';
       } else if (findNearDivider(x, y) !== -1) {
         mainCanvasRef.current.style.cursor = panelOrientationRef.current === 'horizontal' ? 'ns-resize' : 'ew-resize';
       } else {
@@ -1952,7 +2048,7 @@ const BambooStudio = () => {
     const { x, y } = getCanvasCoords(e);
 
     // Don't trigger sector selection if click was near a divider or h-molding handle
-    if (step === 'edit' && (findNearDivider(x, y) !== -1 || findNearHMolding(x, y) !== -1)) return;
+    if (step === 'edit' && (findNearDivider(x, y) !== -1 || findNearHMolding(x, y) !== -1 || findNearVMolding(x, y) !== -1)) return;
 
     if (step === 'mark' && wallZone === 'door') {
       if (doorMarkMode === 'opening' && doorOpeningPoints.length < 4) {
@@ -2079,6 +2175,8 @@ const BambooStudio = () => {
             hMoldingCount: hMoldingCountRef.current,
             hMoldingWidth: hMoldingWidthRef.current,
             hMoldingPositions: hMoldingPositionsRef.current,
+            vMoldingPositions: vMoldingPositionsRef.current,
+            vMoldingCount: vMoldingCountRef.current,
             wallWidthMm: wallWidthMmRef.current,
             wallHeightMm: wallHeightMmRef.current,
             panelOrientation: panelOrientationRef.current,
@@ -2258,6 +2356,9 @@ const BambooStudio = () => {
         if (isColumn) columnVisibleJoints += totalJoints; // column geometry uses all joints
       }
       if (cfg.hMoldingStyle !== 'none') addRuns(cfg.hMoldingStyle, wMm, cfg.hMoldingCount);
+      // Decorative vertical profiles: each position adds one full-height run
+      if (cfg.moldingStyle !== 'none' && cfg.vMoldingPositions.length > 0)
+        addRuns(cfg.moldingStyle as Exclude<MoldingStyle,'none'>, hMm, cfg.vMoldingPositions.length);
 
       // Mandatory horizontal row-join profiles: when the wall/column face is taller than one panel
       // (PANEL_H_MM = 2800 mm for vertical orientation, PANEL_W_MM = 1220 mm for horizontal TV),
@@ -3846,15 +3947,37 @@ const BambooStudio = () => {
                   ) : null;
                 })()}
                 {moldingStyle !== 'none' && (
-                  <div className="mt-2.5">
-                    <div className="flex justify-between mb-1">
-                      <span className="text-[9px] text-gray-400 font-bold uppercase">Толщина</span>
-                      <span className="text-[9px] font-bold">{moldingWidth}px</span>
+                  <div className="mt-2.5 space-y-2.5">
+                    <div>
+                      <div className="flex justify-between mb-1">
+                        <span className="text-[9px] text-gray-400 font-bold uppercase">Толщина</span>
+                        <span className="text-[9px] font-bold">{moldingWidth}px</span>
+                      </div>
+                      <input type="range" min="1" max="4" value={moldingWidth}
+                        onPointerDown={pushHistory}
+                        onChange={(e) => setMoldingWidth(parseInt(e.target.value))}
+                        className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
                     </div>
-                    <input type="range" min="1" max="4" value={moldingWidth}
-                      onPointerDown={pushHistory}
-                      onChange={(e) => setMoldingWidth(parseInt(e.target.value))}
-                      className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
+                    <div>
+                      <div className="flex justify-between mb-1">
+                        <span className="text-[9px] text-gray-400 font-bold uppercase">Декор. доп.</span>
+                        <span className="text-[9px] font-bold">{vMoldingPositions.length}</span>
+                      </div>
+                      <input type="range" min="0" max="8" value={vMoldingCount}
+                        onPointerDown={pushHistory}
+                        onChange={(e) => {
+                          const n = parseInt(e.target.value);
+                          setVMoldingCount(n);
+                          setVMoldingPositions(n === 0 ? [] : Array.from({length: n}, (_, i) => (i + 1) / (n + 1)));
+                        }}
+                        className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
+                      {vMoldingPositions.length > 0 && (
+                        <button onClick={() => setVMoldingPositions(Array.from({length: vMoldingCount}, (_, i) => (i + 1) / (vMoldingCount + 1)))}
+                          className="w-full mt-1.5 py-1 text-[8px] font-bold text-gray-300 hover:text-black flex items-center justify-center gap-1 transition-colors">
+                          <Undo2 size={9}/> Выровнять
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
