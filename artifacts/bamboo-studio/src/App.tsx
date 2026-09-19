@@ -3299,7 +3299,7 @@ const BambooStudio = () => {
       {/* ══════════════════════════════════════════
           WEBSITE HEADER — allwall.ru style
       ══════════════════════════════════════════ */}
-      <header className="sticky top-0 z-50 bg-[#282828] text-white">
+      <header className="sticky top-0 z-50 bg-[#2d2a27] text-[#fff9f4]">
         <div className="max-w-7xl mx-auto flex items-center justify-between px-6 h-16">
           {/* Logo */}
           <a href="https://allwall.ru" target="_blank" rel="noopener noreferrer" className="flex items-center shrink-0">
@@ -3323,7 +3323,7 @@ const BambooStudio = () => {
       {/* ══════════════════════════════════════════
           HERO — описание и инструкция
       ══════════════════════════════════════════ */}
-      <section className="bg-[#282828] text-white pt-12 pb-14 px-6">
+      <section className="bg-[#2d2a27] text-[#fff9f4] pt-12 pb-14 px-6">
         <div className="max-w-5xl mx-auto text-center">
           <h1 style={{
             verticalAlign: 'middle',
@@ -4553,7 +4553,7 @@ const BambooStudio = () => {
       {/* ══════════════════════════════════════════
           FOOTER — allwall.ru style
       ══════════════════════════════════════════ */}
-      <footer className="bg-[#282828] text-white pt-14 pb-8 px-6">
+      <footer className="bg-[#2d2a27] text-[#fff9f4] pt-14 pb-8 px-6">
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-10 pb-10 border-b border-white/10">
             {/* Brand */}
