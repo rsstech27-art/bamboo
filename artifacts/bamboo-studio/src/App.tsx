@@ -1299,13 +1299,13 @@ const BambooStudio = () => {
         tCtx.closePath();
 
         if (isActive && curActiveSector === i && !curIsErasing) {
-          tCtx.strokeStyle = 'white';
-          tCtx.lineWidth = 3;
+          tCtx.strokeStyle = 'rgba(255,255,255,0.5)';
+          tCtx.lineWidth = 1.5;
           tCtx.stroke();
         }
 
-        tCtx.strokeStyle = 'rgba(0,0,0,0.12)';
-        tCtx.lineWidth = 1;
+        tCtx.strokeStyle = 'rgba(0,0,0,0.05)';
+        tCtx.lineWidth = 0.75;
         tCtx.stroke();
       }
 
