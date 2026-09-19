@@ -3,6 +3,7 @@ import { Upload, Layout, Eraser, RotateCcw, Download, Check, Columns, Undo2, Red
 import { PANEL_H_MM, PANEL_W_MM, PANEL_AREA_M2, optimizedPanelCalc, packWidthRemainders, packProfileRuns, columnHiddenJoints, packWindowPieces, windowStdPieces, panelsWord, rowsWord } from './lib/panelCalc';
 import {
   DEFAULT_SERIES_PRICES,
+  DEFAULT_MOLDING_PRICES,
   useManagerPrices,
   getEffectiveSeriesName,
   getEffectiveMoldingName,
@@ -224,7 +225,7 @@ const SERIES_ORDER_MAP = new Map<string, number>(); // series id → sort positi
   }));
 });
 
-type ApiProduct = { id: number; article: string; name: string; series: string | null; photoUrl: string | null; scaleDown: boolean; noMetallicProfile: boolean; kpName: string | null; panelWidthMm: number | null; panelHeightMm: number | null; category: string | null };
+type ApiProduct = { id: number; article: string; name: string; series: string | null; photoUrl: string | null; scaleDown: boolean; noMetallicProfile: boolean; kpName: string | null; panelWidthMm: number | null; panelHeightMm: number | null; category: string | null; cost: number | null };
 
 /** Group API products into PanelSeries[], preserving hardcoded series order. */
 function buildCatalogSeries(products: ApiProduct[]): PanelSeries[] {
@@ -335,7 +336,7 @@ function makeEqualDividers(count: number): number[] {
   return dividers;
 }
 
-type MoldingStyle = 'none' | 'gold' | 'black' | 'metallic' | 'brass' | 'gap' | 'light';
+type MoldingStyle = 'none' | 'gold' | 'black' | 'metallic' | 'brass' | 'bronze' | 'gap' | 'light';
 type SurfaceConfig = {
   panelCount: number;
   dividerPositions: number[];
@@ -418,13 +419,15 @@ const getPanelPrice = (panelId: string) => SERIES_PRICES[PANEL_TO_SERIES[panelId
 // Panel cut-optimization math lives in lib/panelCalc.ts (unit-tested).
 
 const MOLDING_INFO: Record<string, { article: string; name: string; price: number }> = {
-  gold:     { article: 'PR-GOLD',  name: 'Профиль золото',          price: 990  },
-  black:    { article: 'PR-BLACK', name: 'Профиль чёрный',          price: 890  },
-  metallic: { article: 'PR-METAL', name: 'Профиль металлик',        price: 940  },
-  brass:    { article: 'PR-BRASS', name: 'Профиль латунь',          price: 990  },
-  gap:      { article: 'PR-GAP',   name: 'Профиль с разрывом',      price: 1090 },
-  light:    { article: 'PR-LIGHT', name: 'Профиль с подсветкой',    price: 1490 },
-  edge:     { article: 'PR-EDGE',  name: 'Профиль торцевой',        price: 790  },
+  black:    { article: 'PR-BLACK',  name: 'Профиль чёрный',         price: 890  },
+  metallic: { article: 'PR-METAL',  name: 'Профиль металлик',       price: 940  },
+  bronze:   { article: 'PR-BRONZE', name: 'Профиль бронза',         price: 990  },
+  // legacy (kept for backward compat with saved configs)
+  gold:     { article: 'PR-GOLD',   name: 'Профиль золото',         price: 990  },
+  brass:    { article: 'PR-BRASS',  name: 'Профиль латунь',         price: 990  },
+  gap:      { article: 'PR-GAP',    name: 'Профиль с разрывом',     price: 1090 },
+  light:    { article: 'PR-LIGHT',  name: 'Профиль с подсветкой',   price: 1490 },
+  edge:     { article: 'PR-EDGE',   name: 'Профиль торцевой',       price: 790  },
 };
 
 // Meter input that keeps its own text while typing — a controlled type="number"
@@ -610,6 +613,8 @@ const BambooStudio = () => {
   const [activeSurface, setActiveSurface] = useState(0);
   const activeSurfaceRef = useRef(0);
   const surfacesRef = useRef<SurfaceConfig[]>([defaultSurfaceConfig()]);
+  // Prices from DB molding products (category='molding'), keyed by style id
+  const moldingDbPricesRef = useRef<Record<string, number>>({});
 
   const toggleSeries = (id: string) => setOpenSeries(prev => {
     const next = new Set(prev);
@@ -1072,6 +1077,9 @@ const BambooStudio = () => {
         } else if (style === 'brass') {
           g.addColorStop(0, '#2c1f00'); g.addColorStop(0.15, '#7a5918'); g.addColorStop(0.35, '#c49a27');
           g.addColorStop(0.5, '#e8c95a'); g.addColorStop(0.65, '#c49a27'); g.addColorStop(0.85, '#7a5918'); g.addColorStop(1, '#2c1f00');
+        } else if (style === 'bronze') {
+          g.addColorStop(0, '#1a0a00'); g.addColorStop(0.15, '#5a2e0a'); g.addColorStop(0.35, '#a0602a');
+          g.addColorStop(0.5, '#c8844a'); g.addColorStop(0.65, '#a0602a'); g.addColorStop(0.85, '#5a2e0a'); g.addColorStop(1, '#1a0a00');
         } else if (style === 'gap') {
           g.addColorStop(0, '#3a3a3a'); g.addColorStop(0.2, '#aaaaaa'); g.addColorStop(0.42, '#d8d8d8');
           g.addColorStop(0.46, '#111111'); g.addColorStop(0.54, '#111111'); g.addColorStop(0.58, '#d8d8d8');
@@ -1824,6 +1832,16 @@ const BambooStudio = () => {
         // Build dynamic catalog (falls back to hardcoded if DB is empty)
         const built = buildCatalogSeries(products);
         if (built.length > 0) setCatalogSeries(built);
+        // Build molding price map from DB molding products (category='molding')
+        const dbMoldingPrices: Record<string, number> = {};
+        for (const p of products) {
+          if (p.category !== 'molding' || !p.series || !p.cost || p.cost <= 0) continue;
+          const match = DEFAULT_MOLDING_PRICES.find(m => m.name === p.series);
+          if (match && (!dbMoldingPrices[match.id] || p.cost < dbMoldingPrices[match.id])) {
+            dbMoldingPrices[match.id] = p.cost;
+          }
+        }
+        moldingDbPricesRef.current = dbMoldingPrices;
       })
       .catch(() => { /* non-critical */ });
   }, [seriesDefinitions]);
@@ -2214,7 +2232,7 @@ const BambooStudio = () => {
       return panelOverridesRef.current[seriesId] ?? SERIES_PRICES[seriesId] ?? 4900;
     };
     const getEffectiveMoldingPrice = (style: string): number =>
-      moldingOverridesRef.current[style] ?? MOLDING_INFO[style]?.price ?? 940;
+      moldingOverridesRef.current[style] ?? moldingDbPricesRef.current[style] ?? MOLDING_INFO[style]?.price ?? 940;
 
     // Always render a FRESH export image so the proposal visual matches current settings
     let kpImage: string | null = null;
@@ -3342,13 +3360,12 @@ const BambooStudio = () => {
     const dir = vertical ? 'to-r' : 'to-b';
     const opts: Array<{ id: MoldingStyle; label: string; preview: string }> = [
       { id: 'none',     label: 'Нет',  preview: 'bg-gray-100' },
-      { id: 'gold',     label: 'Злт',  preview: `bg-gradient-${dir} from-yellow-900 via-yellow-300 to-yellow-900` },
       { id: 'black',    label: 'Чрн',  preview: `bg-gradient-${dir} from-black via-gray-600 to-black` },
       { id: 'metallic', label: 'Мтл',  preview: `bg-gradient-${dir} from-gray-500 via-white to-gray-500` },
-      { id: 'brass',    label: 'Лтн',  preview: `bg-gradient-${dir} from-yellow-950 via-yellow-500 to-yellow-950` },
+      { id: 'bronze',   label: 'Брнз', preview: `bg-gradient-${dir} from-amber-950 via-amber-700 to-amber-950` },
     ];
     return (
-      <div className="grid grid-cols-5 gap-1">
+      <div className="grid grid-cols-4 gap-1">
         {opts.map(o => (
           <button key={o.id} onClick={() => onChange(o.id)}
             className={`flex flex-col items-center gap-1 transition-all ${value === o.id ? 'opacity-100' : 'opacity-40'}`}>
