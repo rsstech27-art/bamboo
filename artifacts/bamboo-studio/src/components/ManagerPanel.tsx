@@ -189,7 +189,7 @@ function EditableRow({ defaultName, defaultPrice, nameOverride, priceOverride, o
 }
 
 /** Editable row for custom (user-added) items — same look as EditableRow, plus delete button */
-function CustomItemRow({ item, onUpdate, onDelete, unitLabel = '₽/панель' }: {
+function CustomItemRow({ item, onUpdate, onDelete, unitLabel }: {
   item: SeriesDefinition;
   onUpdate: (name: string, price: number) => void;
   onDelete: () => void;
@@ -231,7 +231,7 @@ function CustomItemRow({ item, onUpdate, onDelete, unitLabel = '₽/панель
           onKeyDown={e => e.key === 'Enter' && commitPrice()}
           className="w-24 text-right text-sm px-2 py-1.5 rounded-lg border border-gray-200 bg-gray-50 focus:border-black focus:bg-white text-gray-700 outline-none transition-colors"
         />
-        <span className="text-xs text-gray-400">{unitLabel}</span>
+        {unitLabel && <span className="text-xs text-gray-400">{unitLabel}</span>}
       </div>
       <button onClick={() => { if (confirm(`Удалить «${item.name}»?`)) onDelete(); }}
         title="Удалить" className="p-1.5 text-gray-300 hover:text-red-500 transition-colors shrink-0">
@@ -1045,11 +1045,26 @@ function BackupSection({ onImportSuccess }: { onImportSuccess: () => void }) {
 
 const CATALOG_SIZE = 115;
 
-function TabProducts({ seriesOptions, onPhotoChange, onSettingsChange, extrasOverrides }: {
+function TabProducts({
+  seriesOptions, onPhotoChange, onSettingsChange, extrasOverrides,
+  moldingOverrides, moldingNameOverrides, customMoldings, hiddenMoldingIds,
+  onUpdateMolding, onUpdateMoldingName, onDeleteMolding, onUpdateCustomMolding,
+  onHideMolding, onAddMolding,
+}: {
   seriesOptions: Array<{ name: string; price: number }>;
   onPhotoChange?: () => void;
   onSettingsChange?: () => void;
   extrasOverrides?: PriceMap;
+  moldingOverrides?: PriceMap;
+  moldingNameOverrides?: SeriesNames;
+  customMoldings?: SeriesDefinition[];
+  hiddenMoldingIds?: string[];
+  onUpdateMolding?: (id: string, p: number) => void;
+  onUpdateMoldingName?: (id: string, name: string) => void;
+  onDeleteMolding?: (id: string) => void;
+  onUpdateCustomMolding?: (id: string, name: string, price: number) => void;
+  onHideMolding?: (id: string) => void;
+  onAddMolding?: (name: string, price: number) => void;
 }) {
   const { data, loading, error, reload } = useFetch<Product[]>('/api/products');
   const [creating, setCreating] = useState(false);
@@ -1268,32 +1283,45 @@ function TabProducts({ seriesOptions, onPhotoChange, onSettingsChange, extrasOve
       )}
 
       {/* ── Профили (показывается всегда или при фильтре __profiles__) ── */}
-      {(seriesFilter === null || seriesFilter === '__profiles__') && extrasOverrides !== undefined && (
+      {(seriesFilter === null || seriesFilter === '__profiles__') && (
         <div className="mt-4">
           <div className="flex items-center gap-2 mb-3">
             <ChevronRight size={13} className="text-gray-400" />
             <span className="text-xs font-black uppercase tracking-widest text-gray-500">Профили</span>
-            <span className="text-[10px] text-gray-400">— цена задаётся в разделе Цены</span>
           </div>
-          <div className="space-y-2">
-            {DEFAULT_MOLDING_PRICES.map(m => {
-              const price = extrasOverrides[m.id] !== undefined ? extrasOverrides[m.id] : m.defaultPrice;
-              return (
-                <div key={m.id} className="bg-white border border-gray-100 rounded-2xl px-4 py-3 flex items-center gap-4 shadow-sm">
-                  <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
-                    <Package size={18} className="text-gray-400" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-bold text-gray-900">{m.name}</div>
-                    <div className="text-xs text-gray-400 mt-0.5">{m.article}</div>
-                  </div>
-                  <div className="shrink-0 text-sm font-bold text-gray-700">
-                    {price > 0 ? `${price.toLocaleString('ru-RU')} ₽/3 м` : <span className="text-gray-400 font-normal">не задана</span>}
-                  </div>
-                </div>
-              );
-            })}
+          <div className="bg-white border border-gray-100 rounded-xl px-4 shadow-sm">
+            {DEFAULT_MOLDING_PRICES
+              .filter(m => !(hiddenMoldingIds ?? []).includes(m.id))
+              .map(m => (
+                <EditableRow
+                  key={m.id}
+                  defaultName={m.name}
+                  defaultPrice={m.defaultPrice}
+                  nameOverride={(moldingNameOverrides ?? {})[m.id]}
+                  priceOverride={(moldingOverrides ?? {})[m.id]}
+                  onNameChange={name => onUpdateMoldingName?.(m.id, name)}
+                  onPriceChange={price => onUpdateMolding?.(m.id, price)}
+                  unitLabel="₽/3 м"
+                  onDelete={() => onHideMolding?.(m.id)}
+                />
+              ))}
+            {(customMoldings ?? []).map(m => (
+              <CustomItemRow
+                key={m.id}
+                item={m}
+                onUpdate={(name, price) => onUpdateCustomMolding?.(m.id, name, price)}
+                onDelete={() => onDeleteMolding?.(m.id)}
+                unitLabel="₽/3 м"
+              />
+            ))}
           </div>
+          {onAddMolding && (
+            <div className="mt-3">
+              <AddItemForm onAdd={onAddMolding} buttonLabel="Добавить профиль" formTitle="Новый профиль"
+                namePlaceholder="Название профиля" priceLabel="Цена, ₽/3 м" pricePlaceholder="990"
+                errorFallback="Не удалось добавить профиль" />
+            </div>
+          )}
         </div>
       )}
 
@@ -1977,6 +2005,16 @@ export function ManagerPanel({
                   onPhotoChange={onPhotoChange}
                   onSettingsChange={onSettingsChange}
                   extrasOverrides={extrasOverrides}
+                  moldingOverrides={moldingOverrides}
+                  moldingNameOverrides={moldingNameOverrides}
+                  customMoldings={customMoldings}
+                  hiddenMoldingIds={hiddenMoldingIds}
+                  onUpdateMolding={onUpdateMolding}
+                  onUpdateMoldingName={onUpdateMoldingName}
+                  onDeleteMolding={onDeleteMolding}
+                  onUpdateCustomMolding={onUpdateCustomMolding}
+                  onHideMolding={onHideMolding}
+                  onAddMolding={onAddMolding}
                 />
               )}
               {tab === 'orders' && <TabOrders />}
