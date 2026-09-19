@@ -1263,6 +1263,7 @@ function TabProducts({
   moldingOverrides, moldingNameOverrides, customMoldings, hiddenMoldingIds,
   onUpdateMolding, onUpdateMoldingName, onDeleteMolding, onUpdateCustomMolding,
   onHideMolding, onAddMolding,
+  hiddenExtrasIds, onUpdateExtras, onHideExtra,
 }: {
   seriesOptions: Array<{ name: string; price: number }>;
   onPhotoChange?: () => void;
@@ -1278,6 +1279,9 @@ function TabProducts({
   onUpdateCustomMolding?: (id: string, name: string, price: number) => void;
   onHideMolding?: (id: string) => void;
   onAddMolding?: (name: string, price: number) => void;
+  hiddenExtrasIds?: string[];
+  onUpdateExtras?: (id: string, p: number) => void;
+  onHideExtra?: (id: string) => void;
 }) {
   const { data, loading, error, reload } = useFetch<Product[]>('/api/products');
   const [creating, setCreating] = useState(false);
@@ -1588,7 +1592,7 @@ function TabProducts({
       </section>
 
       {/* ── Клей и доп. товары ── */}
-      {extrasOverrides !== undefined && DEFAULT_EXTRAS.length > 0 && (
+      {DEFAULT_EXTRAS.length > 0 && (
         <section>
           <button onClick={() => setExtrasOpen(v => !v)}
             className="w-full flex items-center justify-between group mb-3">
@@ -1600,24 +1604,21 @@ function TabProducts({
             </div>
           </button>
           {extrasOpen && (
-            <div className="space-y-2">
-              {DEFAULT_EXTRAS.map(e => {
-                const price = extrasOverrides[e.id] ?? e.defaultPrice;
-                return (
-                  <div key={e.id} className="bg-white border border-gray-100 rounded-2xl px-4 py-3 flex items-center gap-4 shadow-sm">
-                    <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
-                      <Package size={18} className="text-gray-400" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-bold text-gray-900">{e.name}</div>
-                      <div className="text-xs text-gray-400 mt-0.5">{e.article}</div>
-                    </div>
-                    <div className="shrink-0 text-sm font-bold text-gray-700">
-                      {price > 0 ? `${price.toLocaleString('ru-RU')} ₽` : <span className="text-gray-400 font-normal">не задана</span>}
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="bg-white border border-gray-100 rounded-xl px-4 shadow-sm">
+              {DEFAULT_EXTRAS
+                .filter(e => !(hiddenExtrasIds ?? []).includes(e.id))
+                .map(e => (
+                  <EditableRow
+                    key={e.id}
+                    defaultName={e.name}
+                    defaultPrice={e.defaultPrice}
+                    priceOverride={(extrasOverrides ?? {})[e.id]}
+                    onNameChange={() => {/* имя не редактируется */}}
+                    onPriceChange={price => onUpdateExtras?.(e.id, price)}
+                    unitLabel={e.unit}
+                    onDelete={() => onHideExtra?.(e.id)}
+                  />
+                ))}
             </div>
           )}
         </section>
@@ -2283,6 +2284,9 @@ export function ManagerPanel({
                   onUpdateCustomMolding={onUpdateCustomMolding}
                   onHideMolding={onHideMolding}
                   onAddMolding={onAddMolding}
+                  hiddenExtrasIds={hiddenExtrasIds}
+                  onUpdateExtras={onUpdateExtras}
+                  onHideExtra={onHideExtra}
                 />
               )}
               {tab === 'orders' && <TabOrders />}
