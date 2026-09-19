@@ -1455,7 +1455,7 @@ function TabProducts({
       {!creating ? (
         <button onClick={() => { setCreating(true); setCreatingMolding(false); }}
           className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 hover:border-black text-gray-500 hover:text-black text-sm font-bold py-3.5 rounded-2xl transition-colors">
-          <Plus size={16} /> Добавить панельный товар
+          <Plus size={16} /> Добавить панель
         </button>
       ) : (
         <ProductCreateForm
@@ -1538,7 +1538,7 @@ function TabProducts({
             {!creatingMolding ? (
               <button onClick={() => { setCreatingMolding(true); setCreating(false); }}
                 className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 hover:border-black text-gray-500 hover:text-black text-sm font-bold py-3 rounded-2xl transition-colors mb-3">
-                <Plus size={14} /> Добавить товар-профиль
+                <Plus size={14} /> Добавить профиль
               </button>
             ) : (
               <div className="mb-3">
