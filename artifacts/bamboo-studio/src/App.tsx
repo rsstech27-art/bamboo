@@ -1463,33 +1463,38 @@ const BambooStudio = () => {
             drawMoldLine(lx, ly, rx, ry, hStyle as Exclude<MoldingStyle,'none'>, curHMoldingWidth);
           }
 
-          // Draw drag handle (visible when not erasing and not exporting)
-          if (isActive && !curIsErasing && !forExportRef.current) {
+          // Draw drag handle — always visible (on every surface, not just active),
+          // hidden only during eraser mode and export.
+          if (!curIsErasing && !forExportRef.current) {
+            // Subtle guide line so the handle makes sense visually
             tCtx.save();
-            tCtx.strokeStyle = 'rgba(255,255,255,0.45)';
-            tCtx.lineWidth = 1.5;
-            tCtx.setLineDash([]);
+            tCtx.strokeStyle = isActive ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.20)';
+            tCtx.lineWidth = 1;
+            tCtx.setLineDash([4, 4]);
             tCtx.beginPath();
             tCtx.moveTo(lx, ly);
             tCtx.lineTo(rx, ry);
             tCtx.stroke();
             tCtx.restore();
 
-            const selH = selectedHMoldingIdxRef.current === hIdx;
+            const selH = isActive && selectedHMoldingIdxRef.current === hIdx;
+            const handleR = isActive ? 8 : 5;
             tCtx.save();
-            tCtx.fillStyle = selH ? '#1d4ed8' : 'white';
-            tCtx.strokeStyle = selH ? '#1e40af' : 'rgba(0,0,0,0.25)';
+            tCtx.fillStyle = selH ? '#1d4ed8' : isActive ? 'white' : 'rgba(255,255,255,0.55)';
+            tCtx.strokeStyle = selH ? '#1e40af' : 'rgba(0,0,0,0.20)';
             tCtx.lineWidth = 1.5;
             tCtx.setLineDash([]);
             tCtx.beginPath();
-            tCtx.arc(midX, midY, 8, 0, Math.PI * 2);
+            tCtx.arc(midX, midY, handleR, 0, Math.PI * 2);
             tCtx.fill();
             tCtx.stroke();
-            tCtx.fillStyle = selH ? 'white' : '#555';
-            tCtx.font = 'bold 10px sans-serif';
-            tCtx.textAlign = 'center';
-            tCtx.textBaseline = 'middle';
-            tCtx.fillText('↕', midX, midY);
+            if (isActive) {
+              tCtx.fillStyle = selH ? 'white' : '#555';
+              tCtx.font = 'bold 10px sans-serif';
+              tCtx.textAlign = 'center';
+              tCtx.textBaseline = 'middle';
+              tCtx.fillText('↕', midX, midY);
+            }
             tCtx.restore();
           }
         });
@@ -2112,10 +2117,45 @@ const BambooStudio = () => {
     if (!isErasing && draggingHMoldingIndexRef.current !== null) {
       const idx = draggingHMoldingIndexRef.current;
       const newRatio = canvasYToWallRatio(x, y);
+      const wallH = wallHeightMmRef.current;
+
       setHMoldingPositions(prev => {
+        // 1. Move the dragged profile to its new position
         const updated = [...prev];
         updated[idx] = newRatio;
-        return [...updated].sort((a, b) => a - b);
+        const sorted = [...updated].sort((a, b) => a - b);
+
+        // 2. Auto-spawn: fill any gap > 280 cm (PANEL_H_MM) with new profiles
+        if (wallH > PANEL_H_MM) {
+          const threshold = PANEL_H_MM / wallH; // ratio = 280cm / wall height
+          const edges = [0, ...sorted, 1];
+          const extras: number[] = [];
+          for (let i = 0; i < edges.length - 1; i++) {
+            const gap = edges[i + 1] - edges[i];
+            if (gap > threshold + 0.001) {
+              const n = Math.floor(gap / threshold);
+              for (let j = 1; j <= n; j++) {
+                const p = edges[i] + j * threshold;
+                if (p < edges[i + 1] - 0.001 &&
+                    !sorted.some(s => Math.abs(s - p) < 0.001)) {
+                  extras.push(p);
+                }
+              }
+            }
+          }
+          if (extras.length > 0) {
+            const final = [...sorted, ...extras].sort((a, b) => a - b);
+            // Keep dragging index pointing at the profile the user grabbed
+            const newDragIdx = final.findIndex(p => Math.abs(p - newRatio) < 0.001);
+            if (newDragIdx !== -1) draggingHMoldingIndexRef.current = newDragIdx;
+            return final;
+          }
+        }
+
+        // No auto-spawn: update dragging index after sort
+        const newDragIdx = sorted.findIndex(p => Math.abs(p - newRatio) < 0.001);
+        if (newDragIdx !== -1) draggingHMoldingIndexRef.current = newDragIdx;
+        return sorted;
       });
       return;
     }

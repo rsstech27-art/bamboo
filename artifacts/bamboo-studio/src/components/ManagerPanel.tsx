@@ -1915,13 +1915,14 @@ function TabIntegrations() {
     setGenerating(false);
   };
 
-  const copy = () => {
-    if (!apiKey) return;
-    void navigator.clipboard.writeText(apiKey).then(() => {
+  const copy = (text?: string) => {
+    const value = text ?? apiKey;
+    if (!value) return;
+    void navigator.clipboard.writeText(value).then(() => {
       setCopied(true);
       setTimeout(() => {
         setCopied(false);
-        setRevealed(false); // mask after copy animation ends
+        if (!text) setRevealed(false); // mask only when copying the api key itself
       }, 1200);
     });
   };
@@ -1949,7 +1950,7 @@ function TabIntegrations() {
                 <code className="flex-1 text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 font-mono break-all text-gray-700 select-none tracking-widest">
                   {revealed ? apiKey : MASK}
                 </code>
-                <button onClick={copy} disabled={copied}
+                <button onClick={() => copy()} disabled={copied}
                   className="shrink-0 px-3 py-2 text-xs font-bold rounded-lg bg-black text-white hover:bg-gray-800 transition-colors disabled:opacity-60">
                   {copied ? <Check size={12} /> : 'Копировать'}
                 </button>
