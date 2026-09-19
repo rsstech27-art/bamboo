@@ -3314,7 +3314,7 @@ const BambooStudio = () => {
           </nav>
 
           {/* Phone */}
-          <a href="tel:+74951510946" className="shrink-0 text-sm font-bold text-white hover:text-[#7ec662] transition-colors hidden sm:block">
+          <a href="tel:+74951510946" className="shrink-0 text-sm font-normal text-[#fff9f4] hover:text-[#7ec662] transition-colors hidden sm:block" style={{fontFamily:'Manrope, sans-serif'}}>
             +7 (495) 151-09-46
           </a>
         </div>
@@ -4603,7 +4603,7 @@ const BambooStudio = () => {
               <div className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-4">Контакты</div>
               <div className="space-y-3 text-sm text-gray-400">
                 <div>
-                  <a href="tel:+74951510946" className="text-white font-bold text-base hover:text-[#7ec662] transition-colors">+7 (495) 151-09-46</a>
+                  <a href="tel:+74951510946" className="text-[#fff9f4] font-normal text-base hover:text-[#7ec662] transition-colors" style={{fontFamily:'Manrope, sans-serif'}}>+7 (495) 151-09-46</a>
                 </div>
                 <div>
                   <a href="mailto:info@allwall.ru" className="hover:text-white transition-colors">info@allwall.ru</a>
