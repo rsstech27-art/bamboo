@@ -363,18 +363,6 @@ function TabPrices({
 
   return (
     <div className="max-w-xl mx-auto space-y-6 py-6 px-4">
-      {/* Reset bar */}
-      {(Object.keys(panelOverrides).length > 0 || Object.keys(moldingOverrides).length > 0 ||
-        Object.keys(seriesNameOverrides).length > 0 || Object.keys(moldingNameOverrides).length > 0) && (
-        <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
-          <span className="text-sm text-gray-600 font-medium">Есть изменённые цены / названия</span>
-          <button onClick={() => { if (confirm('Сбросить все цены и названия к значениям по умолчанию?')) onReset(); }}
-            className="flex items-center gap-1.5 text-xs font-bold text-gray-600 hover:text-black border border-gray-300 rounded-lg px-3 py-1.5 transition-colors bg-white">
-            <RotateCcw size={11} /> Сбросить
-          </button>
-        </div>
-      )}
-
       {/* ── Серии панелей ── */}
       <section>
         <button onClick={() => setSeriesOpen(v => !v)}
