@@ -1122,9 +1122,27 @@ const BambooStudio = () => {
             tCtx.lineTo(x2 + ppx * offset * sign, y2 + ppy * offset * sign);
             tCtx.stroke();
           }
+        } else if (modifier === 'light') {
+          // Two parallel stripes (slightly wider than gap) + glowing white strip between them
+          const stripeW = Math.max(lw * 0.4, 1.5);
+          const offset  = lw * 0.45;
+          for (const sign of [1, -1]) {
+            const cx = mmx + ppx * offset * sign, cy = mmy + ppy * offset * sign;
+            tCtx.strokeStyle = buildGrad(cx, cy, stripeW / 2);
+            tCtx.lineWidth = stripeW;
+            tCtx.beginPath();
+            tCtx.moveTo(x1 + ppx * offset * sign, y1 + ppy * offset * sign);
+            tCtx.lineTo(x2 + ppx * offset * sign, y2 + ppy * offset * sign);
+            tCtx.stroke();
+          }
+          // Glowing white centre strip between the two rails
+          tCtx.shadowColor = 'rgba(255, 245, 180, 0.95)';
+          tCtx.shadowBlur  = lw * 4;
+          tCtx.strokeStyle = 'rgba(255, 255, 230, 0.92)';
+          tCtx.lineWidth   = Math.max(lw * 0.22, 1);
+          tCtx.beginPath(); tCtx.moveTo(x1, y1); tCtx.lineTo(x2, y2); tCtx.stroke();
         } else {
-          // Normal single stripe (with optional glow for 'light')
-          if (modifier === 'light') { tCtx.shadowColor = 'rgba(255,210,80,0.85)'; tCtx.shadowBlur = lw * 10; }
+          // Normal single stripe
           tCtx.strokeStyle = buildGrad(mmx, mmy, lw / 2);
           tCtx.lineWidth = lw;
           tCtx.beginPath(); tCtx.moveTo(x1, y1); tCtx.lineTo(x2, y2); tCtx.stroke();
