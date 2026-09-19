@@ -1429,9 +1429,7 @@ const BambooStudio = () => {
         const autoVWidth = curMoldingStyle !== 'none' ? curMoldingWidth : 2;
         if (cfg.wallWidthMm > 0) {
           const secBounds = getSectorBounds(cfg.dividerPositions, cfg.panelCount);
-          secBounds.forEach(({ start: sR, end: eR }, sIdx) => {
-            // Skip if this sector's panel joins without profile
-            if (cfg.sectorMaterials[sIdx]?.noMetallicProfile) return;
+          secBounds.forEach(({ start: sR, end: eR }) => {
             const sectorMm = cfg.wallWidthMm * (eR - sR);
             if (sectorMm <= colStepV) return;
             const nJoints = Math.floor(sectorMm / colStepV);
