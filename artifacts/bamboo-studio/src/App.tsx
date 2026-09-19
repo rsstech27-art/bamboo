@@ -356,6 +356,7 @@ type SurfaceConfig = {
   panelOrientation: 'vertical' | 'horizontal';
   jointProfilePosition: ('bottom' | 'top')[];
   dividerStyleOverrides?: Record<number, MoldingStyle>; // per-divider style override
+  hMoldingStyleOverrides?: Record<number, MoldingStyle>; // per-hMolding style override
 };
 const defaultSurfaceConfig = (): SurfaceConfig => ({
   panelCount: 5,
@@ -374,6 +375,7 @@ const defaultSurfaceConfig = (): SurfaceConfig => ({
   panelOrientation: 'vertical',
   jointProfilePosition: ['bottom'],
   dividerStyleOverrides: {},
+  hMoldingStyleOverrides: {},
 });
 
 const SURFACE_LABELS = ['Стена 1 · Основная', 'Стена 2', 'Стена 3'];
@@ -658,6 +660,10 @@ const BambooStudio = () => {
   const dividerStyleOverridesRef = useRef<Record<number, MoldingStyle>>({});
   const [selectedDividerIdx, setSelectedDividerIdx] = useState<number | null>(null);
   const selectedDividerIdxRef = useRef<number | null>(null);
+  const [hMoldingStyleOverrides, setHMoldingStyleOverrides] = useState<Record<number, MoldingStyle>>({});
+  const hMoldingStyleOverridesRef = useRef<Record<number, MoldingStyle>>({});
+  const [selectedHMoldingIdx, setSelectedHMoldingIdx] = useState<number | null>(null);
+  const selectedHMoldingIdxRef = useRef<number | null>(null);
   // Mask stored as strokes — never gets reset by canvas operations
   const maskStrokesRef = useRef<Array<{ x: number; y: number; r: number }>>([]);
   const maskUndoStackRef = useRef<number[]>([]); // stores stroke-array length before each erase drag
@@ -690,6 +696,7 @@ const BambooStudio = () => {
     edgeProfileSides: { top: boolean; bottom: boolean; left: boolean; right: boolean };
     jointProfilePosition: ('bottom' | 'top')[];
     dividerStyleOverrides: Record<number, MoldingStyle>;
+    hMoldingStyleOverrides: Record<number, MoldingStyle>;
   };
   const historyRef = useRef<HistorySnapshot[]>([]);
   const redoRef   = useRef<HistorySnapshot[]>([]);
@@ -722,6 +729,7 @@ const BambooStudio = () => {
       edgeProfileSides: { ...edgeProfileSidesRef.current },
       jointProfilePosition: [...jointProfilePositionRef.current],
       dividerStyleOverrides: { ...dividerStyleOverridesRef.current },
+      hMoldingStyleOverrides: { ...hMoldingStyleOverridesRef.current },
     });
     if (historyRef.current.length > 50) historyRef.current.shift();
     setHistoryLen(historyRef.current.length);
@@ -749,6 +757,7 @@ const BambooStudio = () => {
     edgeProfileSides: { ...edgeProfileSidesRef.current },
     jointProfilePosition: [...jointProfilePositionRef.current],
     dividerStyleOverrides: { ...dividerStyleOverridesRef.current },
+    hMoldingStyleOverrides: { ...hMoldingStyleOverridesRef.current },
   }), []);
 
   // Restore a snapshot to live state
@@ -773,6 +782,7 @@ const BambooStudio = () => {
       setPanelOrientation(prev.panelOrientation);
       setJointProfilePosition(prev.jointProfilePosition ?? ['bottom']);
       setDividerStyleOverrides(prev.dividerStyleOverrides ?? {});
+      setHMoldingStyleOverrides(prev.hMoldingStyleOverrides ?? {});
     } else {
       const cfg = surfacesRef.current[prev.surfaceIndex] ?? defaultSurfaceConfig();
       surfacesRef.current[prev.surfaceIndex] = {
@@ -793,6 +803,7 @@ const BambooStudio = () => {
         panelOrientation: prev.panelOrientation,
         jointProfilePosition: prev.jointProfilePosition ?? ['bottom'],
         dividerStyleOverrides: prev.dividerStyleOverrides ?? {},
+        hMoldingStyleOverrides: prev.hMoldingStyleOverrides ?? {},
       };
       setPoints(pv => [...pv]);
     }
@@ -866,11 +877,14 @@ const BambooStudio = () => {
       panelOrientation,
       jointProfilePosition,
       dividerStyleOverrides,
+      hMoldingStyleOverrides,
     };
-  }, [activeSurface, panelCount, dividerPositions, sectorMaterials, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, vMoldingPositions, vMoldingCount, wallWidthMm, wallHeightMm, panelOrientation, jointProfilePosition, dividerStyleOverrides]);
+  }, [activeSurface, panelCount, dividerPositions, sectorMaterials, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, vMoldingPositions, vMoldingCount, wallWidthMm, wallHeightMm, panelOrientation, jointProfilePosition, dividerStyleOverrides, hMoldingStyleOverrides]);
   useEffect(() => { jointProfilePositionRef.current = jointProfilePosition; }, [jointProfilePosition]);
   useEffect(() => { dividerStyleOverridesRef.current = dividerStyleOverrides; }, [dividerStyleOverrides]);
   useEffect(() => { selectedDividerIdxRef.current = selectedDividerIdx; }, [selectedDividerIdx]);
+  useEffect(() => { hMoldingStyleOverridesRef.current = hMoldingStyleOverrides; }, [hMoldingStyleOverrides]);
+  useEffect(() => { selectedHMoldingIdxRef.current = selectedHMoldingIdx; }, [selectedHMoldingIdx]);
 
   // Ctrl+Z global undo / Ctrl+Y global redo
   useEffect(() => {
@@ -907,6 +921,7 @@ const BambooStudio = () => {
       panelOrientation: panelOrientationRef.current,
       jointProfilePosition: [...jointProfilePositionRef.current],
       dividerStyleOverrides: { ...dividerStyleOverridesRef.current },
+      hMoldingStyleOverrides: { ...hMoldingStyleOverridesRef.current },
     };
     const cfg = surfacesRef.current[idx] ?? defaultSurfaceConfig();
     surfacesRef.current[idx] = cfg;
@@ -928,6 +943,7 @@ const BambooStudio = () => {
     setPanelOrientation(cfg.panelOrientation ?? 'vertical');
     setJointProfilePosition(cfg.jointProfilePosition ?? ['bottom']);
     setDividerStyleOverrides(cfg.dividerStyleOverrides ?? {});
+    setHMoldingStyleOverrides(cfg.hMoldingStyleOverrides ?? {});
     setActiveSector(null);
   }, []);
 
@@ -1477,18 +1493,21 @@ const BambooStudio = () => {
       const curHMoldingStyle = cfg.hMoldingStyle;
       const curHMoldingWidth = cfg.hMoldingWidth;
       const curHPositions = cfg.hMoldingPositions;
-      if (curHMoldingStyle !== 'none' && curHPositions.length > 0) {
-        curHPositions.forEach((r) => {
+      if (curHPositions.length > 0) {
+        curHPositions.forEach((r, hIdx) => {
+          const hStyle = cfg.hMoldingStyleOverrides?.[hIdx] ?? curHMoldingStyle;
           // Left edge: lerp between qp[0] (top-left) and qp[3] (bottom-left)
           const lx = qp[0].x + (qp[3].x - qp[0].x) * r;
           const ly = qp[0].y + (qp[3].y - qp[0].y) * r;
           // Right edge: lerp between qp[1] (top-right) and qp[2] (bottom-right)
           const rx = qp[1].x + (qp[2].x - qp[1].x) * r;
           const ry = qp[1].y + (qp[2].y - qp[1].y) * r;
-
           const midX = (lx + rx) / 2;
           const midY = (ly + ry) / 2;
-          drawMoldLine(lx, ly, rx, ry, curHMoldingStyle, curHMoldingWidth);
+
+          if (hStyle !== 'none') {
+            drawMoldLine(lx, ly, rx, ry, hStyle as Exclude<MoldingStyle,'none'>, curHMoldingWidth);
+          }
 
           // Draw drag handle (visible when not erasing and not exporting)
           if (isActive && !curIsErasing && !forExportRef.current) {
@@ -1502,16 +1521,17 @@ const BambooStudio = () => {
             tCtx.stroke();
             tCtx.restore();
 
+            const selH = selectedHMoldingIdxRef.current === hIdx;
             tCtx.save();
-            tCtx.fillStyle = 'white';
-            tCtx.strokeStyle = 'rgba(0,0,0,0.3)';
+            tCtx.fillStyle = selH ? '#1d4ed8' : 'white';
+            tCtx.strokeStyle = selH ? '#1e40af' : 'rgba(0,0,0,0.25)';
             tCtx.lineWidth = 1.5;
             tCtx.setLineDash([]);
             tCtx.beginPath();
             tCtx.arc(midX, midY, 8, 0, Math.PI * 2);
             tCtx.fill();
             tCtx.stroke();
-            tCtx.fillStyle = '#555';
+            tCtx.fillStyle = selH ? 'white' : '#555';
             tCtx.font = 'bold 10px sans-serif';
             tCtx.textAlign = 'center';
             tCtx.textBaseline = 'middle';
@@ -1603,6 +1623,7 @@ const BambooStudio = () => {
         panelOrientation: panelOrientationRef.current,
         jointProfilePosition: jointProfilePositionRef.current,
         dividerStyleOverrides: dividerStyleOverridesRef.current,
+        hMoldingStyleOverrides: hMoldingStyleOverridesRef.current,
       };
       const quadCfgs: SurfaceConfig[] = [];
       for (let q = 0; q < nQuads; q++) {
@@ -2126,6 +2147,8 @@ const BambooStudio = () => {
     if (hIdx !== -1) {
       pushHistory();
       draggingHMoldingIndexRef.current = hIdx;
+      setSelectedHMoldingIdx(hIdx);
+      setSelectedDividerIdx(null);
       return;
     }
     const vIdx = findNearVMolding(x, y);
@@ -2142,6 +2165,7 @@ const BambooStudio = () => {
       setSelectedDividerIdx(divIdx);
     } else {
       setSelectedDividerIdx(null);
+      setSelectedHMoldingIdx(null);
     }
   };
 
@@ -4378,6 +4402,36 @@ const BambooStudio = () => {
                   <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Профиль горизонт.</span>
                 </div>
                 <MoldingStyleRow value={hMoldingStyle} onChange={(v) => { pushHistory(); setHMoldingStyle(v); if (v !== 'none') setHMoldingWidth(1); }} vertical={false}/>
+                {/* Per-hMolding override: shown when user clicked a specific horizontal handle */}
+                {selectedHMoldingIdx !== null && selectedHMoldingIdx < hMoldingPositions.length && (
+                  <div className="mt-2 pt-2 border-t border-gray-100">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[9px] font-black text-blue-600 uppercase tracking-wide">
+                        Профиль {selectedHMoldingIdx + 1}
+                      </span>
+                      {hMoldingStyleOverrides[selectedHMoldingIdx] != null && (
+                        <button
+                          className="text-[8px] text-gray-400 hover:text-red-500 font-bold transition-colors"
+                          onClick={() => {
+                            const upd = { ...hMoldingStyleOverrides };
+                            delete upd[selectedHMoldingIdx];
+                            setHMoldingStyleOverrides(upd);
+                          }}
+                        >
+                          ↺ Общий
+                        </button>
+                      )}
+                    </div>
+                    <MoldingStyleRow
+                      value={hMoldingStyleOverrides[selectedHMoldingIdx] ?? hMoldingStyle}
+                      onChange={(v) => {
+                        pushHistory();
+                        setHMoldingStyleOverrides({ ...hMoldingStyleOverrides, [selectedHMoldingIdx]: v });
+                      }}
+                      vertical={false}
+                    />
+                  </div>
+                )}
                 {hMoldingStyle !== 'none' && (
                   <div className="mt-2 space-y-1.5">
                     <div>
