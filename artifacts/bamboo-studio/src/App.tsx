@@ -3420,11 +3420,19 @@ const BambooStudio = () => {
     const dir = vertical ? 'to-r' : 'to-b';
     const { color: curColor, modifier: curMod } = decodeMoldStyle(value);
 
-    const colorOpts: Array<{ id: string; label: string; preview: string }> = [
-      { id: 'none',     label: 'Нет',  preview: 'bg-gray-100' },
-      { id: 'black',    label: 'Чрн',  preview: `bg-gradient-${dir} from-black via-gray-600 to-black` },
-      { id: 'metallic', label: 'Мтл',  preview: `bg-gradient-${dir} from-gray-500 via-white to-gray-500` },
-      { id: 'bronze',   label: 'Брнз', preview: `bg-gradient-${dir} from-amber-950 via-amber-700 to-amber-950` },
+    // Radial-gradient "metallic sphere" icons for each colour
+    const COLOR_ICON: Record<string, React.CSSProperties> = {
+      none:     {},
+      black:    { background: 'radial-gradient(circle at 35% 30%, #606060, #1c1c1c 45%, #000 75%)' },
+      metallic: { background: 'radial-gradient(circle at 35% 30%, #ffffff, #b0b0b0 40%, #4a4a4a 75%)' },
+      bronze:   { background: 'radial-gradient(circle at 35% 30%, #e0a060, #a06030 40%, #3a1400 75%)' },
+    };
+
+    const colorOpts: Array<{ id: string; label: string }> = [
+      { id: 'none',     label: 'Нет'  },
+      { id: 'black',    label: 'Чрн'  },
+      { id: 'metallic', label: 'Мтл'  },
+      { id: 'bronze',   label: 'Брнз' },
     ];
     const modOpts: Array<{ id: 'normal' | 'gap' | 'light'; label: string }> = [
       { id: 'normal', label: 'Обычный' },
@@ -3436,13 +3444,26 @@ const BambooStudio = () => {
       <div className="flex flex-col gap-1.5">
         {/* colour row */}
         <div className="grid grid-cols-4 gap-1">
-          {colorOpts.map(o => (
-            <button key={o.id} onClick={() => onChange(encodeMoldStyle(o.id, o.id === 'none' ? 'normal' : curMod))}
-              className={`flex flex-col items-center gap-1 transition-all ${curColor === o.id ? 'opacity-100' : 'opacity-40'}`}>
-              <div className={`w-full h-5 rounded border-[1.5px] ${o.preview} ${curColor === o.id ? 'border-black shadow-sm' : 'border-transparent'}`} />
-              <span className="text-[7px] font-bold uppercase text-gray-500 leading-none">{o.label}</span>
-            </button>
-          ))}
+          {colorOpts.map(o => {
+            const active = curColor === o.id;
+            return (
+              <button key={o.id} onClick={() => onChange(encodeMoldStyle(o.id, o.id === 'none' ? 'normal' : curMod))}
+                className={`flex flex-col items-center gap-1 transition-all ${active ? 'opacity-100' : 'opacity-40 hover:opacity-70'}`}>
+                {/* icon */}
+                <div className={`w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all
+                  ${active ? 'border-gray-800 shadow-md' : 'border-gray-200'}`}
+                  style={COLOR_ICON[o.id]}>
+                  {o.id === 'none' && (
+                    <svg width="12" height="12" viewBox="0 0 12 12" className="text-gray-400">
+                      <line x1="2" y1="2" x2="10" y2="10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                      <line x1="10" y1="2" x2="2" y2="10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                    </svg>
+                  )}
+                </div>
+                <span className="text-[7px] font-bold uppercase text-gray-500 leading-none">{o.label}</span>
+              </button>
+            );
+          })}
         </div>
         {/* modifier row — only when a colour is chosen */}
         {curColor !== 'none' && (
