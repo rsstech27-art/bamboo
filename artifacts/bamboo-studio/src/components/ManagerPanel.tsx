@@ -2449,8 +2449,8 @@ const TABS = [
   { id: 'prices',       label: 'Цены',            icon: Tag },
   { id: 'products',     label: 'Товары',           icon: Package },
   { id: 'orders',       label: 'Заказы',           icon: ShoppingBag },
-  { id: 'integrations', label: 'API',              icon: ChevronRight },
   { id: 'backup',       label: 'Резервная копия',  icon: HardDrive },
+  { id: 'integrations', label: 'API',              icon: ChevronRight },
 ] as const;
 
 type TabId = typeof TABS[number]['id'];
