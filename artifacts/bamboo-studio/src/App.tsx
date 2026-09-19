@@ -3712,7 +3712,7 @@ const BambooStudio = () => {
         )}
 
         {/* ── Right tool panel — hidden on zone-selection step ── */}
-        <div className={`w-full md:w-[196px] shrink-0 flex flex-col gap-1.5 overflow-y-auto pb-4 md:pb-1 ${step === 'zone' ? 'hidden' : ''}`} style={{ scrollbarWidth: 'none' }}>
+        <div className={`w-full md:w-[280px] shrink-0 flex flex-col gap-1.5 overflow-y-auto pb-4 md:pb-1 ${step === 'zone' ? 'hidden' : ''}`} style={{ scrollbarWidth: 'none' }}>
 
           {/* MARK step */}
           {step === 'mark' && (
