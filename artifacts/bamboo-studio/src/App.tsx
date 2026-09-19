@@ -654,7 +654,7 @@ const BambooStudio = () => {
   const edgeProfileSidesRef = useRef({ top: false, bottom: false, left: false, right: false });
   const hMoldingCountRef = useRef(1);
   const hMoldingWidthRef = useRef(1);
-  const hMoldingPositionsRef = useRef<number[]>([0.5]);
+  const hMoldingPositionsRef = useRef<number[]>([]);
   const draggingHMoldingIndexRef = useRef<number | null>(null);
   const draggingVMoldingIndexRef = useRef<number | null>(null);
   const vMoldingPositionsRef = useRef<number[]>([]);
@@ -3490,8 +3490,8 @@ const BambooStudio = () => {
           setDividerPositions(makeEqualDividers(5));
           setMoldingStyle('none');
           setHMoldingStyle('none');
-          setHMoldingCount(1);
-          setHMoldingPositions([0.5]);
+          setHMoldingCount(0);
+          setHMoldingPositions([]);
         };
         img.src = f.target?.result as string;
       };
