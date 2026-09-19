@@ -1215,24 +1215,6 @@ const BambooStudio = () => {
           tCtx.stroke();
           tCtx.restore();
 
-          // Handle circle at midpoint
-          const midX = (aX + bX) / 2;
-          const midY = (aY + bY) / 2;
-          tCtx.save();
-          tCtx.fillStyle = 'white';
-          tCtx.strokeStyle = 'rgba(0,0,0,0.3)';
-          tCtx.lineWidth = 1.5;
-          tCtx.beginPath();
-          tCtx.arc(midX, midY, 8, 0, Math.PI * 2);
-          tCtx.fill();
-          tCtx.stroke();
-          // Arrow hints
-          tCtx.fillStyle = '#555';
-          tCtx.font = 'bold 10px sans-serif';
-          tCtx.textAlign = 'center';
-          tCtx.textBaseline = 'middle';
-          tCtx.fillText(isHoriz ? '⇕' : '⇔', midX, midY);
-          tCtx.restore();
         });
       }
 
