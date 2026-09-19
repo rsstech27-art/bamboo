@@ -3273,12 +3273,12 @@ const BambooStudio = () => {
         {/* ── Canvas area ── */}
         <div className="flex-1 relative min-w-0 min-h-[70vw] md:min-h-0">
           {step === 'zone' && wallZone === 'tv' ? (
-            <div className="flex flex-col items-center justify-center w-full h-full rounded-3xl bg-white border-2 border-dashed border-gray-200 p-5">
-              <div className="text-center mb-5">
-                <h3 className="text-base font-black text-gray-900 mb-1">Выберите тип ТВ-зоны</h3>
-                <p className="text-xs text-gray-400">Как будет установлен телевизор?</p>
+            <div className="flex flex-col items-center justify-center w-full h-full rounded-3xl bg-white border-2 border-dashed border-gray-200 p-10">
+              <div className="text-center mb-8">
+                <h3 className="text-xl font-black text-gray-900 mb-1.5">Выберите тип ТВ-зоны</h3>
+                <p className="text-sm text-gray-400">Как будет установлен телевизор?</p>
               </div>
-              <div className="grid grid-cols-2 gap-3 w-full max-w-lg">
+              <div className="grid grid-cols-2 gap-5 w-full max-w-2xl">
                 {([
                   { id: 'builtin',  label: 'Встроенный ТВ',  img: `${BASE}zones/tv-builtin.webp` },
                   { id: 'surface',  label: 'Накладной ТВ',   img: `${BASE}zones/tv-surface.jpg` },
@@ -3288,7 +3288,7 @@ const BambooStudio = () => {
                     onClick={() => { setTvType(tt.id); setStep('upload'); }}
                     className="flex flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-gray-50 hover:border-black hover:shadow-lg transition-all active:scale-95 group text-left"
                   >
-                    <div className="w-full h-40 bg-gray-200 overflow-hidden relative">
+                    <div className="w-full h-60 bg-gray-200 overflow-hidden relative">
                       <img
                         src={tt.img}
                         alt={tt.label}
@@ -3296,26 +3296,26 @@ const BambooStudio = () => {
                         onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                       />
                     </div>
-                    <div className="px-3 py-2.5">
-                      <span className="text-[11px] font-black uppercase tracking-wide text-gray-800 group-hover:text-black">{tt.label}</span>
+                    <div className="px-4 py-3">
+                      <span className="text-sm font-black uppercase tracking-wide text-gray-800 group-hover:text-black">{tt.label}</span>
                     </div>
                   </button>
                 ))}
               </div>
               <button
                 onClick={() => { setWallZone(null); setTvType(null); }}
-                className="mt-5 text-[11px] font-bold text-gray-400 hover:text-black transition-colors underline underline-offset-2"
+                className="mt-7 text-xs font-bold text-gray-400 hover:text-black transition-colors underline underline-offset-2"
               >
                 ← Назад к выбору зоны
               </button>
             </div>
           ) : step === 'zone' && wallZone === 'window' ? (
-            <div className="flex flex-col items-center justify-center w-full h-full rounded-3xl bg-white border-2 border-dashed border-gray-200 p-5">
-              <div className="text-center mb-5">
-                <h3 className="text-base font-black text-gray-900 mb-1">Выберите тип оконного проёма</h3>
-                <p className="text-xs text-gray-400">Какое окно на вашем фото?</p>
+            <div className="flex flex-col items-center justify-center w-full h-full rounded-3xl bg-white border-2 border-dashed border-gray-200 p-10">
+              <div className="text-center mb-8">
+                <h3 className="text-xl font-black text-gray-900 mb-1.5">Выберите тип оконного проёма</h3>
+                <p className="text-sm text-gray-400">Какое окно на вашем фото?</p>
               </div>
-              <div className="grid grid-cols-2 gap-3 w-full max-w-lg">
+              <div className="grid grid-cols-2 gap-5 w-full max-w-2xl">
                 {([
                   { id: 'standard',  label: 'Стандартное окно',  img: `${BASE}zones/window-standard.jpg` },
                   { id: 'panoramic', label: 'Панорамное окно',   img: `${BASE}zones/window-panoramic.jpg` },
@@ -3325,7 +3325,7 @@ const BambooStudio = () => {
                     onClick={() => { setWindowType(wt.id); setStep('upload'); }}
                     className="flex flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-gray-50 hover:border-black hover:shadow-lg transition-all active:scale-95 group text-left"
                   >
-                    <div className="w-full h-40 bg-gray-200 overflow-hidden relative">
+                    <div className="w-full h-60 bg-gray-200 overflow-hidden relative">
                       <img
                         src={wt.img}
                         alt={wt.label}
@@ -3333,26 +3333,26 @@ const BambooStudio = () => {
                         onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                       />
                     </div>
-                    <div className="px-3 py-2.5">
-                      <span className="text-[11px] font-black uppercase tracking-wide text-gray-800 group-hover:text-black">{wt.label}</span>
+                    <div className="px-4 py-3">
+                      <span className="text-sm font-black uppercase tracking-wide text-gray-800 group-hover:text-black">{wt.label}</span>
                     </div>
                   </button>
                 ))}
               </div>
               <button
                 onClick={() => { setWallZone(null); setWindowType(null); }}
-                className="mt-5 text-[11px] font-bold text-gray-400 hover:text-black transition-colors underline underline-offset-2"
+                className="mt-7 text-xs font-bold text-gray-400 hover:text-black transition-colors underline underline-offset-2"
               >
                 ← Назад к выбору зоны
               </button>
             </div>
           ) : step === 'zone' && wallZone === 'door' ? (
-            <div className="flex flex-col items-center justify-center w-full h-full rounded-3xl bg-white border-2 border-dashed border-gray-200 p-5">
-              <div className="text-center mb-5">
-                <h3 className="text-base font-black text-gray-900 mb-1">Выберите тип дверного проёма</h3>
-                <p className="text-xs text-gray-400">Есть ли над дверью фальшфрамуга?</p>
+            <div className="flex flex-col items-center justify-center w-full h-full rounded-3xl bg-white border-2 border-dashed border-gray-200 p-10">
+              <div className="text-center mb-8">
+                <h3 className="text-xl font-black text-gray-900 mb-1.5">Выберите тип дверного проёма</h3>
+                <p className="text-sm text-gray-400">Есть ли над дверью фальшфрамуга?</p>
               </div>
-              <div className="grid grid-cols-2 gap-3 w-full max-w-lg">
+              <div className="grid grid-cols-2 gap-5 w-full max-w-2xl">
                 {([
                   { id: 'standard',     label: 'Стандартная дверь',      desc: 'левый и правый откос', img: `${BASE}zones/door-standard.jpg` },
                   { id: 'with-transom', label: 'Дверь с фальшфрамугой', desc: 'откосы и фальшфрамуга сверху', img: `${BASE}zones/door-transom.jpg` },
@@ -3362,37 +3362,37 @@ const BambooStudio = () => {
                     onClick={() => { setDoorType(dt.id); setStep('upload'); }}
                     className="flex flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-gray-50 hover:border-black hover:shadow-lg transition-all active:scale-95 group text-left"
                   >
-                    <div className="w-full h-40 bg-gray-200 overflow-hidden relative">
+                    <div className="w-full h-60 bg-gray-200 overflow-hidden relative">
                       <img
                         src={dt.img}
                         alt={dt.label}
                         className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                         onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                       />
-                      <div className="absolute bottom-0 inset-x-0 p-2">
-                        <span className="text-[9px] text-white font-bold bg-black/50 px-2 py-1 rounded-lg leading-tight">{dt.desc}</span>
+                      <div className="absolute bottom-0 inset-x-0 p-2.5">
+                        <span className="text-[10px] text-white font-bold bg-black/50 px-2.5 py-1 rounded-lg leading-tight">{dt.desc}</span>
                       </div>
                     </div>
-                    <div className="px-3 py-2.5">
-                      <span className="text-[11px] font-black uppercase tracking-wide text-gray-800 group-hover:text-black">{dt.label}</span>
+                    <div className="px-4 py-3">
+                      <span className="text-sm font-black uppercase tracking-wide text-gray-800 group-hover:text-black">{dt.label}</span>
                     </div>
                   </button>
                 ))}
               </div>
               <button
                 onClick={() => { setWallZone(null); setDoorType(null); }}
-                className="mt-5 text-[11px] font-bold text-gray-400 hover:text-black transition-colors underline underline-offset-2"
+                className="mt-7 text-xs font-bold text-gray-400 hover:text-black transition-colors underline underline-offset-2"
               >
                 ← Назад к выбору зоны
               </button>
             </div>
           ) : step === 'zone' ? (
-            <div className="flex flex-col items-center justify-center w-full h-full rounded-3xl bg-white border-2 border-dashed border-gray-200 p-5">
-              <div className="text-center mb-5">
-                <h3 className="text-base font-black text-gray-900 mb-1">Выберите тип зоны</h3>
-                <p className="text-xs text-gray-400">Какой участок стены вы хотите оформить?</p>
+            <div className="flex flex-col items-center justify-center w-full h-full rounded-3xl bg-white border-2 border-dashed border-gray-200 p-10">
+              <div className="text-center mb-8">
+                <h3 className="text-xl font-black text-gray-900 mb-1.5">Выберите тип зоны</h3>
+                <p className="text-sm text-gray-400">Какой участок стены вы хотите оформить?</p>
               </div>
-              <div className="grid grid-cols-3 gap-3 w-full max-w-2xl">
+              <div className="grid grid-cols-3 gap-4 w-full max-w-4xl">
                 {([
                   { id: 'wall',       label: 'Стена',            img: `${BASE}zones/wall.jpg` },
                   { id: 'wall-niche', label: 'Стена с выступом', img: `${BASE}zones/wall-niche.jpg` },
@@ -3411,7 +3411,7 @@ const BambooStudio = () => {
                     }}
                     className="flex flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-gray-50 hover:border-black hover:shadow-lg transition-all active:scale-95 group text-left"
                   >
-                    <div className="w-full h-36 bg-gray-200 overflow-hidden relative">
+                    <div className="w-full h-52 bg-gray-200 overflow-hidden relative">
                       <img
                         src={zone.img}
                         alt={zone.label}
@@ -3419,8 +3419,8 @@ const BambooStudio = () => {
                         onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                       />
                     </div>
-                    <div className="px-3 py-2.5">
-                      <span className="text-[11px] font-black uppercase tracking-wide text-gray-800 group-hover:text-black">{zone.label}</span>
+                    <div className="px-4 py-3">
+                      <span className="text-sm font-black uppercase tracking-wide text-gray-800 group-hover:text-black">{zone.label}</span>
                     </div>
                   </button>
                 ))}
@@ -3583,8 +3583,8 @@ const BambooStudio = () => {
           </div>
         )}
 
-        {/* ── Right tool panel ── */}
-        <div className="w-full md:w-[196px] shrink-0 flex flex-col gap-1.5 overflow-y-auto pb-4 md:pb-1" style={{ scrollbarWidth: 'none' }}>
+        {/* ── Right tool panel — hidden on zone-selection step ── */}
+        <div className={`w-full md:w-[196px] shrink-0 flex flex-col gap-1.5 overflow-y-auto pb-4 md:pb-1 ${step === 'zone' ? 'hidden' : ''}`} style={{ scrollbarWidth: 'none' }}>
 
           {/* MARK step */}
           {step === 'mark' && (
