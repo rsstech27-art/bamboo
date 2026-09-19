@@ -1,8 +1,14 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
+import { timingSafeEqual, createHash } from "crypto";
 
 function parseId(raw: string | string[]): number {
   return parseInt(Array.isArray(raw) ? raw[0] : raw, 10);
 }
+
+function hashStr(s: string): Buffer {
+  return createHash("sha256").update(s, "utf8").digest();
+}
+
 import { db } from "@workspace/db";
 import { ordersTable, managerSettingsTable } from "@workspace/db/schema";
 import { eq, desc } from "drizzle-orm";
@@ -40,7 +46,7 @@ async function requireApiKey(req: Request, res: Response, next: NextFunction) {
       .status(503)
       .json({ error: "API key not configured — generate one in manager settings." });
   }
-  if (provided !== stored) {
+  if (!timingSafeEqual(hashStr(provided), hashStr(stored))) {
     return void res.status(403).json({ error: "Invalid API key" });
   }
   next();

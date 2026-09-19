@@ -81,14 +81,18 @@ router.post("/manager/login", (req, res) => {
   }
 
   clearAttempts(ip);
-  req.session.isManager = true;
-  req.session.save((err) => {
-    if (err) {
-      return void res
-        .status(500)
-        .json({ error: "Session save failed.", detail: String(err) });
+  // Regenerate session ID after successful auth to prevent session fixation
+  req.session.regenerate((regenErr) => {
+    if (regenErr) {
+      return void res.status(500).json({ error: "Session error." });
     }
-    res.json({ ok: true });
+    req.session.isManager = true;
+    req.session.save((saveErr) => {
+      if (saveErr) {
+        return void res.status(500).json({ error: "Session save failed." });
+      }
+      res.json({ ok: true });
+    });
   });
 });
 

@@ -50,13 +50,22 @@ export const optimizedPanelCalc = (
 // For horizontal orientation pass PANEL_H_MM (2800) — panels are wider per column.
 // First-fit decreasing bin packing; returns how many panels are needed.
 export const packWidthRemainders = (piecesMm: number[], panelW: number = PANEL_W_MM): number => {
-  const sorted = piecesMm.filter(p => p > 0).sort((a, b) => b - a);
+  if (panelW <= 0 || !Number.isFinite(panelW)) return 0;
+  // Pieces wider than panelW each need their own full panel; count them separately
+  let extraPanels = 0;
+  const fitsInOne: number[] = [];
+  for (const p of piecesMm) {
+    if (!Number.isFinite(p) || p <= 0) continue;
+    if (p > panelW) { extraPanels += Math.ceil(p / panelW); }
+    else { fitsInOne.push(p); }
+  }
+  const sorted = fitsInOne.sort((a, b) => b - a);
   const bins: number[] = []; // remaining usable width of each opened panel
   for (const p of sorted) {
     const i = bins.findIndex(b => b >= p);
     if (i >= 0) bins[i] -= p; else bins.push(panelW - p);
   }
-  return bins.length;
+  return extraPanels + bins.length;
 };
 
 // Profile pieces are 3 m long. Given required run lengths (mm), count how many

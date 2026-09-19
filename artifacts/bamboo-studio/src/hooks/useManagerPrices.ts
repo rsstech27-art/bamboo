@@ -184,7 +184,10 @@ export function useManagerPrices() {
     if (pendingSaves.current > 0) return; // more saves in-flight
     setDbSaveStatus(ok ? 'saved' : 'error');
     if (saveResetTimer.current) clearTimeout(saveResetTimer.current);
-    saveResetTimer.current = setTimeout(() => setDbSaveStatus('idle'), 3000);
+    saveResetTimer.current = setTimeout(() => {
+      saveResetTimer.current = null;
+      setDbSaveStatus('idle');
+    }, 3000);
   }, []);
 
   /** Persist a key to DB with visual status tracking. Call OUTSIDE setState updaters. */
@@ -230,24 +233,24 @@ export function useManagerPrices() {
       if (remote.extras_prices)  { setExtrasOverrides(remote.extras_prices);      saveLS(LS_EXTRAS_KEY,        remote.extras_prices as Record<string, unknown>); }
       if (Array.isArray(remote.custom_series)) {
         const valid = remote.custom_series.filter(s =>
-          s && typeof s.id === 'string' && typeof s.name === 'string' &&
-          typeof s.price === 'number' && s.price > 0
+          s && typeof s.id === 'string' && typeof s.name === 'string' && s.name.trim() &&
+          typeof s.price === 'number' && Number.isFinite(s.price) && s.price > 0
         );
         setCustomSeries(valid);
         try { localStorage.setItem(LS_CUSTOM_SERIES_KEY, JSON.stringify(valid)); } catch { /* ignore */ }
       }
       if (Array.isArray(remote.custom_moldings)) {
         const valid = remote.custom_moldings.filter(s =>
-          s && typeof s.id === 'string' && typeof s.name === 'string' &&
-          typeof s.price === 'number' && s.price > 0
+          s && typeof s.id === 'string' && typeof s.name === 'string' && s.name.trim() &&
+          typeof s.price === 'number' && Number.isFinite(s.price) && s.price > 0
         );
         setCustomMoldings(valid);
         try { localStorage.setItem(LS_CUSTOM_MOLDINGS_KEY, JSON.stringify(valid)); } catch { /* ignore */ }
       }
       if (Array.isArray(remote.custom_extras)) {
         const valid = remote.custom_extras.filter(s =>
-          s && typeof s.id === 'string' && typeof s.name === 'string' &&
-          typeof s.price === 'number' && s.price > 0
+          s && typeof s.id === 'string' && typeof s.name === 'string' && s.name.trim() &&
+          typeof s.price === 'number' && Number.isFinite(s.price) && s.price > 0
         );
         setCustomExtras(valid);
         try { localStorage.setItem(LS_CUSTOM_EXTRAS_KEY, JSON.stringify(valid)); } catch { /* ignore */ }

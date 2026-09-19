@@ -1887,10 +1887,9 @@ function TabIntegrations() {
   const baseUrl = `${window.location.protocol}//${window.location.host}`;
 
   useEffect(() => {
-    void fetch('/api/settings')
-      .then(r => r.json())
-      .then((s: Record<string, unknown>) => {
-        const val = s['api_key'] as Record<string, string> | null | undefined;
+    void managerFetch('/api/settings/api_key')
+      .then(r => r.ok ? r.json() : null)
+      .then((val: Record<string, string> | null) => {
         setApiKey(val?.key ?? null);
       })
       .catch(() => {})

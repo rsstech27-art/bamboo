@@ -137,6 +137,10 @@ router.patch("/orders/:id/after-photo", requireManagerSession, async (req, res) 
     if (typeof afterPhotoUrl !== "string" || !afterPhotoUrl.startsWith("data:image/")) {
       return void res.status(400).json({ error: "afterPhotoUrl must be a data:image/ URL" });
     }
+    // Limit to ~3.75 MB decoded (≈5 MB as base64 string)
+    if (afterPhotoUrl.length > 5_000_000) {
+      return void res.status(413).json({ error: "Image too large (max ~3.7 MB)" });
+    }
 
     const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, id));
     if (!order) return void res.status(404).json({ error: "Order not found" });
@@ -165,15 +169,17 @@ router.patch("/orders/:id/pdf", requireManagerSession, async (req, res) => {
       return void res.status(400).json({ error: "Invalid objectPath" });
     }
 
-    await db
+    const [updated] = await db
       .update(ordersTable)
       .set({ pdfPath: objectPath } as Record<string, unknown>)
-      .where(eq(ordersTable.id, id));
+      .where(eq(ordersTable.id, id))
+      .returning({ id: ordersTable.id });
 
+    if (!updated) return void res.status(404).json({ error: "Order not found" });
     res.json({ ok: true });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ error: "Failed to save pdf path", detail: msg });
+    res.status(500).json({ error: "Failed to save pdf path", ...(process.env.NODE_ENV !== "production" && { detail: msg }) });
   }
 });
 
