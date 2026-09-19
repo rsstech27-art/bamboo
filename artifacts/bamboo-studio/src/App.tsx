@@ -433,7 +433,10 @@ const MOLDING_INFO: Record<string, { article: string; name: string; price: numbe
   brass:    { article: 'PR-BRASS',  name: 'Профиль латунь',         price: 990  },
   gap:      { article: 'PR-GAP',    name: 'Профиль с разрывом',     price: 1090 },
   light:    { article: 'PR-LIGHT',  name: 'Профиль с подсветкой',   price: 1490 },
-  edge:     { article: 'PR-EDGE',   name: 'Профиль торцевой',       price: 790  },
+  edge:          { article: 'PR-EDGE',     name: 'Профиль торцевой',            price: 790  },
+  edge_black:    { article: 'PR-EDGE-BLK', name: 'Профиль торцевой чёрный',    price: 790  },
+  edge_metallic: { article: 'PR-EDGE-MTL', name: 'Профиль торцевой металлик',  price: 790  },
+  edge_bronze:   { article: 'PR-EDGE-BRZ', name: 'Профиль торцевой бронза',    price: 790  },
 };
 
 // Meter input that keeps its own text while typing — a controlled type="number"
@@ -578,6 +581,8 @@ const BambooStudio = () => {
   const [moldingWidth, setMoldingWidth] = useState(1);
   const [hMoldingStyle, setHMoldingStyle] = useState<MoldingStyle>('black');
   const [edgeProfileSides, setEdgeProfileSides] = useState({ top: false, bottom: false, left: false, right: false });
+  const [edgeProfileColor, setEdgeProfileColor] = useState<'black' | 'metallic' | 'bronze'>('black');
+  const edgeProfileColorRef = useRef<'black' | 'metallic' | 'bronze'>('black');
   const [hMoldingCount, setHMoldingCount] = useState(1);
   const [hMoldingWidth, setHMoldingWidth] = useState(1);
   const [hMoldingPositions, setHMoldingPositions] = useState<number[]>([0.5]);
@@ -694,6 +699,7 @@ const BambooStudio = () => {
     vMoldingCount: number;
     panelOrientation: 'vertical' | 'horizontal';
     edgeProfileSides: { top: boolean; bottom: boolean; left: boolean; right: boolean };
+    edgeProfileColor: 'black' | 'metallic' | 'bronze';
     jointProfilePosition: ('bottom' | 'top')[];
     dividerStyleOverrides: Record<number, MoldingStyle>;
     hMoldingStyleOverrides: Record<number, MoldingStyle>;
@@ -727,6 +733,7 @@ const BambooStudio = () => {
       vMoldingCount: vMoldingCountRef.current,
       panelOrientation: panelOrientationRef.current,
       edgeProfileSides: { ...edgeProfileSidesRef.current },
+      edgeProfileColor: edgeProfileColorRef.current,
       jointProfilePosition: [...jointProfilePositionRef.current],
       dividerStyleOverrides: { ...dividerStyleOverridesRef.current },
       hMoldingStyleOverrides: { ...hMoldingStyleOverridesRef.current },
@@ -755,6 +762,7 @@ const BambooStudio = () => {
     vMoldingCount: vMoldingCountRef.current,
     panelOrientation: panelOrientationRef.current,
     edgeProfileSides: { ...edgeProfileSidesRef.current },
+    edgeProfileColor: edgeProfileColorRef.current,
     jointProfilePosition: [...jointProfilePositionRef.current],
     dividerStyleOverrides: { ...dividerStyleOverridesRef.current },
     hMoldingStyleOverrides: { ...hMoldingStyleOverridesRef.current },
@@ -765,6 +773,7 @@ const BambooStudio = () => {
     setCornerTypes(prev.cornerTypes);
     setWrapJunctions(prev.wrapJunctions);
     setEdgeProfileSides(prev.edgeProfileSides);
+    setEdgeProfileColor(prev.edgeProfileColor ?? 'black');
     if (prev.surfaceIndex === activeSurfaceRef.current) {
       setSectorMaterials(prev.sectorMaterials);
       setDividerPositions(prev.dividerPositions);
@@ -848,6 +857,7 @@ const BambooStudio = () => {
   useEffect(() => { vMoldingCountRef.current = vMoldingCount; }, [vMoldingCount]);
   useEffect(() => { panelOrientationRef.current = panelOrientation; }, [panelOrientation]);
   useEffect(() => { edgeProfileSidesRef.current = edgeProfileSides; }, [edgeProfileSides]);
+  useEffect(() => { edgeProfileColorRef.current = edgeProfileColor; }, [edgeProfileColor]);
   useEffect(() => { lightModeRef.current = lightMode; }, [lightMode]);
   useEffect(() => { cylHighlightPosRef.current = cylHighlightPos; }, [cylHighlightPos]);
   // Auto-shift cylinder highlight when the light mode changes:
@@ -1795,9 +1805,10 @@ const BambooStudio = () => {
               const px = -dy / len, py = dx / len;
               const mX = (p1.x + p2.x) / 2, mY = (p1.y + p2.y) / 2;
               const hw = 5;
+              const edgeCol = { black: '#111111', metallic: '#c8c8c8', bronze: '#9a5520' }[edgeProfileColorRef.current] ?? '#111111';
               tCtx.save();
-              tCtx.strokeStyle = 'rgba(0,0,0,0.82)';
-              tCtx.lineWidth = 1.5;
+              tCtx.strokeStyle = edgeCol;
+              tCtx.lineWidth = 2;
               tCtx.lineCap = 'butt';
               tCtx.beginPath();
               tCtx.moveTo(p1.x, p1.y);
@@ -2740,8 +2751,10 @@ const BambooStudio = () => {
         if (ep.right  && mainCfg.wallHeightMm > 0) edgeLengths.push(mainCfg.wallHeightMm);
         if (edgeLengths.length > 0) {
           const edgePieces = packProfileRuns(edgeLengths);
-          const edgeInfo = MOLDING_INFO['edge'];
-          addItem(edgeInfo.article + '-3M', `${getEffectiveMoldingName('edge', moldingNameOverrides)} (3 м)`, edgePieces, getEffectiveMoldingPrice('edge'));
+          const edgeColorKey = `edge_${edgeProfileColorRef.current}` as string;
+          const edgeKey = MOLDING_INFO[edgeColorKey] ? edgeColorKey : 'edge';
+          const edgeInfo = MOLDING_INFO[edgeKey];
+          addItem(edgeInfo.article + '-3M', `${getEffectiveMoldingName(edgeKey, moldingNameOverrides)} (3 м)`, edgePieces, getEffectiveMoldingPrice(edgeKey));
         }
       }
     }
@@ -4482,6 +4495,35 @@ const BambooStudio = () => {
                     </button>
                   ))}
                 </div>
+                {/* Edge profile colour picker — colours only, no modifiers */}
+                {(() => {
+                  const EDGE_COLOR_BAR: Record<string, React.CSSProperties> = {
+                    black:    { background: 'linear-gradient(to bottom, #000 0%, #0c0c0c 20%, #1e1e1e 50%, #0c0c0c 80%, #000 100%)' },
+                    metallic: { background: 'linear-gradient(to bottom, #5a5a5a 0%, #9a9a9a 20%, #e8e8e8 45%, #fff 50%, #e0e0e0 55%, #9a9a9a 80%, #4a4a4a 100%)' },
+                    bronze:   { background: 'linear-gradient(to bottom, #1a0a00 0%, #5a2e0a 20%, #a0602a 45%, #c8844a 50%, #a0602a 55%, #5a2e0a 80%, #1a0a00 100%)' },
+                  };
+                  const EDGE_COLOR_OPTS = [
+                    { id: 'black'    as const, label: 'Чрн'  },
+                    { id: 'metallic' as const, label: 'Мтл'  },
+                    { id: 'bronze'   as const, label: 'Брнз' },
+                  ];
+                  return (
+                    <div className="grid grid-cols-3 gap-1 mb-2">
+                      {EDGE_COLOR_OPTS.map(o => {
+                        const active = edgeProfileColor === o.id;
+                        return (
+                          <button key={o.id}
+                            onClick={() => { pushHistory(); setEdgeProfileColor(o.id); }}
+                            className="flex flex-col items-center gap-1 transition-all">
+                            <div className={`w-full h-5 rounded-sm border-2 transition-all ${active ? 'border-gray-800 shadow-md' : 'border-transparent opacity-55'}`}
+                              style={EDGE_COLOR_BAR[o.id]}/>
+                            <span className={`text-[7px] font-bold uppercase leading-none ${active ? 'text-gray-800' : 'text-gray-400'}`}>{o.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
                 {Object.values(edgeProfileSides).some(Boolean) && (
                   (() => {
                     const totalMm =

@@ -26,7 +26,11 @@ export const DEFAULT_MOLDING_PRICES: Array<{ id: string; name: string; article: 
   // Соединительные: с разрывом и с подсветкой
   { id: 'gap',      article: 'PR-GAP',    name: 'Профиль с разрывом',     defaultPrice: 1090 },
   { id: 'light',    article: 'PR-LIGHT',  name: 'Профиль с подсветкой',   defaultPrice: 1490 },
-  // Торцевой профиль
+  // Торцевой профиль — по цветам
+  { id: 'edge_black',    article: 'PR-EDGE-BLK', name: 'Профиль торцевой чёрный',    defaultPrice: 790  },
+  { id: 'edge_metallic', article: 'PR-EDGE-MTL', name: 'Профиль торцевой металлик',  defaultPrice: 790  },
+  { id: 'edge_bronze',   article: 'PR-EDGE-BRZ', name: 'Профиль торцевой бронза',    defaultPrice: 790  },
+  // legacy — единый торец без цвета (обратная совместимость)
   { id: 'edge',     article: 'PR-EDGE',   name: 'Профиль торцевой',       defaultPrice: 790  },
 ];
 
