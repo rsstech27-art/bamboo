@@ -270,9 +270,10 @@ const isReikiId     = (panelId: string) => (_PANEL_SERIES_MAP.get(panelId) ?? ''
 const matLabel = (m: Panel) => m.kpName ?? m.name;
 
 /** Returns true when no metallic profile is required at the joint between left and right.
- *  Per-panel override (noMetallicProfile === false) takes precedence over series rules. */
+ *  noMetallicProfile === true  → panel is explicitly set to "joins without profile" in DB.
+ *  Also covers wood-family and reiki series rules. */
 const noMetallicJoint = (left: Panel, right: Panel) =>
-  left.noMetallicProfile === false || right.noMetallicProfile === false ||
+  left.noMetallicProfile === true || right.noMetallicProfile === true ||
   isReikiId(left.id) || isReikiId(right.id) ||
   (isWoodFamilyId(left.id) && isWoodFamilyId(right.id));
 
@@ -1409,7 +1410,9 @@ const BambooStudio = () => {
         const autoVWidth = curMoldingStyle !== 'none' ? curMoldingWidth : 2;
         if (cfg.wallWidthMm > 0) {
           const secBounds = getSectorBounds(cfg.dividerPositions, cfg.panelCount);
-          secBounds.forEach(({ start: sR, end: eR }) => {
+          secBounds.forEach(({ start: sR, end: eR }, sIdx) => {
+            // Skip if this sector's panel joins without profile
+            if (cfg.sectorMaterials[sIdx]?.noMetallicProfile) return;
             const sectorMm = cfg.wallWidthMm * (eR - sR);
             if (sectorMm <= colStepV) return;
             const nJoints = Math.floor(sectorMm / colStepV);
@@ -2474,15 +2477,25 @@ const BambooStudio = () => {
         }
       } else {
         // MANDATORY joints: wall wider than one panel ⇒ panels in a row MUST be
-        // joined with vertical profiles — except between adjacent wood-family panels.
+        // joined with vertical profiles — except between adjacent wood-family panels
+        // or panels explicitly set to "joins without profile" (noMetallicProfile).
         // Horizontal TV panels cover PANEL_H_MM (2800 mm) per column, not PANEL_W_MM.
         const colStep = isHorizTv ? PANEL_H_MM : PANEL_W_MM;
         const perRow = Math.ceil(wMm / colStep);
         const totalJoints = Math.max(0, perRow - 1);
+        // Helper: map a wall-width ratio to the sector index it belongs to
+        const ratioToSector = (r: number): number => {
+          for (let s = 0; s < cfg.panelCount - 1; s++) {
+            if (r < (cfg.dividerPositions[s] ?? 1)) return s;
+          }
+          return cfg.panelCount - 1;
+        };
         let metalJoints = 0;
         for (let j = 0; j < totalJoints; j++) {
-          const left = cfg.sectorMaterials[j] ?? BAMBOO_PANELS[0];
-          const right = cfg.sectorMaterials[j + 1] ?? BAMBOO_PANELS[0];
+          const leftRatio  = (j + 0.5) * colStep / wMm;
+          const rightRatio = (j + 1.5) * colStep / wMm;
+          const left  = cfg.sectorMaterials[ratioToSector(leftRatio)]  ?? BAMBOO_PANELS[0];
+          const right = cfg.sectorMaterials[ratioToSector(rightRatio)] ?? BAMBOO_PANELS[0];
           if (!noMetallicJoint(left, right)) metalJoints++;
         }
         if (metalJoints > 0) addRuns('metallic', hMm, metalJoints);
