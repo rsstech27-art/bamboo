@@ -1313,6 +1313,7 @@ function TabProducts({
   onUpdateMolding, onUpdateMoldingName, onDeleteMolding, onUpdateCustomMolding,
   onHideMolding, onAddMolding,
   hiddenExtrasIds, onUpdateExtras, onHideExtra,
+  customExtras, onAddExtra, onDeleteExtra, onUpdateCustomExtra,
 }: {
   seriesOptions: Array<{ name: string; price: number }>;
   onPhotoChange?: () => void;
@@ -1331,6 +1332,10 @@ function TabProducts({
   hiddenExtrasIds?: string[];
   onUpdateExtras?: (id: string, p: number) => void;
   onHideExtra?: (id: string) => void;
+  customExtras?: SeriesDefinition[];
+  onAddExtra?: (name: string, price: number) => void;
+  onDeleteExtra?: (id: string) => void;
+  onUpdateCustomExtra?: (id: string, name: string, price: number) => void;
 }) {
   const { data, loading, error, reload } = useFetch<Product[]>('/api/products');
   const [creating, setCreating] = useState(false);
@@ -1474,29 +1479,6 @@ function TabProducts({
         {/* ════════════════════ LEFT — product list ════════════════════ */}
         <div className="flex-1 min-w-0 space-y-4">
 
-          {/* Add buttons */}
-          {!creating && !creatingMolding && (
-            <div className="flex gap-2">
-              <button
-                onClick={() => { setCreating(true); setCreatingMolding(false); setPanelsOpen(true); }}
-                className="flex-1 flex items-center justify-center gap-2 bg-black text-white text-sm font-bold py-3 rounded-2xl hover:bg-gray-800 active:scale-95 transition-all shadow-sm">
-                <Plus size={15} /> Добавить панель
-              </button>
-              <button
-                onClick={() => { setCreatingMolding(true); setCreating(false); setProfilesOpen(true); }}
-                className="flex-1 flex items-center justify-center gap-2 border-2 border-gray-200 text-gray-700 text-sm font-bold py-3 rounded-2xl hover:border-black hover:text-black transition-colors">
-                <Plus size={15} /> Добавить профиль
-              </button>
-            </div>
-          )}
-
-          {creating && (
-            <ProductCreateForm seriesOptions={seriesOptions} onSave={create} onCancel={() => setCreating(false)} />
-          )}
-          {creatingMolding && (
-            <MoldingCreateForm seriesOptions={moldingSeriesOptions} onSave={createMolding} onCancel={() => setCreatingMolding(false)} />
-          )}
-
           {loading && (
             <div className="flex items-center justify-center py-12 gap-2 text-gray-400">
               <Loader2 size={18} className="animate-spin" /> Загрузка…
@@ -1544,9 +1526,18 @@ function TabProducts({
             </button>
             {panelsOpen && (
               <div className="space-y-3">
+                {creating ? (
+                  <ProductCreateForm seriesOptions={seriesOptions} onSave={create} onCancel={() => setCreating(false)} />
+                ) : (
+                  <button
+                    onClick={() => { setCreating(true); setCreatingMolding(false); }}
+                    className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 hover:border-black text-gray-500 hover:text-black text-sm font-bold py-3 rounded-2xl transition-colors">
+                    <Plus size={14} /> Добавить панель
+                  </button>
+                )}
                 {!loading && panelProducts.length === 0 && !creating && (
-                  <div className="text-center py-6 text-gray-400">
-                    <Package size={32} className="mx-auto mb-2 opacity-30" />
+                  <div className="text-center py-4 text-gray-400">
+                    <Package size={28} className="mx-auto mb-2 opacity-30" />
                     <p className="text-sm">Нажмите «Загрузить каталог» или добавьте панель вручную</p>
                   </div>
                 )}
@@ -1582,9 +1573,18 @@ function TabProducts({
             </button>
             {profilesOpen && (
               <div className="space-y-2">
+                {creatingMolding ? (
+                  <MoldingCreateForm seriesOptions={moldingSeriesOptions} onSave={createMolding} onCancel={() => setCreatingMolding(false)} />
+                ) : (
+                  <button
+                    onClick={() => { setCreatingMolding(true); setCreating(false); }}
+                    className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 hover:border-black text-gray-500 hover:text-black text-sm font-bold py-3 rounded-2xl transition-colors">
+                    <Plus size={14} /> Добавить профиль
+                  </button>
+                )}
                 {moldingProducts.length === 0 && !creatingMolding && (
-                  <div className="text-center py-6 text-gray-400 text-sm">
-                    <Package size={28} className="mx-auto mb-2 opacity-30" />
+                  <div className="text-center py-4 text-gray-400 text-sm">
+                    <Package size={24} className="mx-auto mb-2 opacity-30" />
                     Нет добавленных профилей
                   </div>
                 )}
@@ -1598,37 +1598,67 @@ function TabProducts({
           </section>
 
           {/* Клей и доп. товары */}
-          {DEFAULT_EXTRAS.length > 0 && (
-            <section>
-              <button onClick={() => setExtrasOpen(v => !v)}
-                className="w-full flex items-center justify-between group mb-3">
-                <div className="flex items-center gap-2">
-                  <ChevronRight size={13} className={`text-gray-400 transition-transform ${extrasOpen ? 'rotate-90' : ''}`} />
-                  <h3 className="text-xs font-black uppercase tracking-widest text-gray-500 group-hover:text-gray-700 transition-colors">
-                    Клей и доп. товары
-                  </h3>
-                </div>
-              </button>
-              {extrasOpen && (
-                <div className="bg-white border border-gray-100 rounded-xl px-4 shadow-sm">
-                  {DEFAULT_EXTRAS
-                    .filter(e => !(hiddenExtrasIds ?? []).includes(e.id))
-                    .map(e => (
-                      <EditableRow
+          <section>
+            <button onClick={() => setExtrasOpen(v => !v)}
+              className="w-full flex items-center justify-between group mb-3">
+              <div className="flex items-center gap-2">
+                <ChevronRight size={13} className={`text-gray-400 transition-transform ${extrasOpen ? 'rotate-90' : ''}`} />
+                <h3 className="text-xs font-black uppercase tracking-widest text-gray-500 group-hover:text-gray-700 transition-colors">
+                  Клей и доп. товары
+                </h3>
+                {(customExtras ?? []).length > 0 && (
+                  <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">
+                    {DEFAULT_EXTRAS.filter(e => !(hiddenExtrasIds ?? []).includes(e.id)).length + (customExtras ?? []).length}
+                  </span>
+                )}
+              </div>
+            </button>
+            {extrasOpen && (
+              <div className="space-y-2">
+                {onAddExtra && (
+                  <AddItemForm
+                    onAdd={onAddExtra}
+                    buttonLabel="Добавить товар"
+                    formTitle="Новый товар"
+                    namePlaceholder="Название товара"
+                    priceLabel="Цена, ₽"
+                    pricePlaceholder="990"
+                    errorFallback="Не удалось добавить"
+                  />
+                )}
+                {DEFAULT_EXTRAS.length > 0 && (
+                  <div className="bg-white border border-gray-100 rounded-xl px-4 shadow-sm">
+                    {DEFAULT_EXTRAS
+                      .filter(e => !(hiddenExtrasIds ?? []).includes(e.id))
+                      .map(e => (
+                        <EditableRow
+                          key={e.id}
+                          defaultName={e.name}
+                          defaultPrice={e.defaultPrice}
+                          priceOverride={(extrasOverrides ?? {})[e.id]}
+                          onNameChange={() => {/* имя не редактируется */}}
+                          onPriceChange={price => onUpdateExtras?.(e.id, price)}
+                          unitLabel={e.unit}
+                          onDelete={() => onHideExtra?.(e.id)}
+                        />
+                      ))}
+                  </div>
+                )}
+                {(customExtras ?? []).length > 0 && (
+                  <div className="bg-white border border-gray-100 rounded-xl px-4 shadow-sm">
+                    {(customExtras ?? []).map(e => (
+                      <CustomItemRow
                         key={e.id}
-                        defaultName={e.name}
-                        defaultPrice={e.defaultPrice}
-                        priceOverride={(extrasOverrides ?? {})[e.id]}
-                        onNameChange={() => {/* имя не редактируется */}}
-                        onPriceChange={price => onUpdateExtras?.(e.id, price)}
-                        unitLabel={e.unit}
-                        onDelete={() => onHideExtra?.(e.id)}
+                        item={e}
+                        onUpdate={(name, price) => onUpdateCustomExtra?.(e.id, name, price)}
+                        onDelete={() => onDeleteExtra?.(e.id)}
                       />
                     ))}
-                </div>
-              )}
-            </section>
-          )}
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
         </div>
 
         {/* ════════════════════ RIGHT — sidebar ════════════════════ */}
@@ -2349,6 +2379,10 @@ export function ManagerPanel({
                   hiddenExtrasIds={hiddenExtrasIds}
                   onUpdateExtras={onUpdateExtras}
                   onHideExtra={onHideExtra}
+                  customExtras={customExtras}
+                  onAddExtra={onAddExtra}
+                  onDeleteExtra={onDeleteExtra}
+                  onUpdateCustomExtra={onUpdateCustomExtra}
                 />
               )}
               {tab === 'orders' && <TabOrders />}
