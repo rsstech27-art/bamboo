@@ -2804,7 +2804,7 @@ const BambooStudio = () => {
       y += 28;
       if (columnCalc.opt.donorPanels > 0) {
         c.fillText(
-          `Докрой по высоте: ${columnCalc.opt.donorPanels} ${panelsWord(columnCalc.opt.donorPanels)} режется на полосы ${(columnCalc.opt.remMm / 10).toFixed(0)} см (${columnCalc.opt.stripsPerPanel} шт. из одной панели)`,
+          `Высота больше 2,8 м — ${columnCalc.opt.fullRows} ${rowsWord(columnCalc.opt.fullRows)} по высоте, всего ${columnCalc.needed} ${panelsWord(columnCalc.needed)} (в расчёте КП учтено)`,
           60, y + 8, W - 120);
         y += 28;
       }
