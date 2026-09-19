@@ -1947,8 +1947,6 @@ function TabProducts({
             </button>
           </div>
 
-          {/* Резервная копия */}
-          <BackupSection onImportSuccess={() => { void reload(); onPhotoChange?.(); onSettingsChange?.(); }} />
         </div>
       </div>
     </div>
@@ -2448,10 +2446,11 @@ function TabOrders() {
 // Root export
 // ─────────────────────────────────────────────────────────────────────────────
 const TABS = [
-  { id: 'prices',       label: 'Цены',        icon: Tag },
-  { id: 'products',     label: 'Товары',       icon: Package },
-  { id: 'orders',       label: 'Заказы',       icon: ShoppingBag },
-  { id: 'integrations', label: 'API',          icon: ChevronRight },
+  { id: 'prices',       label: 'Цены',            icon: Tag },
+  { id: 'products',     label: 'Товары',           icon: Package },
+  { id: 'orders',       label: 'Заказы',           icon: ShoppingBag },
+  { id: 'integrations', label: 'API',              icon: ChevronRight },
+  { id: 'backup',       label: 'Резервная копия',  icon: HardDrive },
 ] as const;
 
 type TabId = typeof TABS[number]['id'];
@@ -2700,6 +2699,11 @@ export function ManagerPanel({
               )}
               {tab === 'orders' && <TabOrders />}
               {tab === 'integrations' && <TabIntegrations />}
+              {tab === 'backup' && (
+                <div className="max-w-2xl mx-auto py-8 px-4">
+                  <BackupSection onImportSuccess={() => { void onPhotoChange?.(); void onSettingsChange?.(); }} />
+                </div>
+              )}
             </div>
           </>
         )}
