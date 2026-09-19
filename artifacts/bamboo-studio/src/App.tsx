@@ -4261,7 +4261,7 @@ const BambooStudio = () => {
                 const mat = activeSector !== null
                   ? sectorMaterials[activeSector]
                   : Object.values(sectorMaterials).find(m => m?.texture && !m?.textureStretch);
-                if (!mat?.texture || mat?.textureStretch) return null;
+                if (!mat?.texture || mat?.textureStretch || mat?.textureScale == null) return null;
                 const defaultScale = mat.textureScale ?? 1;
                 const ts = mat.textureScaleX ?? mat.textureScaleY ?? defaultScale;
                 const isCustom = mat.textureScaleX != null || mat.textureScaleY != null;
