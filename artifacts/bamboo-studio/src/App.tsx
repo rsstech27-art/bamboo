@@ -3363,8 +3363,9 @@ const BambooStudio = () => {
 
           <button onClick={scrollToTool}
             className="inline-flex items-center px-10 py-4 transition-all active:scale-95 hover:opacity-90"
-            style={{ backgroundColor: '#ffffff', color: '#333333', borderRadius: '4px', fontFamily: 'Manrope, sans-serif', fontWeight: 600, fontSize: '14px', border: 'none', boxShadow: 'none' }}>
+            style={{ backgroundColor: '#ffffff', color: '#333333', borderRadius: '4px', fontFamily: 'Manrope, sans-serif', fontWeight: 700, fontSize: '14px', border: 'none', boxShadow: 'none' }}>
             Начать подбор
+            <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
           </button>
         </div>
       </section>
