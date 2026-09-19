@@ -351,6 +351,7 @@ type SurfaceConfig = {
   wallWidthMm: number;   // 0 = not specified
   wallHeightMm: number;  // 0 = not specified
   panelOrientation: 'vertical' | 'horizontal';
+  jointProfilePosition: ('bottom' | 'top')[];
 };
 const defaultSurfaceConfig = (): SurfaceConfig => ({
   panelCount: 5,
@@ -367,6 +368,7 @@ const defaultSurfaceConfig = (): SurfaceConfig => ({
   wallWidthMm: 0,
   wallHeightMm: 0,
   panelOrientation: 'vertical',
+  jointProfilePosition: ['bottom'],
 });
 
 const SURFACE_LABELS = ['Стена 1 · Основная', 'Стена 2', 'Стена 3'];
@@ -588,8 +590,10 @@ const BambooStudio = () => {
   // Real wall dimensions (mm) of the ACTIVE surface; 0 = not specified
   const [wallWidthMm, setWallWidthMm] = useState(0);
   const [wallHeightMm, setWallHeightMm] = useState(0);
+  const [jointProfilePosition, setJointProfilePosition] = useState<('bottom' | 'top')[]>(['bottom']);
   const wallWidthMmRef = useRef(0);
   const wallHeightMmRef = useRef(0);
+  const jointProfilePositionRef = useRef<('bottom' | 'top')[]>(['bottom']);
   const wallZoneRef = useRef<string | null>(null);
   const doorTypeRef = useRef<'standard' | 'with-transom' | null>(null);
   const doorShowDoorRef = useRef(true);
@@ -671,6 +675,7 @@ const BambooStudio = () => {
     vMoldingCount: number;
     panelOrientation: 'vertical' | 'horizontal';
     edgeProfileSides: { top: boolean; bottom: boolean; left: boolean; right: boolean };
+    jointProfilePosition: ('bottom' | 'top')[];
   };
   const historyRef = useRef<HistorySnapshot[]>([]);
   const redoRef   = useRef<HistorySnapshot[]>([]);
@@ -701,6 +706,7 @@ const BambooStudio = () => {
       vMoldingCount: vMoldingCountRef.current,
       panelOrientation: panelOrientationRef.current,
       edgeProfileSides: { ...edgeProfileSidesRef.current },
+      jointProfilePosition: [...jointProfilePositionRef.current],
     });
     if (historyRef.current.length > 50) historyRef.current.shift();
     setHistoryLen(historyRef.current.length);
@@ -726,6 +732,7 @@ const BambooStudio = () => {
     vMoldingCount: vMoldingCountRef.current,
     panelOrientation: panelOrientationRef.current,
     edgeProfileSides: { ...edgeProfileSidesRef.current },
+    jointProfilePosition: [...jointProfilePositionRef.current],
   }), []);
 
   // Restore a snapshot to live state
@@ -748,6 +755,7 @@ const BambooStudio = () => {
       setVMoldingPositions(prev.vMoldingPositions);
       setVMoldingCount(prev.vMoldingCount);
       setPanelOrientation(prev.panelOrientation);
+      setJointProfilePosition(prev.jointProfilePosition ?? ['bottom']);
     } else {
       const cfg = surfacesRef.current[prev.surfaceIndex] ?? defaultSurfaceConfig();
       surfacesRef.current[prev.surfaceIndex] = {
@@ -766,6 +774,7 @@ const BambooStudio = () => {
         vMoldingPositions: prev.vMoldingPositions,
         vMoldingCount: prev.vMoldingCount,
         panelOrientation: prev.panelOrientation,
+        jointProfilePosition: prev.jointProfilePosition ?? ['bottom'],
       };
       setPoints(pv => [...pv]);
     }
@@ -837,8 +846,10 @@ const BambooStudio = () => {
       vMoldingPositions, vMoldingCount,
       wallWidthMm, wallHeightMm,
       panelOrientation,
+      jointProfilePosition,
     };
-  }, [activeSurface, panelCount, dividerPositions, sectorMaterials, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, vMoldingPositions, vMoldingCount, wallWidthMm, wallHeightMm, panelOrientation]);
+  }, [activeSurface, panelCount, dividerPositions, sectorMaterials, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, vMoldingPositions, vMoldingCount, wallWidthMm, wallHeightMm, panelOrientation, jointProfilePosition]);
+  useEffect(() => { jointProfilePositionRef.current = jointProfilePosition; }, [jointProfilePosition]);
 
   // Ctrl+Z global undo / Ctrl+Y global redo
   useEffect(() => {
@@ -873,6 +884,7 @@ const BambooStudio = () => {
       wallWidthMm: wallWidthMmRef.current,
       wallHeightMm: wallHeightMmRef.current,
       panelOrientation: panelOrientationRef.current,
+      jointProfilePosition: [...jointProfilePositionRef.current],
     };
     const cfg = surfacesRef.current[idx] ?? defaultSurfaceConfig();
     surfacesRef.current[idx] = cfg;
@@ -892,6 +904,7 @@ const BambooStudio = () => {
     setWallWidthMm(cfg.wallWidthMm);
     setWallHeightMm(cfg.wallHeightMm);
     setPanelOrientation(cfg.panelOrientation ?? 'vertical');
+    setJointProfilePosition(cfg.jointProfilePosition ?? ['bottom']);
     setActiveSector(null);
   }, []);
 
@@ -1467,6 +1480,7 @@ const BambooStudio = () => {
         wallWidthMm: wallWidthMmRef.current,
         wallHeightMm: wallHeightMmRef.current,
         panelOrientation: panelOrientationRef.current,
+        jointProfilePosition: jointProfilePositionRef.current,
       };
       const quadCfgs: SurfaceConfig[] = [];
       for (let q = 0; q < nQuads; q++) {
@@ -2222,6 +2236,7 @@ const BambooStudio = () => {
             wallWidthMm: wallWidthMmRef.current,
             wallHeightMm: wallHeightMmRef.current,
             panelOrientation: panelOrientationRef.current,
+            jointProfilePosition: jointProfilePositionRef.current,
           }
         : (surfacesRef.current[q] ?? defaultSurfaceConfig()));
     }
@@ -4010,9 +4025,36 @@ const BambooStudio = () => {
                       </button>
                     )}
                     {tooTall && (
-                      <p className="text-[9px] font-bold text-amber-600">
-                        {`⚠ Высота стены больше 2,8 м — ${opt.fullRows} ${rowsWord(opt.fullRows)} по высоте, всего ${opt.needed} ${panelsWord(opt.needed)} (в расчёте КП учтено)`}
-                      </p>
+                      <div className="space-y-1.5">
+                        <p className="text-[9px] font-bold text-amber-600">
+                          {`⚠ Высота стены больше 2,8 м — ${opt.fullRows} ${rowsWord(opt.fullRows)} по высоте, всего ${opt.needed} ${panelsWord(opt.needed)} (в расчёте КП учтено)`}
+                        </p>
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 space-y-1">
+                          <p className="text-[9px] font-black text-amber-700 uppercase tracking-wide">Стыковочный профиль</p>
+                          {(['bottom', 'top'] as const).map(pos => {
+                            const label = pos === 'bottom' ? 'Снизу' : 'Сверху';
+                            const checked = jointProfilePosition.includes(pos);
+                            return (
+                              <label key={pos} className="flex items-center gap-2 cursor-pointer group">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => {
+                                    pushHistory();
+                                    setJointProfilePosition(prev =>
+                                      prev.includes(pos)
+                                        ? prev.filter(p => p !== pos)
+                                        : [...prev, pos]
+                                    );
+                                  }}
+                                  className="w-3 h-3 accent-amber-600 cursor-pointer"
+                                />
+                                <span className="text-[9px] font-bold text-amber-800 group-hover:text-amber-900">{label}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
                     )}
                     <p className="text-[8px] text-gray-400">Ширина панели в проекте: {Math.round(wallWidthMm / panelCount / 10)} см (макс. 122 см)</p>
                   </div>
