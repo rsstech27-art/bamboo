@@ -1108,6 +1108,7 @@ const BambooStudio = () => {
 
         tCtx.save();
         tCtx.lineCap = 'butt';
+        tCtx.setLineDash([]);
 
         if (modifier === 'gap') {
           // Two parallel thin stripes of the base color — gap between them
