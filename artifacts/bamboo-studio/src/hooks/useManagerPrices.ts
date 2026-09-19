@@ -259,9 +259,8 @@ export function useManagerPrices() {
   }, [persist]);
 
   const setSeriesName = useCallback((seriesId: string, name: string) => {
-    const trimmed = name.trim();
     const next: SeriesNames = { ...seriesNameOverridesRef.current };
-    if (trimmed) { next[seriesId] = trimmed; } else { delete next[seriesId]; }
+    if (name.trim()) { next[seriesId] = name; } else { delete next[seriesId]; }
     seriesNameOverridesRef.current = next;
     saveLS(LS_SERIES_NAMES_KEY, next as Record<string, unknown>);
     setSeriesNameOverrides(next);
@@ -269,9 +268,8 @@ export function useManagerPrices() {
   }, [persist]);
 
   const setMoldingName = useCallback((moldingId: string, name: string) => {
-    const trimmed = name.trim();
     const next: SeriesNames = { ...moldingNameOverridesRef.current };
-    if (trimmed) { next[moldingId] = trimmed; } else { delete next[moldingId]; }
+    if (name.trim()) { next[moldingId] = name; } else { delete next[moldingId]; }
     moldingNameOverridesRef.current = next;
     saveLS(LS_MOLDING_NAMES_KEY, next as Record<string, unknown>);
     setMoldingNameOverrides(next);

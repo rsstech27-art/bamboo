@@ -153,9 +153,8 @@ function EditableRow({ defaultName, defaultPrice, nameOverride, priceOverride, o
   useEffect(() => { setPriceText(String(priceOverride ?? defaultPrice)); }, [priceOverride, defaultPrice]);
 
   const commitName = () => {
-    const v = nameText.trim();
-    onNameChange(v);
-    if (!v) setNameText(defaultName);
+    if (!nameText.trim()) { onNameChange(''); setNameText(defaultName); return; }
+    onNameChange(nameText);
   };
   const commitPrice = () => {
     const v = parseInt(priceText.replace(/\s/g, ''), 10);
@@ -207,14 +206,13 @@ function CustomItemRow({ item, onUpdate, onDelete, unitLabel }: {
   useEffect(() => { setPriceText(String(item.price)); }, [item.price]);
 
   const commitName = () => {
-    const v = nameText.trim();
-    if (!v) { setNameText(item.name); return; }
+    if (!nameText.trim()) { setNameText(item.name); return; }
     const p = parseInt(priceText.replace(/\s/g, ''), 10);
-    onUpdate(v, !isNaN(p) && p > 0 ? p : item.price);
+    onUpdate(nameText, !isNaN(p) && p > 0 ? p : item.price);
   };
   const commitPrice = () => {
     const v = parseInt(priceText.replace(/\s/g, ''), 10);
-    if (!isNaN(v) && v > 0) { setPriceText(String(v)); onUpdate(nameText.trim() || item.name, v); }
+    if (!isNaN(v) && v > 0) { setPriceText(String(v)); onUpdate(nameText || item.name, v); }
     else setPriceText(String(item.price));
   };
 
