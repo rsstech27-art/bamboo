@@ -2685,7 +2685,7 @@ const BambooStudio = () => {
         body: JSON.stringify({
           prefix: orderPrefix,
           zoneLabel: orderZoneLabel,
-          kpData: { items, total: finalTotal, beforePhotoUrl: image?.src ?? null },
+          kpData: { items, total: finalTotal, beforePhotoUrl: image?.src ?? null, kpPhotoUrl: kpImage },
         }),
       });
       if (orderResp.ok) {

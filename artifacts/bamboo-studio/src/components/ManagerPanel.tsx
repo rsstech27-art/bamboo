@@ -1292,8 +1292,9 @@ function OrderCard({ order, expanded, onToggle }: {
   const items = (order.kpData.items as KPItem[] | undefined) ?? [];
   const total = (order.kpData.total as number | undefined) ?? 0;
   const beforePhotoUrl = (order.kpData.beforePhotoUrl as string | null | undefined) ?? null;
+  const kpPhotoUrl = (order.kpData.kpPhotoUrl as string | null | undefined) ?? null;
   const [afterPhotoUrl, setAfterPhotoUrl] = useState<string | null>(
-    (order.kpData.afterPhotoUrl as string | null | undefined) ?? null,
+    (order.kpData.afterPhotoUrl as string | null | undefined) ?? kpPhotoUrl ?? null,
   );
   const [afterUploading, setAfterUploading] = useState(false);
   const afterInputRef = useRef<HTMLInputElement>(null);
