@@ -3399,7 +3399,7 @@ const BambooStudio = () => {
         <div className="flex-1 flex flex-col md:flex-row gap-1.5 p-1.5 overflow-y-auto md:overflow-hidden md:min-h-0">
 
         {/* ── Canvas area ── */}
-        <div className="flex-1 relative min-w-0 min-h-[70vw] md:min-h-0">
+        <div className="flex-[2] relative min-w-0 min-h-[70vw] md:min-h-0">
           {step === 'zone' && wallZone === 'tv' ? (
             <div className="flex flex-col items-center justify-center w-full h-full rounded-3xl bg-white border-2 border-dashed border-gray-200 p-10">
               <div className="text-center mb-8">
@@ -3712,7 +3712,7 @@ const BambooStudio = () => {
         )}
 
         {/* ── Right tool panel — hidden on zone-selection step ── */}
-        <div className={`w-full md:w-[280px] shrink-0 flex flex-col gap-1.5 overflow-y-auto pb-4 md:pb-1 ${step === 'zone' ? 'hidden' : ''}`} style={{ scrollbarWidth: 'none' }}>
+        <div className={`w-full md:flex-[1] md:min-w-0 shrink-0 flex flex-col gap-1.5 overflow-y-auto pb-4 md:pb-1 ${step === 'zone' ? 'hidden' : ''}`} style={{ scrollbarWidth: 'none' }}>
 
           {/* MARK step */}
           {step === 'mark' && (
