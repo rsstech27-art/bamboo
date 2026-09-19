@@ -3838,73 +3838,67 @@ const BambooStudio = () => {
           {/* EDIT step tools */}
           {step === 'edit' && (<>
 
-            {/* Panels */}
-            <div className="bg-white rounded-2xl p-4 shadow-sm">
-              <div className="flex items-center justify-between mb-2.5">
-                <div className="flex items-center gap-1.5">
-                  <Columns size={12} className="text-gray-400"/>
-                  <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Панели</span>
+            {/* Панели + Ластик — компактный ряд */}
+            <div className={`grid gap-1.5 ${wallZone !== 'door' ? 'grid-cols-2' : 'grid-cols-1'}`}>
+              <div className="bg-white rounded-2xl p-3 shadow-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-1">
+                    <Columns size={10} className="text-gray-400"/>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Панели</span>
+                  </div>
+                  <button onClick={handleResetWidths} className="text-[8px] text-gray-300 hover:text-black transition-colors">↺</button>
                 </div>
-                <button onClick={handleResetWidths} className="text-[8px] font-bold text-gray-300 hover:text-black transition-colors uppercase tracking-wide">сброс</button>
-              </div>
-              <div className="flex justify-between mb-2">
-                <span className="text-[11px] text-gray-400 font-bold uppercase">Количество</span>
-                <span className="text-[11px] font-bold">{panelCount}</span>
-              </div>
-              <input type="range" min="1" max="15" value={panelCount}
-                onChange={(e) => handleChangePanelCount(parseInt(e.target.value))}
-                className="w-full h-1 bg-gray-100 rounded-full appearance-none accent-black"/>
-              {wallZone === 'tv' && (
-                <div className="mt-2">
-                  <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Ориентация</p>
-                  <div className="flex gap-1.5">
+                <div className="flex justify-between mb-1">
+                  <span className="text-[10px] text-gray-400 font-bold">Кол-во</span>
+                  <span className="text-[10px] font-bold">{panelCount}</span>
+                </div>
+                <input type="range" min="1" max="15" value={panelCount}
+                  onChange={(e) => handleChangePanelCount(parseInt(e.target.value))}
+                  className="w-full h-1 bg-gray-100 rounded-full appearance-none accent-black"/>
+                {wallZone === 'tv' && (
+                  <div className="flex gap-1 mt-2">
                     {(['vertical', 'horizontal'] as const).map(ori => (
                       <button key={ori} onClick={() => { pushHistory(); setPanelOrientation(ori); }}
-                        className={`flex-1 py-1.5 rounded-lg text-[9px] font-bold border transition-all active:scale-95 ${panelOrientation === ori ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
-                        {ori === 'vertical' ? 'Вертикально' : 'Горизонтально'}
+                        className={`flex-1 py-1 rounded-lg text-[8px] font-bold border transition-all active:scale-95 ${panelOrientation === ori ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-500 border-gray-200'}`}>
+                        {ori === 'vertical' ? 'Верт.' : 'Гориз.'}
                       </button>
                     ))}
                   </div>
+                )}
+              </div>
+              {wallZone !== 'door' && (
+              <div className={`rounded-2xl p-3 shadow-sm transition-colors ${isErasing ? 'bg-red-50 ring-2 ring-red-400' : 'bg-white'}`}>
+                <div className="flex items-center gap-1 mb-2">
+                  <Eraser size={10} className={isErasing ? 'text-red-400' : 'text-gray-400'}/>
+                  <span className={`text-[10px] font-black uppercase tracking-widest ${isErasing ? 'text-red-400' : 'text-gray-400'}`}>Ластик</span>
                 </div>
+                <button
+                  onClick={() => { setIsErasing(!isErasing); setActiveSector(null); }}
+                  className={`w-full py-1.5 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 transition-all active:scale-95 ${
+                    isErasing ? 'bg-red-500 text-white shadow-md shadow-red-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  }`}>
+                  <Eraser size={11}/>
+                  {isErasing ? 'Выключить' : 'Включить'}
+                </button>
+                <div className="flex justify-between mt-2 mb-1">
+                  <span className="text-[9px] text-gray-400 font-bold">Кисть {brushSize}px</span>
+                </div>
+                <input type="range" min="10" max="150" value={brushSize}
+                  onChange={(e) => setBrushSize(parseInt(e.target.value))}
+                  className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
+                <div className="flex gap-1 mt-1.5">
+                  <button onClick={undoEraserStroke}
+                    className="flex-1 py-1 text-[8px] font-bold text-gray-400 hover:text-black flex items-center justify-center gap-0.5 transition-colors border border-gray-100 rounded-lg hover:border-gray-300">
+                    <Undo2 size={8}/> Отмена
+                  </button>
+                  <button onClick={clearMask}
+                    className="flex-1 py-1 text-[8px] font-bold text-gray-400 hover:text-red-500 flex items-center justify-center gap-0.5 transition-colors border border-gray-100 rounded-lg hover:border-red-200">
+                    <RotateCcw size={8}/> Сброс
+                  </button>
+                </div>
+              </div>
               )}
             </div>
-
-            {/* Freehand eraser is not used for doors: the door uses its four-point cutout above. */}
-            {wallZone !== 'door' && (
-            <div className={`rounded-2xl p-4 shadow-sm transition-colors ${isErasing ? 'bg-red-50 ring-2 ring-red-400' : 'bg-white'}`}>
-              <div className="flex items-center gap-1.5 mb-2.5">
-                <Eraser size={12} className={isErasing ? 'text-red-400' : 'text-gray-400'}/>
-                <span className={`text-[9px] font-black uppercase tracking-widest ${isErasing ? 'text-red-400' : 'text-gray-400'}`}>Ластик</span>
-              </div>
-              <button
-                onClick={() => { setIsErasing(!isErasing); setActiveSector(null); }}
-                className={`w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all active:scale-95 ${
-                  isErasing
-                    ? 'bg-red-500 text-white shadow-md shadow-red-200'
-                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                }`}>
-                <Eraser size={14}/>
-                {isErasing ? 'Ластик включён — рисуйте' : 'Включить ластик'}
-              </button>
-              <div className="flex justify-between mt-3 mb-1">
-                <span className="text-[9px] text-gray-400 font-bold uppercase">Размер кисти</span>
-                <span className="text-[9px] font-bold">{brushSize}px</span>
-              </div>
-              <input type="range" min="10" max="150" value={brushSize}
-                onChange={(e) => setBrushSize(parseInt(e.target.value))}
-                className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
-              <div className="flex gap-1.5 mt-2.5">
-                <button onClick={undoEraserStroke}
-                  className="flex-1 py-1.5 text-[8px] font-bold text-gray-400 hover:text-black flex items-center justify-center gap-1 transition-colors border border-gray-100 rounded-lg hover:border-gray-300">
-                  <Undo2 size={9}/> Отмена
-                </button>
-                <button onClick={clearMask}
-                  className="flex-1 py-1.5 text-[8px] font-bold text-gray-400 hover:text-red-500 flex items-center justify-center gap-1 transition-colors border border-gray-100 rounded-lg hover:border-red-200">
-                  <RotateCcw size={9}/> Сброс
-                </button>
-              </div>
-            </div>
-            )}
 
             {/* Material */}
             <div className="bg-white rounded-2xl p-4 shadow-sm">
@@ -3937,12 +3931,63 @@ const BambooStudio = () => {
               />
             </div>
 
-            {/* Vertical molding */}
-            {panelCount > 1 && (
-              <div className="bg-white rounded-2xl p-4 shadow-sm">
-                <div className="flex items-center gap-1.5 mb-2.5">
-                  <div className="w-0.5 h-3.5 bg-yellow-500 rounded-full"/>
-                  <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Молдинг верт.</span>
+            {/* Размеры стены */}
+            {wallZone !== 'column' && wallZone !== 'window' && (
+            <div className="bg-white rounded-2xl p-4 shadow-sm">
+              <div className="flex items-center gap-1.5 mb-2.5">
+                <Columns size={12} className="text-gray-400"/>
+                <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">{wallZone === 'tv' ? (tvType === 'surface' ? 'ТВ-зона накладная — Основная плоскость' : `ТВ-зона — ${TV_ZONE_LABELS[activeSurface]}`) : wallZone === 'door' ? 'Размеры стены с дверью' : `Размеры стены ${activeSurface + 1}`}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 mb-2">
+                <label className="block">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase">Ширина, см</span>
+                  <MeterInput placeholder="напр. 360" valueMm={wallWidthMm} onChangeMm={(v) => { pushHistory(); setWallWidthMm(v); }} />
+                </label>
+                <label className="block">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase">Высота, см</span>
+                  <MeterInput placeholder="напр. 270" valueMm={wallHeightMm} onChangeMm={(v) => { pushHistory(); setWallHeightMm(v); }} />
+                </label>
+              </div>
+              <p className="text-[8px] text-gray-400 mb-1.5">Панель: 280 × 122 см ({PANEL_AREA_M2.toFixed(2).replace('.', ',')} м²)</p>
+              {wallWidthMm > 0 && wallHeightMm > 0 && (() => {
+                const areaM2 = (wallWidthMm / 1000) * (wallHeightMm / 1000);
+                const cols = Math.ceil(wallWidthMm / PANEL_W_MM);
+                const opt = optimizedPanelCalc(cols, wallHeightMm);
+                const enough = panelCount >= cols;
+                const tooTall = wallHeightMm > PANEL_H_MM;
+                return (
+                  <div className="space-y-1">
+                    <p className="text-[9px] font-bold text-gray-600">Площадь стены: {areaM2.toFixed(2).replace('.', ',')} м²</p>
+                    <p className={`text-[9px] font-bold ${enough ? 'text-[#5a9c3e]' : 'text-amber-600'}`}>
+                      {enough
+                        ? `✓ Панелей в ряду достаточно: ${panelCount} (по ширине ${cols})`
+                        : `⚠ По ширине нужно ${cols} ${panelsWord(cols)} в ряду — в проекте ${panelCount}`}
+                    </p>
+                    {!enough && (
+                      <button onClick={() => handleChangePanelCount(cols)}
+                        className="w-full py-1.5 text-[9px] font-bold rounded-lg bg-[#7ec662] text-white hover:bg-[#6db453] transition-all active:scale-95">
+                        Установить {cols} {panelsWord(cols)} в ряд
+                      </button>
+                    )}
+                    {tooTall && (
+                      <p className="text-[9px] font-bold text-amber-600">
+                        {`⚠ Высота стены больше 2,8 м — ${opt.fullRows} ${rowsWord(opt.fullRows)} по высоте, всего ${opt.needed} ${panelsWord(opt.needed)} (в расчёте КП учтено)`}
+                      </p>
+                    )}
+                    <p className="text-[8px] text-gray-400">Ширина панели в проекте: {Math.round(wallWidthMm / panelCount / 10)} см (макс. 122 см)</p>
+                  </div>
+                );
+              })()}
+            </div>
+            )}
+
+            {/* Молдинги В + Г — ряд */}
+            <div className={`grid gap-1.5 ${panelCount > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+              {panelCount > 1 && (
+              <div className="bg-white rounded-2xl p-3 shadow-sm">
+                <div className="flex items-center gap-1 mb-2">
+                  <div className="w-0.5 h-3 bg-yellow-500 rounded-full"/>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Молдинг В.</span>
                 </div>
                 <MoldingStyleRow value={moldingStyle} onChange={(v) => { pushHistory(); setMoldingStyle(v); if (v !== 'none') setMoldingWidth(1); }} vertical={true}/>
                 {panelCount >= 2 && (() => {
@@ -3951,16 +3996,14 @@ const BambooStudio = () => {
                     return l && r && noMetallicJoint(l, r);
                   });
                   return hasNoMetalAdj ? (
-                    <p className="text-[9px] text-amber-600 font-bold mt-1.5 leading-relaxed">
-                      Есть стыки без металлического профиля: «Дерево»↔«Дерево»/«Рейки», а также «Рейки» с любым типом — в расчёте КП исключены.
-                    </p>
+                    <p className="text-[9px] text-amber-600 font-bold mt-1 leading-relaxed">Стыки без профиля — в КП исключены.</p>
                   ) : null;
                 })()}
                 {moldingStyle !== 'none' && (
-                  <div className="mt-2.5 space-y-2.5">
+                  <div className="mt-2 space-y-1.5">
                     <div>
                       <div className="flex justify-between mb-1">
-                        <span className="text-[9px] text-gray-400 font-bold uppercase">Толщина</span>
+                        <span className="text-[9px] text-gray-400 font-bold">Толщина</span>
                         <span className="text-[9px] font-bold">{moldingWidth}px</span>
                       </div>
                       <input type="range" min="1" max="4" value={moldingWidth}
@@ -3970,7 +4013,7 @@ const BambooStudio = () => {
                     </div>
                     <div>
                       <div className="flex justify-between mb-1">
-                        <span className="text-[9px] text-gray-400 font-bold uppercase">Декор. доп.</span>
+                        <span className="text-[9px] text-gray-400 font-bold">Доп.</span>
                         <span className="text-[9px] font-bold">{vMoldingPositions.length}</span>
                       </div>
                       <input type="range" min="0" max="8" value={vMoldingCount}
@@ -3983,88 +4026,122 @@ const BambooStudio = () => {
                         className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
                       {vMoldingPositions.length > 0 && (
                         <button onClick={() => setVMoldingPositions(Array.from({length: vMoldingCount}, (_, i) => (i + 1) / (vMoldingCount + 1)))}
-                          className="w-full mt-1.5 py-1 text-[8px] font-bold text-gray-300 hover:text-black flex items-center justify-center gap-1 transition-colors">
-                          <Undo2 size={9}/> Выровнять
+                          className="w-full mt-1 py-0.5 text-[8px] font-bold text-gray-300 hover:text-black flex items-center justify-center gap-1 transition-colors">
+                          <Undo2 size={8}/> Выровнять
                         </button>
                       )}
                     </div>
                   </div>
                 )}
               </div>
-            )}
-
-            {/* Horizontal molding */}
-            <div className="bg-white rounded-2xl p-4 shadow-sm">
-              <div className="flex items-center gap-1.5 mb-2.5">
-                <div className="w-3.5 h-0.5 bg-yellow-500 rounded-full"/>
-                <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Молдинг гориз.</span>
-              </div>
-              <MoldingStyleRow value={hMoldingStyle} onChange={(v) => { pushHistory(); setHMoldingStyle(v); if (v !== 'none') setHMoldingWidth(1); }} vertical={false}/>
-              {hMoldingStyle !== 'none' && (
-                <div className="mt-2.5 space-y-2.5">
-                  <div>
-                    <div className="flex justify-between mb-1">
-                      <span className="text-[9px] text-gray-400 font-bold uppercase">Количество</span>
-                      <span className="text-[9px] font-bold">{hMoldingPositions.length}</span>
-                    </div>
-                    <input type="range" min="1" max="5" value={hMoldingCount}
-                      onPointerDown={pushHistory}
-                      onChange={(e) => {
-                        const n = parseInt(e.target.value);
-                        setHMoldingCount(n);
-                        setHMoldingPositions(Array.from({length:n},(_,i)=>(i+1)/(n+1)));
-                      }}
-                      className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
-                    <button onClick={() => setHMoldingPositions(Array.from({length:hMoldingCount},(_,i)=>(i+1)/(hMoldingCount+1)))}
-                      className="w-full mt-1.5 py-1 text-[8px] font-bold text-gray-300 hover:text-black flex items-center justify-center gap-1 transition-colors">
-                      <Undo2 size={9}/> Выровнять
-                    </button>
-                  </div>
-                  <div>
-                    <div className="flex justify-between mb-1">
-                      <span className="text-[9px] text-gray-400 font-bold uppercase">Толщина</span>
-                      <span className="text-[9px] font-bold">{hMoldingWidth}px</span>
-                    </div>
-                    <input type="range" min="1" max="4" value={hMoldingWidth}
-                      onChange={(e) => setHMoldingWidth(parseInt(e.target.value))}
-                      className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
-                  </div>
-                </div>
               )}
+              <div className="bg-white rounded-2xl p-3 shadow-sm">
+                <div className="flex items-center gap-1 mb-2">
+                  <div className="w-3 h-0.5 bg-yellow-500 rounded-full"/>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Молдинг Г.</span>
+                </div>
+                <MoldingStyleRow value={hMoldingStyle} onChange={(v) => { pushHistory(); setHMoldingStyle(v); if (v !== 'none') setHMoldingWidth(1); }} vertical={false}/>
+                {hMoldingStyle !== 'none' && (
+                  <div className="mt-2 space-y-1.5">
+                    <div>
+                      <div className="flex justify-between mb-1">
+                        <span className="text-[9px] text-gray-400 font-bold">Кол-во</span>
+                        <span className="text-[9px] font-bold">{hMoldingPositions.length}</span>
+                      </div>
+                      <input type="range" min="1" max="5" value={hMoldingCount}
+                        onPointerDown={pushHistory}
+                        onChange={(e) => {
+                          const n = parseInt(e.target.value);
+                          setHMoldingCount(n);
+                          setHMoldingPositions(Array.from({length:n},(_,i)=>(i+1)/(n+1)));
+                        }}
+                        className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
+                      <button onClick={() => setHMoldingPositions(Array.from({length:hMoldingCount},(_,i)=>(i+1)/(hMoldingCount+1)))}
+                        className="w-full mt-1 py-0.5 text-[8px] font-bold text-gray-300 hover:text-black flex items-center justify-center gap-1 transition-colors">
+                        <Undo2 size={8}/> Выровнять
+                      </button>
+                    </div>
+                    <div>
+                      <div className="flex justify-between mb-1">
+                        <span className="text-[9px] text-gray-400 font-bold">Толщина</span>
+                        <span className="text-[9px] font-bold">{hMoldingWidth}px</span>
+                      </div>
+                      <input type="range" min="1" max="4" value={hMoldingWidth}
+                        onChange={(e) => setHMoldingWidth(parseInt(e.target.value))}
+                        className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Торцевой профиль */}
-            <div className="bg-white rounded-2xl p-4 shadow-sm">
-              <div className="flex items-center gap-1.5 mb-2">
-                <div className="w-3.5 h-3.5 border-[2.5px] border-gray-400 rounded-sm"/>
-                <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Торцевой профиль</span>
+            {/* Торцевой профиль + Освещение — ряд */}
+            <div className="grid grid-cols-2 gap-1.5">
+              <div className="bg-white rounded-2xl p-3 shadow-sm">
+                <div className="flex items-center gap-1 mb-2">
+                  <div className="w-3 h-3 border-[2px] border-gray-400 rounded-sm"/>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Торцы</span>
+                </div>
+                <div className="grid grid-cols-2 gap-1 mb-2">
+                  {([['top', 'Верх'], ['bottom', 'Низ'], ['left', 'Лево'], ['right', 'Право']] as const).map(([side, label]) => (
+                    <button key={side}
+                      onClick={() => { pushHistory(); setEdgeProfileSides(prev => ({ ...prev, [side]: !prev[side] })); }}
+                      className={`py-2 rounded-lg text-[9px] font-bold uppercase transition-all active:scale-95 ${edgeProfileSides[side] ? 'bg-black text-white' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {Object.values(edgeProfileSides).some(Boolean) && (
+                  (() => {
+                    const totalMm =
+                      (edgeProfileSides.top    ? wallWidthMm  : 0) +
+                      (edgeProfileSides.bottom ? wallWidthMm  : 0) +
+                      (edgeProfileSides.left   ? wallHeightMm : 0) +
+                      (edgeProfileSides.right  ? wallHeightMm : 0);
+                    if (totalMm === 0) return <p className="text-[8px] text-amber-500">Укажите размеры</p>;
+                    const pieces = Math.ceil(totalMm / 3000);
+                    return <p className="text-[9px] font-bold text-[#5a9c3e]">≈ {(totalMm / 1000).toFixed(1).replace('.', ',')} м → {pieces} шт.</p>;
+                  })()
+                )}
               </div>
-              <p className="text-[8px] text-gray-400 mb-2 leading-relaxed">Закрывает внешние торцы стены. Выберите нужные стороны:</p>
-              <div className="grid grid-cols-4 gap-1.5 mb-2">
-                {([['top', 'Верх'], ['bottom', 'Низ'], ['left', 'Лево'], ['right', 'Право']] as const).map(([side, label]) => (
-                  <button key={side}
-                    onClick={() => { pushHistory(); setEdgeProfileSides(prev => ({ ...prev, [side]: !prev[side] })); }}
-                    className={`py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-wide transition-all active:scale-95 ${edgeProfileSides[side] ? 'bg-black text-white' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}>
-                    {label}
-                  </button>
-                ))}
+              <div className="bg-white rounded-2xl p-3 shadow-sm">
+                <div className="flex items-center gap-1 mb-2">
+                  <Sun size={10} className="text-gray-400"/>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Свет</span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  {([
+                    { key: 'off',     label: 'Выкл',  icon: null },
+                    { key: 'morning', label: 'Утро',  icon: 'sun'  },
+                    { key: 'evening', label: 'Вечер', icon: 'moon' },
+                  ] as const).map(({ key, label, icon }) => (
+                    <button key={key} onClick={() => setLightMode(key)}
+                      className={`py-1.5 rounded-lg text-[9px] font-bold flex items-center justify-center gap-1 transition-all active:scale-95 ${
+                        lightMode === key
+                          ? key === 'morning' ? 'bg-blue-50 text-blue-600 ring-2 ring-blue-300'
+                            : key === 'evening' ? 'bg-amber-50 text-amber-600 ring-2 ring-amber-300'
+                            : 'bg-gray-100 text-gray-700 ring-2 ring-gray-300'
+                          : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
+                      }`}>
+                      {icon === 'sun'  && <Sun  size={11}/>}
+                      {icon === 'moon' && <Moon size={11}/>}
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {wallZone === 'column' && columnShape === 'round' && (
+                  <div className="mt-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[8px] font-black uppercase text-gray-400">Блик</span>
+                      <span className="text-[8px] text-gray-400">{cylHighlightPos < 0.45 ? '◀' : cylHighlightPos > 0.55 ? '▶' : '·'}</span>
+                    </div>
+                    <input type="range" min={0.1} max={0.9} step={0.01}
+                      value={cylHighlightPos}
+                      onChange={e => setCylHighlightPos(parseFloat(e.target.value))}
+                      className="w-full accent-black"/>
+                  </div>
+                )}
               </div>
-              {Object.values(edgeProfileSides).some(Boolean) && (
-                (() => {
-                  const totalMm =
-                    (edgeProfileSides.top    ? wallWidthMm  : 0) +
-                    (edgeProfileSides.bottom ? wallWidthMm  : 0) +
-                    (edgeProfileSides.left   ? wallHeightMm : 0) +
-                    (edgeProfileSides.right  ? wallHeightMm : 0);
-                  if (totalMm === 0) return <p className="text-[8px] text-amber-500">Укажите размеры стены для расчёта</p>;
-                  const pieces = Math.ceil(totalMm / 3000);
-                  return (
-                    <p className="text-[9px] font-bold text-[#5a9c3e]">
-                      ≈ {(totalMm / 1000).toFixed(1).replace('.', ',')} м → {pieces} шт. по 3 м
-                    </p>
-                  );
-                })()
-              )}
             </div>
 
             {/* Surface selector — per-surface editing */}
@@ -4331,55 +4408,6 @@ const BambooStudio = () => {
               </div>
             )}
 
-            {/* Wall dimensions & area check */}
-            {wallZone !== 'column' && wallZone !== 'window' && (
-            <div className="bg-white rounded-2xl p-4 shadow-sm">
-              <div className="flex items-center gap-1.5 mb-2.5">
-                <Columns size={12} className="text-gray-400"/>
-                <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">{wallZone === 'tv' ? (tvType === 'surface' ? 'ТВ-зона накладная — Основная плоскость' : `ТВ-зона — ${TV_ZONE_LABELS[activeSurface]}`) : wallZone === 'door' ? 'Размеры стены с дверью' : `Размеры стены ${activeSurface + 1}`}</span>
-              </div>
-              <div className="grid grid-cols-2 gap-2 mb-2">
-                <label className="block">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase">Ширина, см</span>
-                  <MeterInput placeholder="напр. 360" valueMm={wallWidthMm} onChangeMm={(v) => { pushHistory(); setWallWidthMm(v); }} />
-                </label>
-                <label className="block">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase">Высота, см</span>
-                  <MeterInput placeholder="напр. 270" valueMm={wallHeightMm} onChangeMm={(v) => { pushHistory(); setWallHeightMm(v); }} />
-                </label>
-              </div>
-              <p className="text-[8px] text-gray-400 mb-1.5">Панель: 280 × 122 см ({PANEL_AREA_M2.toFixed(2).replace('.', ',')} м²)</p>
-              {wallWidthMm > 0 && wallHeightMm > 0 && (() => {
-                const areaM2 = (wallWidthMm / 1000) * (wallHeightMm / 1000);
-                const cols = Math.ceil(wallWidthMm / PANEL_W_MM);
-                const opt = optimizedPanelCalc(cols, wallHeightMm);
-                const enough = panelCount >= cols;
-                const tooTall = wallHeightMm > PANEL_H_MM;
-                return (
-                  <div className="space-y-1">
-                    <p className="text-[9px] font-bold text-gray-600">Площадь стены: {areaM2.toFixed(2).replace('.', ',')} м²</p>
-                    <p className={`text-[9px] font-bold ${enough ? 'text-[#5a9c3e]' : 'text-amber-600'}`}>
-                      {enough
-                        ? `✓ Панелей в ряду достаточно: ${panelCount} (по ширине ${cols})`
-                        : `⚠ По ширине нужно ${cols} ${panelsWord(cols)} в ряду — в проекте ${panelCount}`}
-                    </p>
-                    {!enough && (
-                      <button onClick={() => handleChangePanelCount(cols)}
-                        className="w-full py-1.5 text-[9px] font-bold rounded-lg bg-[#7ec662] text-white hover:bg-[#6db453] transition-all active:scale-95">
-                        Установить {cols} {panelsWord(cols)} в ряд
-                      </button>
-                    )}
-                    {tooTall && (
-                      <p className="text-[9px] font-bold text-amber-600">
-                        {`⚠ Высота стены больше 2,8 м — ${opt.fullRows} ${rowsWord(opt.fullRows)} по высоте, всего ${opt.needed} ${panelsWord(opt.needed)} (в расчёте КП учтено)`}
-                      </p>
-                    )}
-                    <p className="text-[8px] text-gray-400">Ширина панели в проекте: {Math.round(wallWidthMm / panelCount / 10)} см (макс. 122 см)</p>
-                  </div>
-                );
-              })()}
-            </div>
-            )}
 
             {/* TV zone: cutout for TV — only for built-in */}
             {wallZone === 'tv' && tvType === 'builtin' && (
@@ -4481,49 +4509,7 @@ const BambooStudio = () => {
               </div>
             )}
 
-            {/* Light mode */}
-            <div className="bg-white rounded-2xl p-4 shadow-sm">
-              <div className="flex items-center gap-1.5 mb-2.5">
-                <Sun size={12} className="text-gray-400"/>
-                <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Освещение</span>
-              </div>
-              <div className="grid grid-cols-3 gap-1.5">
-                {([
-                  { key: 'off',     label: 'Выкл',  icon: null },
-                  { key: 'morning', label: 'Утро',  icon: 'sun'  },
-                  { key: 'evening', label: 'Вечер', icon: 'moon' },
-                ] as const).map(({ key, label, icon }) => (
-                  <button key={key} onClick={() => setLightMode(key)}
-                    className={`py-2 rounded-xl text-[9px] font-bold flex flex-col items-center gap-1 transition-all active:scale-95 ${
-                      lightMode === key
-                        ? key === 'morning' ? 'bg-blue-50 text-blue-600 ring-2 ring-blue-300'
-                          : key === 'evening' ? 'bg-amber-50 text-amber-600 ring-2 ring-amber-300'
-                          : 'bg-gray-100 text-gray-700 ring-2 ring-gray-300'
-                        : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
-                    }`}>
-                    {icon === 'sun'  && <Sun  size={14}/>}
-                    {icon === 'moon' && <Moon size={14}/>}
-                    {!icon && <span className="text-[10px]">○</span>}
-                    {label}
-                  </button>
-                ))}
-              </div>
-              {wallZone === 'column' && columnShape === 'round' && (
-                <div className="mt-3">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[8px] font-black uppercase tracking-widest text-gray-400">Положение блика</span>
-                    <span className="text-[8px] text-gray-400 font-mono">{cylHighlightPos < 0.45 ? '◀ слева' : cylHighlightPos > 0.55 ? 'справа ▶' : 'центр'}</span>
-                  </div>
-                  <input
-                    type="range" min={0.1} max={0.9} step={0.01}
-                    value={cylHighlightPos}
-                    onChange={e => setCylHighlightPos(parseFloat(e.target.value))}
-                    className="w-full accent-black"
-                  />
-                  <p className="text-[7px] text-gray-300 mt-0.5">Сместите блик цилиндра к источнику света на фото. Режимы «Утро/Вечер» смещают его автоматически.</p>
-                </div>
-              )}
-            </div>
+            {/* Light mode — перенесено в строку с Торцевым профилем выше */}
 
             {/* Save + КП — side by side, compact so both fit on screen without scrolling */}
             {/* Next-step guidance: КП is the final goal — it lights up once a material is chosen */}
