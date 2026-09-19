@@ -578,8 +578,10 @@ const BambooStudio = () => {
   const [doorMarkMode, setDoorMarkMode] = useState<'wall' | 'opening'>('wall');
   const [points, setPoints] = useState<Point[]>([]);
   const [showManagerPanel, setShowManagerPanel] = useState(false);
-  // 'user' = entry via © (regular staff); 'admin' = Alt+Shift+A / triple-click (administrator)
+  // 'user' = entry via © single-click (regular staff); 'admin' = triple-click © (administrator)
   const [managerPanelMode, setManagerPanelMode] = useState<'user' | 'admin'>('user');
+  const copyrightClickCount = useRef(0);
+  const copyrightClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const {
     panelOverrides, moldingOverrides, seriesNameOverrides, moldingNameOverrides,
     customSeries, customMoldings, seriesDefinitions,
@@ -5115,7 +5117,20 @@ const BambooStudio = () => {
           <div className="pt-6 flex flex-col md:flex-row justify-between items-center gap-3 text-xs text-gray-600">
             <span>
               <span
-                onClick={() => { setManagerPanelMode('user'); setShowManagerPanel(true); }}
+                onClick={() => {
+                  copyrightClickCount.current += 1;
+                  if (copyrightClickTimer.current) clearTimeout(copyrightClickTimer.current);
+                  copyrightClickTimer.current = setTimeout(() => {
+                    const n = copyrightClickCount.current;
+                    copyrightClickCount.current = 0;
+                    if (n >= 3) {
+                      setManagerPanelMode('admin');
+                    } else {
+                      setManagerPanelMode('user');
+                    }
+                    setShowManagerPanel(true);
+                  }, 400);
+                }}
                 className="cursor-default select-none"
                 title=""
               >©</span>{' '}2024 ALL WALL. Все права защищены.
