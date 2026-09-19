@@ -2,15 +2,19 @@
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
 
-/* allwall.ru brand fonts */
+/* allwall.ru brand fonts — mirrors the Tilda CSS variables */
+:root {
+  --t-headline-font: 'Unbounded', sans-serif;
+  --t-text-font: 'Manrope', sans-serif;
+}
 body {
-  font-family: 'Manrope', sans-serif;
+  font-family: var(--t-text-font);
 }
 h1, h2, h3, h4, h5, h6 {
-  font-family: 'Unbounded', sans-serif;
+  font-family: var(--t-headline-font);
 }
 .font-black, .font-extrabold, .font-bold {
-  font-family: 'Manrope', sans-serif;
+  font-family: var(--t-text-font);
 }
 
 @custom-variant dark (&:is(.dark *));
