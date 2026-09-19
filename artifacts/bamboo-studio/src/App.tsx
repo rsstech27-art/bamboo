@@ -1111,14 +1111,10 @@ const BambooStudio = () => {
               wCtx.restore();
             }
           } else {
-            const ts = material.textureScale ?? 1;
-            // If textureScale set explicitly: use 1/ts (artistic repeat scale).
-            // Otherwise scale so the texture covers the full panel height (no seam).
-            // For both vertical and horizontal panels, scale so the texture
-            // covers one panel-height unit — this prevents the texture from
-            // being stretched across a wide horizontal panel.
-            const baseScale = ts > 1
-              ? 1 / ts
+            // Always scale so the texture covers the full panel height (no visible seam).
+            // User-controlled textureScaleX/Y sliders override per-axis below.
+            const baseScale = isHoriz
+              ? dW / cachedTex.width
               : dH / cachedTex.height;
             // textureScaleX/Y are user-controlled per-axis scale (screen-space X=horiz, Y=vert).
             // For horizontal panels the draw context is rotated -90°, so draw-X maps to
