@@ -634,8 +634,6 @@ const BambooStudio = () => {
   const draggingVMoldingIndexRef = useRef<number | null>(null);
   const vMoldingPositionsRef = useRef<number[]>([]);
   const vMoldingCountRef = useRef(1);
-  const rulerRef = useRef<HTMLDivElement>(null);
-  const rulerDraggingIdxRef = useRef<number | null>(null);
   const [panelOrientation, setPanelOrientation] = useState<'vertical' | 'horizontal'>('vertical');
   const panelOrientationRef = useRef<'vertical' | 'horizontal'>('vertical');
   // Mask stored as strokes — never gets reset by canvas operations
@@ -1216,6 +1214,24 @@ const BambooStudio = () => {
           tCtx.moveTo(aX, aY);
           tCtx.lineTo(bX, bY);
           tCtx.stroke();
+          tCtx.restore();
+
+          // Handle circle at midpoint
+          const midX = (aX + bX) / 2;
+          const midY = (aY + bY) / 2;
+          tCtx.save();
+          tCtx.fillStyle = 'white';
+          tCtx.strokeStyle = 'rgba(0,0,0,0.3)';
+          tCtx.lineWidth = 1.5;
+          tCtx.beginPath();
+          tCtx.arc(midX, midY, 8, 0, Math.PI * 2);
+          tCtx.fill();
+          tCtx.stroke();
+          tCtx.fillStyle = '#555';
+          tCtx.font = 'bold 10px sans-serif';
+          tCtx.textAlign = 'center';
+          tCtx.textBaseline = 'middle';
+          tCtx.fillText(isHoriz ? '⇕' : '⇔', midX, midY);
           tCtx.restore();
 
         });
@@ -3573,60 +3589,6 @@ const BambooStudio = () => {
                       : wallZone === 'door'
                       ? (points.length < 4 ? `Стена с дверью: точка ${points.length + 1}/4` : doorMarkMode === 'opening' ? `Дверное полотно: точка ${doorOpeningPoints.length + 1}/4` : 'Задайте откосы или выделите дверь ластиком')
                     : (points.length < 4 ? `Кликните на угол стены (${points.length}/4)` : 'Нажмите «Начать примерку»')}
-                </div>
-              )}
-              {/* ── Panel-boundary ruler: draggable thumbs at the top edge of the photo ── */}
-              {step === 'edit' && !isErasing && panelCount > 1 && (
-                <div
-                  ref={rulerRef}
-                  className="absolute top-0 left-0 right-0 z-20 select-none"
-                  style={{ height: 44, background: 'linear-gradient(to bottom, rgba(0,0,0,0.22) 0%, transparent 100%)', pointerEvents: 'none' }}
-                >
-                  {/* thin guide line */}
-                  <div className="absolute left-4 right-4 bg-white/30 rounded-full" style={{ top: 21, height: 2 }} />
-                  {dividerPositions.map((ratio, i) => (
-                    <div
-                      key={i}
-                      title={`Разделитель ${i + 1}: ${Math.round(ratio * 100)}%`}
-                      className="absolute flex flex-col items-center touch-none"
-                      style={{
-                        left: `calc(${ratio * 100}% - 14px)`,
-                        top: 8,
-                        pointerEvents: 'auto',
-                        cursor: 'ew-resize',
-                        userSelect: 'none',
-                      }}
-                      onPointerDown={e => {
-                        e.stopPropagation();
-                        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-                        rulerDraggingIdxRef.current = i;
-                        pushHistory();
-                      }}
-                      onPointerMove={e => {
-                        if (rulerDraggingIdxRef.current !== i) return;
-                        e.stopPropagation();
-                        const ruler = rulerRef.current;
-                        if (!ruler) return;
-                        const rect = ruler.getBoundingClientRect();
-                        const newRatio = Math.max(0.03, Math.min(0.97, (e.clientX - rect.left) / rect.width));
-                        setDividerPositions(prev => {
-                          const next = [...prev];
-                          next[i] = newRatio;
-                          return next.slice().sort((a, b) => a - b);
-                        });
-                      }}
-                      onPointerUp={e => { e.stopPropagation(); rulerDraggingIdxRef.current = null; }}
-                      onPointerCancel={() => { rulerDraggingIdxRef.current = null; }}
-                    >
-                      {/* thumb circle */}
-                      <div className="w-7 h-7 rounded-full bg-white shadow-lg border border-gray-200/60 flex items-center justify-center"
-                           style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.28)' }}>
-                        <span className="text-[9px] font-black text-gray-500 leading-none select-none">⇔</span>
-                      </div>
-                      {/* tick down to guide line */}
-                      <div className="w-px bg-white/50" style={{ height: 6 }} />
-                    </div>
-                  ))}
                 </div>
               )}
               {step === 'edit' && !isErasing && (
