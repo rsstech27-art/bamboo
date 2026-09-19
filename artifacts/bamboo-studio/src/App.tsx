@@ -3719,7 +3719,7 @@ const BambooStudio = () => {
             <div className="bg-white rounded-2xl p-4 shadow-sm">
               <div className="flex items-center gap-1.5 mb-3">
                 <Check size={12} className="text-gray-400" />
-                <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Разметка стены</span>
+                <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Разметка стены</span>
               </div>
               {wallZone === 'door' ? (<>
                 <p className="text-[9px] text-gray-400 mb-3 leading-relaxed">
@@ -3823,7 +3823,7 @@ const BambooStudio = () => {
                 </button>
               )}
               <button disabled={points.length < 4} onClick={handleStartFitting}
-                className={`w-full py-3 rounded-xl text-xs font-bold shadow transition-all active:scale-95 ${
+                className={`w-full py-4 rounded-xl text-sm font-bold shadow transition-all active:scale-95 ${
                   points.length < 4
                     ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
                     : wallZone === 'door' && doorOpeningPoints.length < 4
@@ -3839,24 +3839,24 @@ const BambooStudio = () => {
           {step === 'edit' && (<>
 
             {/* Panels */}
-            <div className="bg-white rounded-2xl p-3.5 shadow-sm">
+            <div className="bg-white rounded-2xl p-4 shadow-sm">
               <div className="flex items-center justify-between mb-2.5">
                 <div className="flex items-center gap-1.5">
                   <Columns size={12} className="text-gray-400"/>
-                  <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Панели</span>
+                  <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Панели</span>
                 </div>
                 <button onClick={handleResetWidths} className="text-[8px] font-bold text-gray-300 hover:text-black transition-colors uppercase tracking-wide">сброс</button>
               </div>
-              <div className="flex justify-between mb-1">
-                <span className="text-[9px] text-gray-400 font-bold uppercase">Количество</span>
-                <span className="text-[9px] font-bold">{panelCount}</span>
+              <div className="flex justify-between mb-2">
+                <span className="text-[11px] text-gray-400 font-bold uppercase">Количество</span>
+                <span className="text-[11px] font-bold">{panelCount}</span>
               </div>
               <input type="range" min="1" max="15" value={panelCount}
                 onChange={(e) => handleChangePanelCount(parseInt(e.target.value))}
-                className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
+                className="w-full h-1 bg-gray-100 rounded-full appearance-none accent-black"/>
               {wallZone === 'tv' && (
                 <div className="mt-2">
-                  <p className="text-[8px] font-bold text-gray-400 uppercase mb-1">Ориентация</p>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Ориентация</p>
                   <div className="flex gap-1.5">
                     {(['vertical', 'horizontal'] as const).map(ori => (
                       <button key={ori} onClick={() => { pushHistory(); setPanelOrientation(ori); }}
@@ -3871,14 +3871,14 @@ const BambooStudio = () => {
 
             {/* Freehand eraser is not used for doors: the door uses its four-point cutout above. */}
             {wallZone !== 'door' && (
-            <div className={`rounded-2xl p-3.5 shadow-sm transition-colors ${isErasing ? 'bg-red-50 ring-2 ring-red-400' : 'bg-white'}`}>
+            <div className={`rounded-2xl p-4 shadow-sm transition-colors ${isErasing ? 'bg-red-50 ring-2 ring-red-400' : 'bg-white'}`}>
               <div className="flex items-center gap-1.5 mb-2.5">
                 <Eraser size={12} className={isErasing ? 'text-red-400' : 'text-gray-400'}/>
                 <span className={`text-[9px] font-black uppercase tracking-widest ${isErasing ? 'text-red-400' : 'text-gray-400'}`}>Ластик</span>
               </div>
               <button
                 onClick={() => { setIsErasing(!isErasing); setActiveSector(null); }}
-                className={`w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all active:scale-95 ${
+                className={`w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all active:scale-95 ${
                   isErasing
                     ? 'bg-red-500 text-white shadow-md shadow-red-200'
                     : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
@@ -3907,10 +3907,10 @@ const BambooStudio = () => {
             )}
 
             {/* Material */}
-            <div className="bg-white rounded-2xl p-3.5 shadow-sm">
+            <div className="bg-white rounded-2xl p-4 shadow-sm">
               <div className="flex items-center gap-1.5 mb-2">
                 <span className="w-3 h-3 rounded-full bg-gradient-to-br from-amber-700 to-yellow-400 shrink-0"/>
-                <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Материал</span>
+                <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Материал</span>
               </div>
               <p className="text-[8px] text-gray-400 font-bold italic mb-2">
                 {activeSector !== null ? `Панель №${activeSector + 1} — выберите материал` : 'Кликните по панели → выберите материал'}
@@ -3939,10 +3939,10 @@ const BambooStudio = () => {
 
             {/* Vertical molding */}
             {panelCount > 1 && (
-              <div className="bg-white rounded-2xl p-3.5 shadow-sm">
+              <div className="bg-white rounded-2xl p-4 shadow-sm">
                 <div className="flex items-center gap-1.5 mb-2.5">
                   <div className="w-0.5 h-3.5 bg-yellow-500 rounded-full"/>
-                  <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Молдинг верт.</span>
+                  <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Молдинг верт.</span>
                 </div>
                 <MoldingStyleRow value={moldingStyle} onChange={(v) => { pushHistory(); setMoldingStyle(v); if (v !== 'none') setMoldingWidth(1); }} vertical={true}/>
                 {panelCount >= 2 && (() => {
@@ -3994,10 +3994,10 @@ const BambooStudio = () => {
             )}
 
             {/* Horizontal molding */}
-            <div className="bg-white rounded-2xl p-3.5 shadow-sm">
+            <div className="bg-white rounded-2xl p-4 shadow-sm">
               <div className="flex items-center gap-1.5 mb-2.5">
                 <div className="w-3.5 h-0.5 bg-yellow-500 rounded-full"/>
-                <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Молдинг гориз.</span>
+                <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Молдинг гориз.</span>
               </div>
               <MoldingStyleRow value={hMoldingStyle} onChange={(v) => { pushHistory(); setHMoldingStyle(v); if (v !== 'none') setHMoldingWidth(1); }} vertical={false}/>
               {hMoldingStyle !== 'none' && (
@@ -4034,17 +4034,17 @@ const BambooStudio = () => {
             </div>
 
             {/* Торцевой профиль */}
-            <div className="bg-white rounded-2xl p-3.5 shadow-sm">
+            <div className="bg-white rounded-2xl p-4 shadow-sm">
               <div className="flex items-center gap-1.5 mb-2">
                 <div className="w-3.5 h-3.5 border-[2.5px] border-gray-400 rounded-sm"/>
-                <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Торцевой профиль</span>
+                <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Торцевой профиль</span>
               </div>
               <p className="text-[8px] text-gray-400 mb-2 leading-relaxed">Закрывает внешние торцы стены. Выберите нужные стороны:</p>
-              <div className="grid grid-cols-2 gap-1.5 mb-2">
+              <div className="grid grid-cols-4 gap-1.5 mb-2">
                 {([['top', 'Верх'], ['bottom', 'Низ'], ['left', 'Лево'], ['right', 'Право']] as const).map(([side, label]) => (
                   <button key={side}
                     onClick={() => { pushHistory(); setEdgeProfileSides(prev => ({ ...prev, [side]: !prev[side] })); }}
-                    className={`py-2 rounded-xl text-[9px] font-bold uppercase tracking-wide transition-all active:scale-95 ${edgeProfileSides[side] ? 'bg-black text-white' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}>
+                    className={`py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-wide transition-all active:scale-95 ${edgeProfileSides[side] ? 'bg-black text-white' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}>
                     {label}
                   </button>
                 ))}
@@ -4069,9 +4069,9 @@ const BambooStudio = () => {
 
             {/* Surface selector — per-surface editing */}
             {points.length >= 8 && (
-              <div className="bg-white rounded-2xl p-3.5 shadow-sm">
+              <div className="bg-white rounded-2xl p-4 shadow-sm">
                 <div className="flex items-center gap-1.5 mb-2.5">
-                  <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Поверхность</span>
+                  <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Поверхность</span>
                 </div>
                 <div className="flex flex-col gap-1.5">
                   {Array.from({ length: Math.min(3, Math.floor(points.length / 4)) }, (_, i) => i).map(i => (
@@ -4087,9 +4087,9 @@ const BambooStudio = () => {
 
             {/* Corner types — shown for wall-niche, tv-zone (builtin), column with 8+ points */}
             {(wallZone === 'wall-niche' || (wallZone === 'tv' && tvType !== 'surface') || wallZone === 'column') && points.length >= 8 && (
-              <div className="bg-white rounded-2xl p-3.5 shadow-sm">
+              <div className="bg-white rounded-2xl p-4 shadow-sm">
                 <div className="flex items-center gap-1.5 mb-2.5">
-                  <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Тип углов</span>
+                  <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Тип углов</span>
                 </div>
                 <CornerTypeCheckboxes nJunctions={Math.min(2, Math.floor(points.length / 4) - 1)} cornerTypes={cornerTypes} setCornerTypes={(v) => { pushHistory(); setCornerTypes(v); }} wrapJunctions={wrapJunctions} setWrapJunctions={(v) => { pushHistory(); setWrapJunctions(v); }} />
               </div>
@@ -4097,22 +4097,22 @@ const BambooStudio = () => {
 
             {/* TV zone: surface type — side/top-bottom depths + joint */}
             {wallZone === 'tv' && tvType === 'surface' && (
-              <div className="bg-white rounded-2xl p-3.5 shadow-sm">
+              <div className="bg-white rounded-2xl p-4 shadow-sm">
                 <div className="flex items-center gap-1.5 mb-2.5">
                   <Columns size={12} className="text-gray-400"/>
-                  <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Глубина граней короба</span>
+                  <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Глубина граней короба</span>
                 </div>
                 <div className="grid grid-cols-2 gap-2 mb-2">
                   <label className="block">
-                    <span className="text-[8px] font-bold text-gray-400 uppercase">Боковые (×2), см</span>
+                    <span className="text-[10px] font-bold text-gray-400 uppercase">Боковые (×2), см</span>
                     <MeterInput placeholder="напр. 20" valueMm={tvSurfaceSideDepthMm} onChangeMm={(v) => { pushHistory(); setTvSurfaceSideDepthMm(v); }} />
                   </label>
                   <label className="block">
-                    <span className="text-[8px] font-bold text-gray-400 uppercase">Верх/Низ (×2), см</span>
+                    <span className="text-[10px] font-bold text-gray-400 uppercase">Верх/Низ (×2), см</span>
                     <MeterInput placeholder="напр. 15" valueMm={tvSurfaceTopBottomDepthMm} onChangeMm={(v) => { pushHistory(); setTvSurfaceTopBottomDepthMm(v); }} />
                   </label>
                 </div>
-                <p className="text-[8px] font-bold text-gray-400 uppercase mb-1">Угловое соединение</p>
+                <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Угловое соединение</p>
                 <div className="flex gap-1.5 mb-2">
                   {([{ id: 'profile', label: 'Профиль' }, { id: 'bend', label: 'Загиб' }] as const).map(({ id, label }) => (
                     <button key={id} onClick={() => { pushHistory(); setTvSurfaceJoint(id); }}
@@ -4138,10 +4138,10 @@ const BambooStudio = () => {
 
             {/* Column shape & dimensions */}
             {wallZone === 'column' && (
-              <div className="bg-white rounded-2xl p-3.5 shadow-sm">
+              <div className="bg-white rounded-2xl p-4 shadow-sm">
                 <div className="flex items-center gap-1.5 mb-2.5">
                   <Columns size={12} className="text-gray-400"/>
-                  <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Колонна · форма и размеры</span>
+                  <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Колонна · форма и размеры</span>
                 </div>
                 <div className="grid grid-cols-3 gap-1.5 mb-2.5">
                   {(['rect', 'round', 'triangle'] as ColumnShape[]).map(sh => (
@@ -4160,14 +4160,14 @@ const BambooStudio = () => {
                     : ['Сторона A, см', 'Сторона B, см', 'Сторона C, см']
                   ).map((label, idx) => (
                     <label key={label} className="block">
-                      <span className="text-[8px] font-bold text-gray-400 uppercase">{label}</span>
+                      <span className="text-[10px] font-bold text-gray-400 uppercase">{label}</span>
                       <MeterInput placeholder="40"
                         valueMm={columnSides[idx]}
                         onChangeMm={(v) => setColumnSides(prev => { const next = [...prev]; next[idx] = v; return next; })} />
                     </label>
                   ))}
                   <label className="block">
-                    <span className="text-[8px] font-bold text-gray-400 uppercase">Высота, см</span>
+                    <span className="text-[10px] font-bold text-gray-400 uppercase">Высота, см</span>
                     <MeterInput placeholder="напр. 270" valueMm={columnHeightMm} onChangeMm={setColumnHeightMm} />
                   </label>
                 </div>
@@ -4216,22 +4216,22 @@ const BambooStudio = () => {
 
             {/* Standard window: dimensions + joint preference */}
             {wallZone === 'window' && (windowType === 'standard' || windowType === 'panoramic') && (
-              <div className="bg-white rounded-2xl p-3.5 shadow-sm">
+              <div className="bg-white rounded-2xl p-4 shadow-sm">
                 <div className="flex items-center gap-1.5 mb-2.5">
                   <Columns size={12} className="text-gray-400"/>
-                  <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Окно · размеры и стыковка</span>
+                  <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Окно · размеры и стыковка</span>
                 </div>
                 <div className="grid grid-cols-2 gap-2 mb-2">
                   <label className="block">
-                    <span className="text-[8px] font-bold text-gray-400 uppercase">Ширина окна, см</span>
+                    <span className="text-[10px] font-bold text-gray-400 uppercase">Ширина окна, см</span>
                     <MeterInput placeholder="напр. 140" valueMm={winWidthMm} onChangeMm={(v) => { pushHistory(); setWinWidthMm(v); }} />
                   </label>
                   <label className="block">
-                    <span className="text-[8px] font-bold text-gray-400 uppercase">Высота окна, см</span>
+                    <span className="text-[10px] font-bold text-gray-400 uppercase">Высота окна, см</span>
                     <MeterInput placeholder="напр. 150" valueMm={winHeightMm} onChangeMm={(v) => { pushHistory(); setWinHeightMm(v); }} />
                   </label>
                   <label className="block">
-                    <span className="text-[8px] font-bold text-gray-400 uppercase">Глубина откоса, см</span>
+                    <span className="text-[10px] font-bold text-gray-400 uppercase">Глубина откоса, см</span>
                     <MeterInput placeholder="напр. 25" valueMm={winSlopeDepthMm} onChangeMm={(v) => { pushHistory(); setWinSlopeDepthMm(v); }} />
                   </label>
                   
@@ -4267,9 +4267,9 @@ const BambooStudio = () => {
 
             {/* Door zone: reveal settings remain available after starting the fitting. */}
             {wallZone === 'door' && points.length >= 4 && (
-              <div className="bg-white rounded-2xl p-3.5 shadow-sm">
+              <div className="bg-white rounded-2xl p-4 shadow-sm">
                 <div className="flex items-center gap-1.5 mb-2.5">
-                  <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Дверной проём · откосы</span>
+                  <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Дверной проём · откосы</span>
                 </div>
                 <div className="grid grid-cols-3 gap-1.5 mb-2">
                   {([
@@ -4333,18 +4333,18 @@ const BambooStudio = () => {
 
             {/* Wall dimensions & area check */}
             {wallZone !== 'column' && wallZone !== 'window' && (
-            <div className="bg-white rounded-2xl p-3.5 shadow-sm">
+            <div className="bg-white rounded-2xl p-4 shadow-sm">
               <div className="flex items-center gap-1.5 mb-2.5">
                 <Columns size={12} className="text-gray-400"/>
-                <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">{wallZone === 'tv' ? (tvType === 'surface' ? 'ТВ-зона накладная — Основная плоскость' : `ТВ-зона — ${TV_ZONE_LABELS[activeSurface]}`) : wallZone === 'door' ? 'Размеры стены с дверью' : `Размеры стены ${activeSurface + 1}`}</span>
+                <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">{wallZone === 'tv' ? (tvType === 'surface' ? 'ТВ-зона накладная — Основная плоскость' : `ТВ-зона — ${TV_ZONE_LABELS[activeSurface]}`) : wallZone === 'door' ? 'Размеры стены с дверью' : `Размеры стены ${activeSurface + 1}`}</span>
               </div>
               <div className="grid grid-cols-2 gap-2 mb-2">
                 <label className="block">
-                  <span className="text-[8px] font-bold text-gray-400 uppercase">Ширина, см</span>
+                  <span className="text-[10px] font-bold text-gray-400 uppercase">Ширина, см</span>
                   <MeterInput placeholder="напр. 360" valueMm={wallWidthMm} onChangeMm={(v) => { pushHistory(); setWallWidthMm(v); }} />
                 </label>
                 <label className="block">
-                  <span className="text-[8px] font-bold text-gray-400 uppercase">Высота, см</span>
+                  <span className="text-[10px] font-bold text-gray-400 uppercase">Высота, см</span>
                   <MeterInput placeholder="напр. 270" valueMm={wallHeightMm} onChangeMm={(v) => { pushHistory(); setWallHeightMm(v); }} />
                 </label>
               </div>
@@ -4383,10 +4383,10 @@ const BambooStudio = () => {
 
             {/* TV zone: cutout for TV — only for built-in */}
             {wallZone === 'tv' && tvType === 'builtin' && (
-              <div className="bg-white rounded-2xl p-3.5 shadow-sm">
+              <div className="bg-white rounded-2xl p-4 shadow-sm">
                 <div className="flex items-center gap-1.5 mb-2.5">
                   <Columns size={12} className="text-gray-400"/>
-                  <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Вырез под телевизор</span>
+                  <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Вырез под телевизор</span>
                 </div>
                 {/* Mode toggle */}
                 <div className="flex gap-1.5 mb-3">
@@ -4419,11 +4419,11 @@ const BambooStudio = () => {
                 {tvCutoutInputMode === 'size' && (
                   <div className="grid grid-cols-2 gap-2 mb-2">
                     <label className="block">
-                      <span className="text-[8px] font-bold text-gray-400 uppercase">Ширина выреза, см</span>
+                      <span className="text-[10px] font-bold text-gray-400 uppercase">Ширина выреза, см</span>
                       <MeterInput placeholder="напр. 120" valueMm={tvCutoutWidthMm} onChangeMm={(v) => { pushHistory(); setTvCutoutWidthMm(v); }} />
                     </label>
                     <label className="block">
-                      <span className="text-[8px] font-bold text-gray-400 uppercase">Высота выреза, см</span>
+                      <span className="text-[10px] font-bold text-gray-400 uppercase">Высота выреза, см</span>
                       <MeterInput placeholder="напр. 70" valueMm={tvCutoutHeightMm} onChangeMm={(v) => { pushHistory(); setTvCutoutHeightMm(v); }} />
                     </label>
                   </div>
@@ -4432,14 +4432,14 @@ const BambooStudio = () => {
                 {/* Depth — always */}
                 <div className="mb-2">
                   <label className="block">
-                    <span className="text-[8px] font-bold text-gray-400 uppercase">Глубина выреза, см</span>
+                    <span className="text-[10px] font-bold text-gray-400 uppercase">Глубина выреза, см</span>
                     <MeterInput placeholder="напр. 15" valueMm={tvCutoutDepthMm} onChangeMm={(v) => { pushHistory(); setTvCutoutDepthMm(v); }} />
                   </label>
                 </div>
 
                 {tvCutoutDepthMm > 0 && (
                   <div className="mb-2">
-                    <p className="text-[8px] font-bold text-gray-400 uppercase mb-1">Тип соединения на углах</p>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Тип соединения на углах</p>
                     <div className="flex gap-1.5">
                       {(['profile', 'bend'] as const).map(jt => (
                         <button key={jt} onClick={() => { pushHistory(); setTvCutoutJoint(jt); }}
@@ -4482,10 +4482,10 @@ const BambooStudio = () => {
             )}
 
             {/* Light mode */}
-            <div className="bg-white rounded-2xl p-3.5 shadow-sm">
+            <div className="bg-white rounded-2xl p-4 shadow-sm">
               <div className="flex items-center gap-1.5 mb-2.5">
                 <Sun size={12} className="text-gray-400"/>
-                <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Освещение</span>
+                <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Освещение</span>
               </div>
               <div className="grid grid-cols-3 gap-1.5">
                 {([
