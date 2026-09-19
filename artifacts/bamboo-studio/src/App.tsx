@@ -2370,17 +2370,10 @@ const BambooStudio = () => {
       const hiddenAvg = hiddenSel.length > 0
         ? hiddenSel.reduce((s, p) => s + getPanelPrice(p.id), 0) / hiddenSel.length
         : avgPrice;
-      // Hidden faces are counted by PERIMETER FACES, not by optimized purchases:
-      // a 4-panel perimeter with 2 panels visible on the visualization ⇒ 2 hidden panels
-      const hiddenCount = Math.max(0, perRow - projCount);
-      const neededTotal = Math.max(needed, projCount + hiddenCount);
-      const calcCost = Math.round(projCost + hiddenCount * hiddenAvg);
-      // Corners wrapped by bent panels — profiles are NOT tied to the number of faces
-      const wrappedCorners = wrapJunctionsRef.current
-        .slice(0, Math.max(0, nQuads - 1))
-        .filter((w, j) => w && (cornerTypesRef.current[j] ?? 'external') === 'external').length;
-      // Per-panel-type qty for filler strips (donors) when height > one row.
-      // Each unique article needs: fullRows × faceCount + ceil(faceCount / stripsPerPanel) donors.
+      // Strips per donor panel (for height overrun)
+      const spp = opt.remMm > 0 ? Math.max(1, Math.floor(PANEL_H_MM / opt.remMm)) : 0;
+
+      // Per-panel-type qty for visible faces: fullRows × faceCount + per-type donors.
       const qtyByArticle = new Map<string, number>();
       {
         const faceByArticle = new Map<string, number>();
@@ -2394,13 +2387,26 @@ const BambooStudio = () => {
             faceByArticle.set(mat.article, (faceByArticle.get(mat.article) ?? 0) + 1);
           }
         }
-        const spp = opt.remMm > 0 ? Math.max(1, Math.floor(PANEL_H_MM / opt.remMm)) : 0;
         faceByArticle.forEach((faceCount, article) => {
-          const donors = (opt.remMm > 0 && spp > 0) ? Math.ceil(faceCount / spp) : 0;
+          const donors = (spp > 0) ? Math.ceil(faceCount / spp) : 0;
           qtyByArticle.set(article, opt.fullRows * faceCount + donors);
         });
       }
-      return { perRow, opt, needed: neededTotal, areaM2, projCost, projCount, calcCost, wrappedCorners, hiddenCount, hiddenSel, hiddenNames: hiddenSel.map(p => p.name), qtyByArticle };
+
+      // Hidden faces: apply the same height-based calculation as visible faces.
+      // Each hidden face needs fullRows panels + donor strips (same spp).
+      const hiddenFaces = Math.max(0, perRow - projCount);
+      const hiddenDonors = spp > 0 ? Math.ceil(hiddenFaces / spp) : 0;
+      const hiddenCount = hiddenFaces * opt.fullRows + hiddenDonors;
+
+      const visiblePanels = [...qtyByArticle.values()].reduce((s, v) => s + v, 0);
+      const neededTotal = Math.max(needed, visiblePanels + hiddenCount);
+      const calcCost = Math.round(projCost + hiddenCount * hiddenAvg);
+      // Corners wrapped by bent panels — profiles are NOT tied to the number of faces
+      const wrappedCorners = wrapJunctionsRef.current
+        .slice(0, Math.max(0, nQuads - 1))
+        .filter((w, j) => w && (cornerTypesRef.current[j] ?? 'external') === 'external').length;
+      return { perRow, opt, needed: neededTotal, areaM2, projCost, projCount, calcCost, wrappedCorners, hiddenFaces, hiddenCount, hiddenSel, hiddenNames: hiddenSel.map(p => p.name), qtyByArticle };
     })() : null;
 
     // Wall dimension calculations: if dimensions are set, the calculated
