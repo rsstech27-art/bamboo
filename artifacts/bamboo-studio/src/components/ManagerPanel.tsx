@@ -1116,13 +1116,7 @@ function MoldingCard({ product, onEdit, onDelete }: {
     <div className="bg-white border border-gray-100 rounded-2xl p-4 flex items-center gap-4 shadow-sm hover:shadow transition-shadow group">
       <div className="flex-1 min-w-0">
         <div className="font-bold text-sm text-gray-900 truncate">{product.name}</div>
-        <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-          <span className="text-xs font-mono text-gray-400">{product.article}</span>
-          {product.series && <span className="text-[10px] bg-blue-50 text-blue-500 px-1.5 py-0.5 rounded-md">{product.series}</span>}
-          {product.color && <span className="text-[10px] bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded-md">{product.color}</span>}
-          {product.size  && <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-md">{product.size}</span>}
-        </div>
-        <div className="text-xs font-bold text-[#7ec662] mt-0.5">{fmt(product.cost)}</div>
+        <div className="text-xs font-bold text-gray-900 mt-0.5">{fmt(product.cost)}</div>
       </div>
       <div className="flex items-center gap-1.5 shrink-0">
         <button onClick={onEdit}
