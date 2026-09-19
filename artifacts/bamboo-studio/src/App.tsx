@@ -4558,10 +4558,10 @@ const BambooStudio = () => {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-10 pb-10 border-b border-white/10">
             {/* Brand */}
             <div className="md:col-span-1">
-              <div className="flex items-center mb-2">
+              <div className="flex items-center mb-0">
                 <img src={`${BASE}logo-footer.webp`} alt="ALL WALL" className="h-28 object-contain"/>
               </div>
-              <p className="text-gray-400 text-xs leading-relaxed">
+              <p className="text-gray-400 text-xs leading-relaxed -mt-2">
                 Стеновые панели нового поколения. Быстрый монтаж. Премиальный результат.
               </p>
             </div>
