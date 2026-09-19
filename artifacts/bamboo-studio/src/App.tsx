@@ -3239,9 +3239,9 @@ const BambooStudio = () => {
       {/* ══════════════════════════════════════════
           APP TOOL
       ══════════════════════════════════════════ */}
-      <section ref={toolRef} id="tool" className="flex flex-col bg-[#ebebed] md:h-[calc(100vh-64px)]">
+      <section ref={toolRef} id="tool" className="flex flex-col bg-[#ebebed] h-screen">
         {/* ── App Nav ── */}
-        <nav className="h-12 shrink-0 border-b border-gray-200 bg-white/90 backdrop-blur-xl flex justify-between items-center px-5 z-40">
+        <nav className="h-10 shrink-0 border-b border-gray-200 bg-white/90 backdrop-blur-xl flex justify-between items-center px-4 z-40">
           <div className="flex items-center gap-2.5">
             <div className="w-7 h-7 bg-black rounded-lg flex items-center justify-center">
               <Layout className="text-white w-4 h-4" />
@@ -3268,10 +3268,10 @@ const BambooStudio = () => {
         </nav>
 
         {/* ── Main: canvas + right tool panel ── */}
-        <div className="flex-1 flex flex-col md:flex-row gap-3 p-3 overflow-y-auto md:overflow-hidden md:min-h-0">
+        <div className="flex-1 flex flex-col md:flex-row gap-1.5 p-1.5 overflow-y-auto md:overflow-hidden md:min-h-0">
 
         {/* ── Canvas area ── */}
-        <div className="flex-1 relative min-w-0 min-h-[55vw] md:min-h-0">
+        <div className="flex-1 relative min-w-0 min-h-[70vw] md:min-h-0">
           {step === 'zone' && wallZone === 'tv' ? (
             <div className="flex flex-col items-center justify-center w-full h-full rounded-3xl bg-white border-2 border-dashed border-gray-200 p-5">
               <div className="text-center mb-5">
@@ -3584,7 +3584,7 @@ const BambooStudio = () => {
         )}
 
         {/* ── Right tool panel ── */}
-        <div className="w-full md:w-[232px] shrink-0 flex flex-col gap-2 overflow-y-auto pb-4 md:pb-1" style={{ scrollbarWidth: 'none' }}>
+        <div className="w-full md:w-[196px] shrink-0 flex flex-col gap-1.5 overflow-y-auto pb-4 md:pb-1" style={{ scrollbarWidth: 'none' }}>
 
           {/* MARK step */}
           {step === 'mark' && (
