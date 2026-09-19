@@ -2398,34 +2398,57 @@ const BambooStudio = () => {
       // Strips per donor panel (for height overrun)
       const spp = opt.remMm > 0 ? Math.max(1, Math.floor(PANEL_H_MM / opt.remMm)) : 0;
 
-      // Per-panel-type qty for visible faces: fullRows × faceCount + per-type donors.
-      const qtyByArticle = new Map<string, number>();
-      {
-        const faceByArticle = new Map<string, number>();
-        for (let q = 0; q < nQuads; q++) {
-          const cfg = kpCfgs[q];
-          const wL = q > 0 && (wrapJunctionsRef.current[q - 1] ?? false)
-            && (cornerTypesRef.current[q - 1] ?? 'external') === 'external';
-          for (let sIdx = 0; sIdx < cfg.panelCount; sIdx++) {
-            if (sIdx === 0 && wL) continue;
-            const mat = cfg.sectorMaterials[sIdx] ?? BAMBOO_PANELS[0];
-            faceByArticle.set(mat.article, (faceByArticle.get(mat.article) ?? 0) + 1);
-          }
+      // Build face count per article: visible faces first, then fold in hidden faces.
+      // Result: one combined entry per article covering both sides.
+      const faceByArticle = new Map<string, number>();
+      for (let q = 0; q < nQuads; q++) {
+        const cfg = kpCfgs[q];
+        const wL = q > 0 && (wrapJunctionsRef.current[q - 1] ?? false)
+          && (cornerTypesRef.current[q - 1] ?? 'external') === 'external';
+        for (let sIdx = 0; sIdx < cfg.panelCount; sIdx++) {
+          if (sIdx === 0 && wL) continue;
+          const mat = cfg.sectorMaterials[sIdx] ?? BAMBOO_PANELS[0];
+          faceByArticle.set(mat.article, (faceByArticle.get(mat.article) ?? 0) + 1);
         }
-        faceByArticle.forEach((faceCount, article) => {
-          const donors = (spp > 0) ? Math.ceil(faceCount / spp) : 0;
-          qtyByArticle.set(article, opt.fullRows * faceCount + donors);
-        });
       }
 
-      // Hidden faces: apply the same height-based calculation as visible faces.
-      // Each hidden face needs fullRows panels + donor strips (same spp).
+      // Hidden faces
       const hiddenFaces = Math.max(0, perRow - projCount);
       const hiddenDonors = spp > 0 ? Math.ceil(hiddenFaces / spp) : 0;
       const hiddenCount = hiddenFaces * opt.fullRows + hiddenDonors;
 
-      const visiblePanels = [...qtyByArticle.values()].reduce((s, v) => s + v, 0);
-      const neededTotal = Math.max(needed, visiblePanels + hiddenCount);
+      if (hiddenFaces > 0) {
+        if (hiddenSel.length > 0) {
+          // Client-selected: distribute hidden faces evenly among hiddenSel
+          const per = Math.floor(hiddenFaces / hiddenSel.length);
+          let extra = hiddenFaces - per * hiddenSel.length;
+          hiddenSel.forEach(p => {
+            const hf = per + (extra > 0 ? 1 : 0);
+            if (extra > 0) extra--;
+            if (hf > 0) faceByArticle.set(p.article, (faceByArticle.get(p.article) ?? 0) + hf);
+          });
+        } else {
+          // No selection: spread hidden faces proportionally among visible articles
+          const totalVis = [...faceByArticle.values()].reduce((s, v) => s + v, 0);
+          if (totalVis > 0) {
+            const ents = [...faceByArticle.entries()].map(([a, f]) => ({ a, add: f * hiddenFaces / totalVis, fl: 0 }));
+            ents.forEach(e => { e.fl = Math.floor(e.add); });
+            let remH = hiddenFaces - ents.reduce((s, e) => s + e.fl, 0);
+            ents.sort((a, b) => (b.add - b.fl) - (a.add - a.fl));
+            ents.forEach(e => { if (remH > 0) { e.fl++; remH--; } });
+            ents.forEach(({ a, fl }) => { if (fl > 0) faceByArticle.set(a, (faceByArticle.get(a) ?? 0) + fl); });
+          }
+        }
+      }
+
+      // qty = fullRows × combined face count + per-type donors
+      const qtyByArticle = new Map<string, number>();
+      faceByArticle.forEach((faceCount, article) => {
+        const donors = spp > 0 ? Math.ceil(faceCount / spp) : 0;
+        qtyByArticle.set(article, opt.fullRows * faceCount + donors);
+      });
+
+      const neededTotal = Math.max(needed, [...qtyByArticle.values()].reduce((s, v) => s + v, 0));
       const calcCost = Math.round(projCost + hiddenCount * hiddenAvg);
       // Corners wrapped by bent panels — profiles are NOT tied to the number of faces
       const wrappedCorners = wrapJunctionsRef.current
@@ -2516,28 +2539,19 @@ const BambooStudio = () => {
     };
     let panelsTableTotal = projectPanelCount;
     if (columnCalc) {
-      // Hidden column faces: separate lines for client-selected panels,
-      // otherwise spread over the visible panel mix
-      if (columnCalc.hiddenCount > 0 && columnCalc.hiddenSel.length > 0) {
-        const per = Math.floor(columnCalc.hiddenCount / columnCalc.hiddenSel.length);
-        let extra = columnCalc.hiddenCount - per * columnCalc.hiddenSel.length;
-        columnCalc.hiddenSel.forEach(p => {
-          const qty = per + (extra > 0 ? 1 : 0);
-          if (extra > 0) extra--;
-          if (qty > 0) {
-            addItem(p.article, `Панель «${matLabel(p)}» (невидимая сторона)`, qty, getPanelPrice(p.id));
-            panelArticles.add(p.article);
-          }
-        });
-      }
-      // Per-type qty: each visible panel article gets fullRows*faceCount + per-type donors.
-      // This ensures filler strips for tall columns use the matching panel, not an average.
-      items.filter(it => panelArticles.has(it.article) &&
-          !columnCalc.hiddenSel.some((h: typeof columnCalc.hiddenSel[0]) => h.article === it.article))
-        .forEach(it => {
-          const q = columnCalc.qtyByArticle.get(it.article);
-          if (q !== undefined) it.qty = q;
-        });
+      // Hidden-only articles (not on visible faces) must be in items before qty assignment
+      columnCalc.hiddenSel.forEach(p => {
+        if (!items.some(it => it.article === p.article)) {
+          // Add a stub row; qtyByArticle will set the real count below
+          addItem(p.article, `Панель «${matLabel(p)}»`, 0, getPanelPrice(p.id));
+          panelArticles.add(p.article);
+        }
+      });
+      // qtyByArticle already merges visible + hidden faces per article — apply to all panel rows
+      items.filter(it => panelArticles.has(it.article)).forEach(it => {
+        const q = columnCalc.qtyByArticle.get(it.article);
+        if (q !== undefined) it.qty = q;
+      });
       panelsTableTotal = columnCalc.needed;
     } else if (windowCut) {
       // Standard window: the table lands on the cutting calc (offcuts reused);
