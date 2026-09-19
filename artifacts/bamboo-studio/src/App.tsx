@@ -578,6 +578,8 @@ const BambooStudio = () => {
   const [doorMarkMode, setDoorMarkMode] = useState<'wall' | 'opening'>('wall');
   const [points, setPoints] = useState<Point[]>([]);
   const [showManagerPanel, setShowManagerPanel] = useState(false);
+  // 'user' = entry via © (regular staff); 'admin' = Alt+Shift+A / triple-click (administrator)
+  const [managerPanelMode, setManagerPanelMode] = useState<'user' | 'admin'>('user');
   const {
     panelOverrides, moldingOverrides, seriesNameOverrides, moldingNameOverrides,
     customSeries, customMoldings, seriesDefinitions,
@@ -2397,6 +2399,7 @@ const BambooStudio = () => {
     const onKey = (e: KeyboardEvent) => {
       if (e.altKey && e.shiftKey && e.key.toLowerCase() === 'a') {
         e.preventDefault();
+        setManagerPanelMode('admin');
         setShowManagerPanel(true);
       }
     };
@@ -5112,7 +5115,7 @@ const BambooStudio = () => {
           <div className="pt-6 flex flex-col md:flex-row justify-between items-center gap-3 text-xs text-gray-600">
             <span>
               <span
-                onClick={() => setShowManagerPanel(true)}
+                onClick={() => { setManagerPanelMode('user'); setShowManagerPanel(true); }}
                 className="cursor-default select-none"
                 title=""
               >©</span>{' '}2024 ALL WALL. Все права защищены.
@@ -5157,6 +5160,7 @@ const BambooStudio = () => {
           onUpdateCustomExtra={updateCustomExtra}
           dbSaveStatus={dbSaveStatus}
           onSettingsChange={reloadSettings}
+          mode={managerPanelMode}
           onClose={() => setShowManagerPanel(false)}
           onPhotoChange={() => {
             fetch('/api/products')

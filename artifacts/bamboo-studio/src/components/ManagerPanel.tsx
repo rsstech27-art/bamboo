@@ -81,7 +81,14 @@ function useFetch<T>(url: string) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Login screen
 // ─────────────────────────────────────────────────────────────────────────────
-function LoginScreen({ onSuccess }: { onSuccess: (session: ManagerSession) => void }) {
+function LoginScreen({
+  onSuccess,
+  userOnly = false,
+}: {
+  onSuccess: (session: ManagerSession) => void;
+  /** userOnly=true: requires login field, no admin hint (entry via ©). */
+  userOnly?: boolean;
+}) {
   const [login, setLogin] = useState('');
   const [pw, setPw] = useState('');
   const [error, setError] = useState(false);
@@ -91,6 +98,7 @@ function LoginScreen({ onSuccess }: { onSuccess: (session: ManagerSession) => vo
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!pw.trim()) return;
+    if (userOnly && !login.trim()) return; // login required in user mode
     setLoading(true);
     const ok = await managerLogin(login, pw);
     setLoading(false);
@@ -104,6 +112,11 @@ function LoginScreen({ onSuccess }: { onSuccess: (session: ManagerSession) => vo
     }
   };
 
+  const inputCls = (hasError: boolean) =>
+    `w-full border rounded-xl px-4 py-3 text-sm outline-none transition-all ${
+      hasError ? 'border-red-400 bg-red-50 text-red-700' : 'border-gray-200 focus:border-black bg-gray-50 focus:bg-white'
+    }`;
+
   return (
     <div className="flex flex-col items-center justify-center h-full bg-[#f8f8f6]">
       <div className={`w-full max-w-xs mx-auto ${shake ? 'animate-[shake_0.4s_ease]' : ''}`}>
@@ -111,24 +124,25 @@ function LoginScreen({ onSuccess }: { onSuccess: (session: ManagerSession) => vo
           <Lock size={28} className="text-white" />
         </div>
         <h2 className="text-center text-2xl font-black text-gray-900 mb-1">Кабинет менеджера</h2>
-        <p className="text-center text-sm text-gray-400 mb-8">ALL WALL · Введите данные для входа</p>
+        <p className="text-center text-sm text-gray-400 mb-8">
+          {userOnly ? 'ALL WALL · Вход для сотрудников' : 'ALL WALL · Вход для администратора'}
+        </p>
         <form onSubmit={submit} className="space-y-3 px-4">
+          {/* User mode: always show login field. Admin mode: show login field too (can leave empty). */}
           <input
             type="text" value={login} autoFocus
             onChange={e => { setLogin(e.target.value); setError(false); }}
-            placeholder="Логин (пусто = администратор)"
-            className={`w-full border rounded-xl px-4 py-3 text-sm outline-none transition-all
-              ${error ? 'border-red-400 bg-red-50 text-red-700' : 'border-gray-200 focus:border-black bg-gray-50 focus:bg-white'}`}
+            placeholder={userOnly ? 'Логин' : 'Логин (пусто — вход как администратор)'}
+            className={inputCls(error)}
           />
           <input
             type="password" value={pw}
             onChange={e => { setPw(e.target.value); setError(false); }}
             placeholder="Пароль"
-            className={`w-full border rounded-xl px-4 py-3 text-sm outline-none transition-all
-              ${error ? 'border-red-400 bg-red-50 text-red-700' : 'border-gray-200 focus:border-black bg-gray-50 focus:bg-white'}`}
+            className={inputCls(error)}
           />
           {error && <p className="text-xs text-red-500 text-center">Неверные учётные данные</p>}
-          <button type="submit" disabled={loading}
+          <button type="submit" disabled={loading || (userOnly && !login.trim()) || !pw.trim()}
             className="w-full flex items-center justify-center gap-2 bg-black text-white font-bold text-sm py-3 rounded-xl hover:bg-gray-800 active:scale-95 transition-all shadow-md disabled:opacity-60">
             {loading ? <><Loader2 size={14} className="animate-spin" /> Проверка…</> : 'Войти'}
           </button>
@@ -2477,6 +2491,8 @@ interface Props {
   onClose: () => void;
   onPhotoChange?: () => void;
   onSettingsChange?: () => void;
+  /** 'user' = opened via © (staff login, requires login field). 'admin' = hidden shortcut. */
+  mode?: 'user' | 'admin';
 }
 
 export function ManagerPanel({
@@ -2491,6 +2507,7 @@ export function ManagerPanel({
   extrasOverrides, onUpdateExtras,
   customExtras, onAddExtra, onDeleteExtra, onUpdateCustomExtra,
   dbSaveStatus,
+  mode = 'admin',
 }: Props) {
   const [isAuth, setIsAuth] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
@@ -2555,7 +2572,7 @@ export function ManagerPanel({
               className="absolute top-4 right-4 z-10 w-9 h-9 flex items-center justify-center rounded-full bg-white shadow text-gray-500 hover:text-black transition-colors">
               <X size={15} />
             </button>
-            <LoginScreen onSuccess={handleLoginSuccess} />
+            <LoginScreen onSuccess={handleLoginSuccess} userOnly={mode === 'user'} />
           </>
         ) : (
           <>
