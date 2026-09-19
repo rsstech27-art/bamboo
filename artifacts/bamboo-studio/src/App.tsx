@@ -4559,7 +4559,7 @@ const BambooStudio = () => {
             {/* Brand */}
             <div className="md:col-span-1">
               <div className="flex items-center mb-4">
-                <img src={`${BASE}logo.webp`} alt="ALL WALL" className="h-8 object-contain"/>
+                <img src={`${BASE}logo-footer.webp`} alt="ALL WALL" className="h-16 object-contain"/>
               </div>
               <p className="text-gray-400 text-xs leading-relaxed">
                 Стеновые панели нового поколения. Быстрый монтаж. Премиальный результат.
