@@ -560,6 +560,7 @@ const BambooStudio = () => {
     addCustomMolding, deleteCustomMolding, updateCustomMolding,
     hideDefaultSeries, hideDefaultMolding, hideDefaultExtra,
     resetPrices, extrasOverrides, setExtrasPrice,
+    customExtras, addCustomExtra, deleteCustomExtra, updateCustomExtra,
     reloadSettings, dbSaveStatus,
   } = useManagerPrices();
   const [panelCount, setPanelCount] = useState(5);
@@ -4991,6 +4992,10 @@ const BambooStudio = () => {
           onReset={resetPrices}
           extrasOverrides={extrasOverrides}
           onUpdateExtras={setExtrasPrice}
+          customExtras={customExtras}
+          onAddExtra={addCustomExtra}
+          onDeleteExtra={deleteCustomExtra}
+          onUpdateCustomExtra={updateCustomExtra}
           dbSaveStatus={dbSaveStatus}
           onSettingsChange={reloadSettings}
           onClose={() => setShowManagerPanel(false)}

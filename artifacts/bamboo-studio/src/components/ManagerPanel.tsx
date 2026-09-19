@@ -318,7 +318,9 @@ function TabPrices({
   onAddSeries, onDeleteSeries, onUpdateCustomSeries,
   onAddMolding, onDeleteMolding, onUpdateCustomMolding,
   onHideSeries, onHideMolding, onHideExtra,
-  onReset, extrasOverrides, onUpdateExtras, dbSaveStatus,
+  onReset, extrasOverrides, onUpdateExtras,
+  customExtras, onAddExtra, onDeleteExtra, onUpdateCustomExtra,
+  dbSaveStatus,
 }: {
   panelOverrides: PriceMap;
   moldingOverrides: PriceMap;
@@ -345,6 +347,10 @@ function TabPrices({
   onReset: () => void;
   extrasOverrides: PriceMap;
   onUpdateExtras: (id: string, price: number) => void;
+  customExtras: SeriesDefinition[];
+  onAddExtra: (name: string, price: number) => void;
+  onDeleteExtra: (id: string) => void;
+  onUpdateCustomExtra: (id: string, name: string, price: number) => void;
   dbSaveStatus: DbSaveStatus;
 }) {
   const [seriesOpen,  setSeriesOpen]  = useState(true);
@@ -465,20 +471,41 @@ function TabPrices({
           <span className="text-[10px] text-gray-400">Цена за единицу</span>
         </button>
         {extrasOpen && (
-          <div className="bg-white border border-gray-100 rounded-xl px-4 shadow-sm">
-            {visibleExtras.map(e => (
-              <EditableRow
-                key={e.id}
-                defaultName={e.name}
-                defaultPrice={e.defaultPrice}
-                priceOverride={extrasOverrides[e.id]}
-                onNameChange={() => {/* имя не редактируется */}}
-                onPriceChange={price => onUpdateExtras(e.id, price)}
-                unitLabel={e.unit}
-                onDelete={() => onHideExtra(e.id)}
+          <>
+            <div className="bg-white border border-gray-100 rounded-xl px-4 shadow-sm">
+              {visibleExtras.map(e => (
+                <EditableRow
+                  key={e.id}
+                  defaultName={e.name}
+                  defaultPrice={e.defaultPrice}
+                  priceOverride={extrasOverrides[e.id]}
+                  onNameChange={() => {/* имя не редактируется */}}
+                  onPriceChange={price => onUpdateExtras(e.id, price)}
+                  unitLabel={e.unit}
+                  onDelete={() => onHideExtra(e.id)}
+                />
+              ))}
+              {customExtras.map(e => (
+                <CustomItemRow
+                  key={e.id}
+                  item={e}
+                  onUpdate={(name, price) => onUpdateCustomExtra(e.id, name, price)}
+                  onDelete={() => onDeleteExtra(e.id)}
+                />
+              ))}
+            </div>
+            <div className="mt-3">
+              <AddItemForm
+                onAdd={onAddExtra}
+                buttonLabel="Добавить позицию"
+                formTitle="Новая позиция"
+                namePlaceholder="Название (услуга, расходник…)"
+                priceLabel="Цена, ₽"
+                pricePlaceholder="500"
+                errorFallback="Не удалось добавить позицию"
               />
-            ))}
-          </div>
+            </div>
+          </>
         )}
       </section>
 
@@ -2161,6 +2188,10 @@ interface Props {
   onReset: () => void;
   extrasOverrides: PriceMap;
   onUpdateExtras: (id: string, price: number) => void;
+  customExtras: SeriesDefinition[];
+  onAddExtra: (name: string, price: number) => void;
+  onDeleteExtra: (id: string) => void;
+  onUpdateCustomExtra: (id: string, name: string, price: number) => void;
   dbSaveStatus: DbSaveStatus;
   onClose: () => void;
   onPhotoChange?: () => void;
@@ -2176,7 +2207,9 @@ export function ManagerPanel({
   onAddMolding, onDeleteMolding, onUpdateCustomMolding,
   onHideSeries, onHideMolding, onHideExtra,
   onReset, onClose, onPhotoChange, onSettingsChange,
-  extrasOverrides, onUpdateExtras, dbSaveStatus,
+  extrasOverrides, onUpdateExtras,
+  customExtras, onAddExtra, onDeleteExtra, onUpdateCustomExtra,
+  dbSaveStatus,
 }: Props) {
   const [isAuth, setIsAuth] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
@@ -2289,6 +2322,10 @@ export function ManagerPanel({
                   onReset={onReset}
                   extrasOverrides={extrasOverrides}
                   onUpdateExtras={onUpdateExtras}
+                  customExtras={customExtras}
+                  onAddExtra={onAddExtra}
+                  onDeleteExtra={onDeleteExtra}
+                  onUpdateCustomExtra={onUpdateCustomExtra}
                   dbSaveStatus={dbSaveStatus}
                 />
               )}

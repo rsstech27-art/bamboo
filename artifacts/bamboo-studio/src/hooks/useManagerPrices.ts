@@ -58,6 +58,7 @@ const LS_MOLDING_NAMES_KEY    = 'aw_manager_molding_names';
 const LS_CUSTOM_SERIES_KEY    = 'aw_manager_custom_series';
 const LS_CUSTOM_MOLDINGS_KEY  = 'aw_manager_custom_moldings';
 const LS_EXTRAS_KEY           = 'aw_manager_extras_prices';
+const LS_CUSTOM_EXTRAS_KEY    = 'aw_manager_custom_extras';
 const LS_HIDDEN_SERIES_KEY    = 'aw_manager_hidden_series';
 const LS_HIDDEN_MOLDINGS_KEY  = 'aw_manager_hidden_moldings';
 const LS_HIDDEN_EXTRAS_KEY    = 'aw_manager_hidden_extras';
@@ -88,6 +89,7 @@ async function fetchSettings(): Promise<{
   molding_names?: SeriesNames;
   custom_series?: SeriesDefinition[];
   custom_moldings?: SeriesDefinition[];
+  custom_extras?: SeriesDefinition[];
   extras_prices?: PriceMap;
   hidden_series_ids?: string[];
   hidden_molding_ids?: string[];
@@ -156,6 +158,12 @@ export function useManagerPrices() {
       return raw ? JSON.parse(raw) as SeriesDefinition[] : [];
     } catch { return []; }
   });
+  const [customExtras, setCustomExtras] = useState<SeriesDefinition[]>(() => {
+    try {
+      const raw = localStorage.getItem(LS_CUSTOM_EXTRAS_KEY);
+      return raw ? JSON.parse(raw) as SeriesDefinition[] : [];
+    } catch { return []; }
+  });
   const [hiddenSeriesIds,  setHiddenSeriesIds]  = useState<string[]>(() => loadArr(LS_HIDDEN_SERIES_KEY));
   const [hiddenMoldingIds, setHiddenMoldingIds] = useState<string[]>(() => loadArr(LS_HIDDEN_MOLDINGS_KEY));
   const [hiddenExtrasIds,  setHiddenExtrasIds]  = useState<string[]>(() => loadArr(LS_HIDDEN_EXTRAS_KEY));
@@ -195,6 +203,7 @@ export function useManagerPrices() {
   const extrasOverridesRef      = useRef(extrasOverrides);
   const customSeriesRef         = useRef(customSeries);
   const customMoldingsRef       = useRef(customMoldings);
+  const customExtrasRef         = useRef(customExtras);
   const hiddenSeriesRef         = useRef(hiddenSeriesIds);
   const hiddenMoldingsRef       = useRef(hiddenMoldingIds);
   const hiddenExtrasRef         = useRef(hiddenExtrasIds);
@@ -206,6 +215,7 @@ export function useManagerPrices() {
   useEffect(() => { extrasOverridesRef.current      = extrasOverrides;      }, [extrasOverrides]);
   useEffect(() => { customSeriesRef.current         = customSeries;         }, [customSeries]);
   useEffect(() => { customMoldingsRef.current       = customMoldings;       }, [customMoldings]);
+  useEffect(() => { customExtrasRef.current         = customExtras;         }, [customExtras]);
   useEffect(() => { hiddenSeriesRef.current         = hiddenSeriesIds;      }, [hiddenSeriesIds]);
   useEffect(() => { hiddenMoldingsRef.current       = hiddenMoldingIds;     }, [hiddenMoldingIds]);
   useEffect(() => { hiddenExtrasRef.current         = hiddenExtrasIds;      }, [hiddenExtrasIds]);
@@ -233,6 +243,14 @@ export function useManagerPrices() {
         );
         setCustomMoldings(valid);
         try { localStorage.setItem(LS_CUSTOM_MOLDINGS_KEY, JSON.stringify(valid)); } catch { /* ignore */ }
+      }
+      if (Array.isArray(remote.custom_extras)) {
+        const valid = remote.custom_extras.filter(s =>
+          s && typeof s.id === 'string' && typeof s.name === 'string' &&
+          typeof s.price === 'number' && s.price > 0
+        );
+        setCustomExtras(valid);
+        try { localStorage.setItem(LS_CUSTOM_EXTRAS_KEY, JSON.stringify(valid)); } catch { /* ignore */ }
       }
       if (Array.isArray(remote.hidden_series_ids))  { setHiddenSeriesIds(remote.hidden_series_ids);   saveArrLS(LS_HIDDEN_SERIES_KEY,   remote.hidden_series_ids); }
       if (Array.isArray(remote.hidden_molding_ids)) { setHiddenMoldingIds(remote.hidden_molding_ids); saveArrLS(LS_HIDDEN_MOLDINGS_KEY, remote.hidden_molding_ids); }
@@ -379,6 +397,49 @@ export function useManagerPrices() {
     void persist('custom_moldings', next);
   }, [persist]);
 
+  const addCustomExtra = useCallback((name: string, price: number) => {
+    const trimmed = name.trim();
+    if (!trimmed) throw new Error('Введите название');
+    if (!Number.isFinite(price) || price <= 0) throw new Error('Укажите стоимость больше нуля');
+    const allNames = [
+      ...DEFAULT_EXTRAS.map(e => e.name),
+      ...customExtrasRef.current.map(e => e.name),
+    ];
+    if (allNames.some(n => n.localeCompare(trimmed, 'ru', { sensitivity: 'accent' }) === 0)) {
+      throw new Error('Позиция с таким названием уже существует');
+    }
+    const slug = trimmed.toLocaleLowerCase('ru').replace(/[^a-zа-яё0-9]+/gi, '-').replace(/^-+|-+$/g, '') || 'extra';
+    const usedIds = new Set([...DEFAULT_EXTRAS.map(e => e.id), ...customExtrasRef.current.map(e => e.id)]);
+    let id = `custom-extra-${slug}`;
+    let suffix = 2;
+    while (usedIds.has(id)) id = `custom-extra-${slug}-${suffix++}`;
+    const created: SeriesDefinition = { id, name: trimmed, price: Math.round(price), custom: true };
+    const next = [...customExtrasRef.current, created];
+    customExtrasRef.current = next;
+    saveArrLS(LS_CUSTOM_EXTRAS_KEY, next);
+    setCustomExtras(next);
+    void persist('custom_extras', next);
+    return created;
+  }, [persist]);
+
+  const deleteCustomExtra = useCallback((id: string) => {
+    const next = customExtrasRef.current.filter(e => e.id !== id);
+    customExtrasRef.current = next;
+    saveArrLS(LS_CUSTOM_EXTRAS_KEY, next);
+    setCustomExtras(next);
+    void persist('custom_extras', next);
+  }, [persist]);
+
+  const updateCustomExtra = useCallback((id: string, name: string, price: number) => {
+    const trimmed = name.trim();
+    if (!trimmed || !Number.isFinite(price) || price <= 0) return;
+    const next = customExtrasRef.current.map(e => e.id === id ? { ...e, name: trimmed, price: Math.round(price) } : e);
+    customExtrasRef.current = next;
+    saveArrLS(LS_CUSTOM_EXTRAS_KEY, next);
+    setCustomExtras(next);
+    void persist('custom_extras', next);
+  }, [persist]);
+
   const hideDefaultSeries = useCallback((id: string) => {
     if (hiddenSeriesRef.current.includes(id)) return;
     const next = [...hiddenSeriesRef.current, id];
@@ -446,6 +507,14 @@ export function useManagerPrices() {
       setCustomMoldings(valid);
       try { localStorage.setItem(LS_CUSTOM_MOLDINGS_KEY, JSON.stringify(valid)); } catch { /* ignore */ }
     }
+    if (Array.isArray(remote.custom_extras)) {
+      const valid = remote.custom_extras.filter(s =>
+        s && typeof s.id === 'string' && typeof s.name === 'string' &&
+        typeof s.price === 'number' && s.price > 0
+      );
+      setCustomExtras(valid);
+      try { localStorage.setItem(LS_CUSTOM_EXTRAS_KEY, JSON.stringify(valid)); } catch { /* ignore */ }
+    }
     if (Array.isArray(remote.hidden_series_ids))  { setHiddenSeriesIds(remote.hidden_series_ids);   saveArrLS(LS_HIDDEN_SERIES_KEY,   remote.hidden_series_ids); }
     if (Array.isArray(remote.hidden_molding_ids)) { setHiddenMoldingIds(remote.hidden_molding_ids); saveArrLS(LS_HIDDEN_MOLDINGS_KEY, remote.hidden_molding_ids); }
     if (Array.isArray(remote.hidden_extras_ids))  { setHiddenExtrasIds(remote.hidden_extras_ids);   saveArrLS(LS_HIDDEN_EXTRAS_KEY,   remote.hidden_extras_ids); }
@@ -471,6 +540,7 @@ export function useManagerPrices() {
     moldingNameOverrides,
     customSeries,
     customMoldings,
+    customExtras,
     hiddenSeriesIds,
     hiddenMoldingIds,
     hiddenExtrasIds,
@@ -489,6 +559,9 @@ export function useManagerPrices() {
     addCustomMolding,
     deleteCustomMolding,
     updateCustomMolding,
+    addCustomExtra,
+    deleteCustomExtra,
+    updateCustomExtra,
     hideDefaultSeries,
     hideDefaultMolding,
     hideDefaultExtra,
