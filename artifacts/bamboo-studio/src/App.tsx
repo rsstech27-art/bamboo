@@ -685,6 +685,9 @@ const BambooStudio = () => {
   // Original positions of auto-seams that have been adopted into hMoldingPositions.
   // drawHSeam skips these so the original red line does not reappear after drag.
   const adoptedSeamOriginalsRef = useRef<Set<number>>(new Set());
+  // Current positions of adopted seams (updated as they are dragged).
+  // Used to remove all adopted seams (including moved ones) when jpp changes.
+  const adoptedSeamCurrentRef = useRef<Set<number>>(new Set());
   const [panelOrientation, setPanelOrientation] = useState<'vertical' | 'horizontal'>('vertical');
   const panelOrientationRef = useRef<'vertical' | 'horizontal'>('vertical');
   const [dividerStyleOverrides, setDividerStyleOverrides] = useState<Record<number, MoldingStyle>>({});
@@ -2203,6 +2206,7 @@ const BambooStudio = () => {
       pushHistory();
       // Remember the original computed position so drawHSeam won't redraw it after drag.
       adoptedSeamOriginalsRef.current.add(seamR);
+      adoptedSeamCurrentRef.current.add(seamR);
       const newPositions = [...hMoldingPositionsRef.current, seamR].sort((a, b) => a - b);
       const newIdx = newPositions.findIndex(p => Math.abs(p - seamR) < 0.001);
       hMoldingPositionsRef.current = newPositions; // sync ref immediately for drag
@@ -2275,6 +2279,12 @@ const BambooStudio = () => {
         const updated = [...others, newRatio].sort((a, b) => a - b);
         const newDragIdx = updated.findIndex(p => Math.abs(p - newRatio) < 0.001);
         if (newDragIdx !== -1) draggingHMoldingIndexRef.current = newDragIdx;
+        // Track current position of adopted seams as they move.
+        const oldPos = prev[idx];
+        if (adoptedSeamCurrentRef.current.has(oldPos)) {
+          adoptedSeamCurrentRef.current.delete(oldPos);
+          adoptedSeamCurrentRef.current.add(newRatio);
+        }
         return updated;
       });
       return;
@@ -4260,14 +4270,14 @@ const BambooStudio = () => {
                                   checked={checked}
                                   onChange={() => {
                                     pushHistory();
-                                    // When jpp changes, remove stationary adopted seams (adopted but
-                                    // not yet moved) to prevent copy artifacts. Moved seams stay.
-                                    const adopted = adoptedSeamOriginalsRef.current;
-                                    if (adopted.size > 0) {
-                                      const filtered = hMoldingPositionsRef.current.filter(p => !adopted.has(p));
+                                    // When jpp changes, remove all adopted seams (moved or not).
+                                    const current = adoptedSeamCurrentRef.current;
+                                    if (current.size > 0) {
+                                      const filtered = hMoldingPositionsRef.current.filter(p => !current.has(p));
                                       hMoldingPositionsRef.current = filtered;
                                       setHMoldingPositions(filtered);
                                       adoptedSeamOriginalsRef.current = new Set();
+                                      adoptedSeamCurrentRef.current = new Set();
                                     }
                                     setJointProfilePosition(prev =>
                                       prev.includes(pos)
