@@ -560,6 +560,10 @@ const BambooStudio = () => {
   const [tvSurfaceSideDepthMm, setTvSurfaceSideDepthMm] = useState(0);
   const [tvSurfaceTopBottomDepthMm, setTvSurfaceTopBottomDepthMm] = useState(0);
   const [tvSurfaceJoint, setTvSurfaceJoint] = useState<'bend' | 'profile'>('profile');
+  // TV zone: main wall behind the TV box + LED backlight
+  const [tvMainWallWidthMm, setTvMainWallWidthMm] = useState(0);
+  const [tvMainWallHeightMm, setTvMainWallHeightMm] = useState(0);
+  const [tvBacklightEnabled, setTvBacklightEnabled] = useState(false);
   // Door zone
   const [doorType, setDoorType] = useState<'standard' | 'with-transom' | null>(null);
   const [doorWidthMm, setDoorWidthMm] = useState(0);
@@ -692,6 +696,9 @@ const BambooStudio = () => {
   // (singleRowH / wallH). The companion is always drawn at primary ± magnitude.
   // The companion is virtual — it is not stored in hMoldingPositions.
   const hMoldingCompanionMapRef = useRef<Map<string, number>>(new Map());
+  // TV surface zone refs (used in drawFullScene)
+  const tvTypeRef = useRef<'builtin' | 'surface' | null>(null);
+  const tvBacklightEnabledRef = useRef(false);
   const [panelOrientation, setPanelOrientation] = useState<'vertical' | 'horizontal'>('vertical');
   const panelOrientationRef = useRef<'vertical' | 'horizontal'>('vertical');
   const [dividerStyleOverrides, setDividerStyleOverrides] = useState<Record<number, MoldingStyle>>({});
@@ -915,6 +922,8 @@ const BambooStudio = () => {
   useEffect(() => { selectedDividerIdxRef.current = selectedDividerIdx; }, [selectedDividerIdx]);
   useEffect(() => { hMoldingStyleOverridesRef.current = hMoldingStyleOverrides; }, [hMoldingStyleOverrides]);
   useEffect(() => { selectedHMoldingIdxRef.current = selectedHMoldingIdx; }, [selectedHMoldingIdx]);
+  useEffect(() => { tvTypeRef.current = tvType; }, [tvType]);
+  useEffect(() => { tvBacklightEnabledRef.current = tvBacklightEnabled; }, [tvBacklightEnabled]);
 
   // Ctrl+Z global undo / Ctrl+Y global redo
   useEffect(() => {
@@ -1885,6 +1894,41 @@ const BambooStudio = () => {
         }
       }
 
+      // TV surface: LED backlight glow around the TV box perimeter
+      if (wallZoneRef.current === 'tv' && tvTypeRef.current === 'surface' && tvBacklightEnabledRef.current && pts.length >= 4) {
+        const facePts = pts.slice(0, 4);
+        // Outer warm-amber glow pass
+        tCtx.save();
+        tCtx.shadowColor = 'rgba(255, 200, 60, 0.85)';
+        tCtx.shadowBlur = 50;
+        tCtx.strokeStyle = 'rgba(255, 230, 120, 0.55)';
+        tCtx.lineWidth = 10;
+        tCtx.setLineDash([]);
+        tCtx.lineCap = 'round';
+        tCtx.lineJoin = 'round';
+        tCtx.beginPath();
+        tCtx.moveTo(facePts[0].x, facePts[0].y);
+        facePts.forEach(p => tCtx.lineTo(p.x, p.y));
+        tCtx.closePath();
+        tCtx.stroke();
+        tCtx.restore();
+        // Bright white LED core
+        tCtx.save();
+        tCtx.shadowColor = 'rgba(255, 255, 255, 0.95)';
+        tCtx.shadowBlur = 16;
+        tCtx.strokeStyle = 'rgba(255, 255, 255, 0.92)';
+        tCtx.lineWidth = 2.5;
+        tCtx.setLineDash([]);
+        tCtx.lineCap = 'round';
+        tCtx.lineJoin = 'round';
+        tCtx.beginPath();
+        tCtx.moveTo(facePts[0].x, facePts[0].y);
+        facePts.forEach(p => tCtx.lineTo(p.x, p.y));
+        tCtx.closePath();
+        tCtx.stroke();
+        tCtx.restore();
+      }
+
       // Apply eraser mask — replay strokes from memory (never lost on canvas reset)
       if (maskStrokesRef.current.length > 0) {
         const tempMask = document.createElement('canvas');
@@ -2651,6 +2695,35 @@ const BambooStudio = () => {
           return pieces.length > 0 ? packWindowPieces(pieces) : null;
         })()
       : null;
+    // TV surface main wall: panels for the wall area around the TV box
+    const tvMainWallCalc = isTvSurface && tvMainWallWidthMm > 0 && tvMainWallHeightMm > 0
+      ? (() => {
+          const faceW = kpCfgs[0]?.wallWidthMm ?? 0;
+          const faceH = kpCfgs[0]?.wallHeightMm ?? 0;
+          const mainAreaMm2 = tvMainWallWidthMm * tvMainWallHeightMm;
+          const faceAreaMm2 = faceW > 0 && faceH > 0 ? faceW * faceH : 0;
+          const netAreaMm2 = Math.max(0, mainAreaMm2 - faceAreaMm2);
+          const pMat = kpCfgs[0]?.sectorMaterials[0] ?? BAMBOO_PANELS[0];
+          const pW = pMat.panelWidthMm ?? PANEL_W_MM;
+          const pH = pMat.panelHeightMm ?? PANEL_H_MM;
+          const panelsNeeded = pH > 0 && pW > 0 ? Math.ceil(netAreaMm2 / (pW * pH)) : 0;
+          return {
+            panelsNeeded,
+            mainAreaM2: mainAreaMm2 / 1e6,
+            faceAreaM2: faceAreaMm2 / 1e6,
+            netAreaM2: netAreaMm2 / 1e6,
+          };
+        })()
+      : null;
+    // TV surface backlight: profile length around perimeter of the TV face
+    const tvBacklightRuns = isTvSurface && tvBacklightEnabled
+      ? (() => {
+          const faceW = kpCfgs[0]?.wallWidthMm ?? 0;
+          const faceH = kpCfgs[0]?.wallHeightMm ?? 0;
+          if (faceW <= 0 || faceH <= 0) return 0;
+          return packProfileRuns([faceH, faceH, faceW, faceW]); // 2×height + 2×width
+        })()
+      : 0;
     // Built-in TV: загибы inside the cutout — 2 sides + top + bottom
     const isTvBuiltin = wallZone === 'tv' && tvType === 'builtin';
     const tvBuiltinCut = isTvBuiltin && tvCutoutDepthMm > 0 && tvCutoutWidthMm > 0 && tvCutoutHeightMm > 0
@@ -3147,8 +3220,8 @@ const BambooStudio = () => {
         scaleQtys(panelRows, panelsTableTotal);
       }
     } else if (tvSurfaceCut) {
-      // Surface-mounted TV: cut-based panel count (like window)
-      panelsTableTotal = tvSurfaceCut.panels;
+      // Surface-mounted TV: cut-based panel count (TV box) + main wall panels if set
+      panelsTableTotal = tvSurfaceCut.panels + (tvMainWallCalc?.panelsNeeded ?? 0);
       const panelRows = items.filter(it => panelArticles.has(it.article));
       if (panelRows.reduce((s, it) => s + it.qty, 0) <= 0 && panelsTableTotal > 0) {
         const mat = BAMBOO_PANELS[0];
@@ -3508,6 +3581,33 @@ const BambooStudio = () => {
       }
     }
 
+    // Main wall block (Основная стена, TV surface zone only)
+    if (tvMainWallCalc) {
+      const mWcm = Math.round(tvMainWallWidthMm / 10), mHcm = Math.round(tvMainWallHeightMm / 10);
+      const faceW0 = kpCfgs[0]?.wallWidthMm ?? 0, faceH0 = kpCfgs[0]?.wallHeightMm ?? 0;
+      y += 18;
+      c.fillStyle = '#111111'; c.font = 'bold 18px sans-serif';
+      c.fillText('Основная стена — расчёт материала', 60, y + 10);
+      y += 34;
+      c.font = '16px sans-serif'; c.fillStyle = '#333333';
+      c.fillText(
+        `Стена: ${mWcm} × ${mHcm} см · площадь: ${tvMainWallCalc.mainAreaM2.toFixed(2).replace('.', ',')} м²`,
+        60, y + 8);
+      y += 28;
+      if (faceW0 > 0 && faceH0 > 0) {
+        c.fillText(
+          `Вычет ТВ-короба: ${Math.round(faceW0 / 10)} × ${Math.round(faceH0 / 10)} см · −${tvMainWallCalc.faceAreaM2.toFixed(2).replace('.', ',')} м²`,
+          60, y + 8);
+        y += 28;
+      }
+      c.fillStyle = '#111111'; c.font = 'bold 16px sans-serif';
+      c.fillText(
+        `Чистая площадь: ${tvMainWallCalc.netAreaM2.toFixed(2).replace('.', ',')} м² · панелей: ${tvMainWallCalc.panelsNeeded}`,
+        60, y + 8);
+      y += 36;
+      c.font = '16px sans-serif'; c.fillStyle = '#333333';
+    }
+
     // Surface-mounted TV block: face + sides + top + bottom, no cutout
     if (tvSurfaceCut) {
       const faceW = kpCfgs[0]?.wallWidthMm ?? 0;
@@ -3515,7 +3615,7 @@ const BambooStudio = () => {
       const faceWcm = Math.round(faceW / 10), faceHcm = Math.round(faceH / 10);
       y += 18;
       c.fillStyle = '#111111'; c.font = 'bold 18px sans-serif';
-      c.fillText('ТВ-зона накладная — расчёт материала', 60, y + 10);
+      c.fillText('ТВ-короб — расчёт материала', 60, y + 10);
       y += 34;
       c.font = '16px sans-serif'; c.fillStyle = '#333333';
       c.fillText(
@@ -3534,8 +3634,16 @@ const BambooStudio = () => {
       }
       c.fillText(`Угловое соединение: ${tvSurfaceJoint === 'profile' ? 'через профиль' : 'загиб панелей'}`, 60, y + 8);
       y += 28;
-      c.fillText(`Деталей: ${tvSurfaceCut.pieces.length} · панелей: ${tvSurfaceCut.panels} (обрезки полос используются повторно)`, 60, y + 8);
+      if (tvBacklightEnabled && tvBacklightRuns > 0) {
+        c.fillText(`Подсветка по периметру: 2×${faceWcm} + 2×${faceHcm} см · профилей 3 м: ${tvBacklightRuns} шт.`, 60, y + 8);
+        y += 28;
+      }
+      c.fillText(`Деталей короба: ${tvSurfaceCut.pieces.length} · панелей: ${tvSurfaceCut.panels} (обрезки полос используются повторно)`, 60, y + 8);
       y += 28;
+      if (tvMainWallCalc) {
+        c.fillText(`Основная стена: ${tvMainWallCalc.panelsNeeded} панелей · итого по зоне: ${tvSurfaceCut.panels + tvMainWallCalc.panelsNeeded}`, 60, y + 8);
+        y += 28;
+      }
     }
 
     // Door zone: reveals block
@@ -4387,12 +4495,54 @@ const BambooStudio = () => {
           {/* EDIT step tools */}
           {step === 'edit' && (<>
 
+            {/* TV surface: Основная стена (main wall behind the TV box) */}
+            {wallZone === 'tv' && tvType === 'surface' && (
+              <div className="bg-white rounded-2xl p-4 shadow-sm">
+                <div className="flex items-center gap-1.5 mb-2.5">
+                  <Columns size={12} className="text-gray-400"/>
+                  <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Основная стена</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  <label className="block">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase">Ширина, см</span>
+                    <MeterInput placeholder="напр. 450" valueMm={tvMainWallWidthMm} onChangeMm={(v) => { pushHistory(); setTvMainWallWidthMm(v); }} />
+                  </label>
+                  <label className="block">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase">Высота, см</span>
+                    <MeterInput placeholder="напр. 270" valueMm={tvMainWallHeightMm} onChangeMm={(v) => { pushHistory(); setTvMainWallHeightMm(v); }} />
+                  </label>
+                </div>
+                {tvMainWallWidthMm > 0 && tvMainWallHeightMm > 0 && (() => {
+                  const faceW = wallWidthMm, faceH = wallHeightMm;
+                  const mainAreaM2 = (tvMainWallWidthMm / 1000) * (tvMainWallHeightMm / 1000);
+                  const faceAreaM2 = faceW > 0 && faceH > 0 ? (faceW / 1000) * (faceH / 1000) : 0;
+                  const netAreaM2 = Math.max(0, mainAreaM2 - faceAreaM2);
+                  const pMat = sectorMaterials[0];
+                  const pW = pMat?.panelWidthMm ?? PANEL_W_MM;
+                  const pH = pMat?.panelHeightMm ?? PANEL_H_MM;
+                  const pAreaM2 = (pW * pH) / 1e6;
+                  const panelsEst = pAreaM2 > 0 ? Math.ceil(netAreaM2 / pAreaM2) : 0;
+                  return (
+                    <div className="space-y-1">
+                      <p className="text-[9px] font-bold text-gray-600">
+                        Площадь: {mainAreaM2.toFixed(2).replace('.', ',')} м²
+                        {faceAreaM2 > 0 && ` − короб ${faceAreaM2.toFixed(2).replace('.', ',')} м²`}
+                      </p>
+                      <p className="text-[9px] text-[#5a9c3e] font-bold">
+                        Чистая: {netAreaM2.toFixed(2).replace('.', ',')} м² ≈ {panelsEst} {panelsWord(panelsEst)}
+                      </p>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
             {/* Размеры стены */}
             {wallZone !== 'column' && wallZone !== 'window' && (
             <div className="bg-white rounded-2xl p-4 shadow-sm">
               <div className="flex items-center gap-1.5 mb-2.5">
                 <Columns size={12} className="text-gray-400"/>
-                <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">{wallZone === 'tv' ? (tvType === 'surface' ? 'ТВ-зона накладная — Основная плоскость' : `ТВ-зона — ${TV_ZONE_LABELS[activeSurface]}`) : wallZone === 'door' ? 'Размеры стены с дверью' : `Размеры стены ${activeSurface + 1}`}</span>
+                <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">{wallZone === 'tv' ? (tvType === 'surface' ? 'ТВ-короб — лицевая плоскость' : `ТВ-зона — ${TV_ZONE_LABELS[activeSurface]}`) : wallZone === 'door' ? 'Размеры стены с дверью' : `Размеры стены ${activeSurface + 1}`}</span>
               </div>
               <div className="grid grid-cols-2 gap-2 mb-2">
                 <label className="block">
@@ -4924,6 +5074,12 @@ const BambooStudio = () => {
                     </button>
                   ))}
                 </div>
+                {/* Backlight around the TV box */}
+                <button
+                  onClick={() => { pushHistory(); setTvBacklightEnabled(v => !v); }}
+                  className={`w-full py-1.5 mb-2 rounded-lg text-[9px] font-bold border transition-all active:scale-95 flex items-center justify-center gap-1.5 ${tvBacklightEnabled ? 'bg-amber-50 text-amber-700 border-amber-300' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
+                  {tvBacklightEnabled ? '✦ Подсветка включена' : '✦ Подсветка вокруг короба'}
+                </button>
                 {wallWidthMm > 0 && wallHeightMm > 0 && (() => {
                   const totalArea =
                     (wallWidthMm / 1000) * (wallHeightMm / 1000) +
