@@ -3489,6 +3489,95 @@ const BambooStudio = () => {
       y += 8;
     }
 
+    // ── Zone dimensions & total area (for manual cross-check) ─────────────────
+    {
+      const dimLines: string[] = [];
+      let dimTotalM2 = 0;
+
+      if (isColumn && columnCalc) {
+        const colLabel = `${COLUMN_SHAPE_LABELS[columnShape]}${columnHeightMm > 0 ? ` · высота ${Math.round(columnHeightMm / 10)} см` : ''}`;
+        dimLines.push(`Колонна (${colLabel}): периметр ${(colPerMm / 10).toFixed(0)} см${columnCalc.areaM2 > 0 ? ` · площадь ${columnCalc.areaM2.toFixed(2).replace('.', ',')} м²` : ''}`);
+        if (columnCalc.areaM2 > 0) dimTotalM2 += columnCalc.areaM2;
+      } else if (isWindowAny) {
+        dimLines.push(`${isWindowPan ? 'Панорамное окно' : 'Окно'}: ${Math.round(winWidthMm / 10)} × ${Math.round(winHeightMm / 10)} см`);
+        if (winSlopeDepthMm > 0) {
+          const dCm = Math.round(winSlopeDepthMm / 10);
+          const slopeArea = 2 * (winSlopeDepthMm / 1000) * (winHeightMm / 1000) + (winSlopeDepthMm / 1000) * (winWidthMm / 1000);
+          dimTotalM2 += slopeArea;
+          dimLines.push(`Откосы: глубина ${dCm} см · площадь откосов: ${slopeArea.toFixed(2).replace('.', ',')} м²`);
+        }
+      } else if (isTvSurface) {
+        const faceW = kpCfgs[0]?.wallWidthMm ?? 0;
+        const faceH = kpCfgs[0]?.wallHeightMm ?? 0;
+        if (faceW > 0 && faceH > 0) {
+          const a = (faceW / 1000) * (faceH / 1000);
+          dimLines.push(`ТВ-зона лицевая: ${Math.round(faceW / 10)} × ${Math.round(faceH / 10)} см · ${a.toFixed(2).replace('.', ',')} м²`);
+          dimTotalM2 += a;
+        }
+        if (tvSurfaceSideDepthMm > 0 && (kpCfgs[0]?.wallHeightMm ?? 0) > 0) {
+          const fH = kpCfgs[0]!.wallHeightMm;
+          const a = 2 * (tvSurfaceSideDepthMm / 1000) * (fH / 1000);
+          dimLines.push(`Боковые (×2): ${Math.round(tvSurfaceSideDepthMm / 10)} × ${Math.round(fH / 10)} см · ${a.toFixed(2).replace('.', ',')} м²`);
+          dimTotalM2 += a;
+        }
+        if (tvSurfaceTopBottomDepthMm > 0 && (kpCfgs[0]?.wallWidthMm ?? 0) > 0) {
+          const fW = kpCfgs[0]!.wallWidthMm;
+          const a = 2 * (fW / 1000) * (tvSurfaceTopBottomDepthMm / 1000);
+          dimLines.push(`Верх/Низ (×2): ${Math.round(fW / 10)} × ${Math.round(tvSurfaceTopBottomDepthMm / 10)} см · ${a.toFixed(2).replace('.', ',')} м²`);
+          dimTotalM2 += a;
+        }
+      } else {
+        // Regular walls, wall-niche, TV builtin, door
+        for (let q = 0; q < nQuads; q++) {
+          const cfg = kpCfgs[q];
+          if (cfg.wallWidthMm <= 0 || cfg.wallHeightMm <= 0) continue;
+          const aM2 = (cfg.wallWidthMm / 1000) * (cfg.wallHeightMm / 1000);
+          dimTotalM2 += aM2;
+          const label =
+            isTvBuiltin ? (nQuads === 1 ? 'ТВ-стена' : `ТВ-зона ${q + 1}`) :
+            (isDoor && q === 0) ? 'Стена с проёмом' :
+            nQuads === 1 ? 'Стена' : `Стена ${q + 1}`;
+          dimLines.push(`${label}: ${Math.round(cfg.wallWidthMm / 10)} × ${Math.round(cfg.wallHeightMm / 10)} см · площадь: ${aM2.toFixed(2).replace('.', ',')} м²`);
+        }
+        if (isDoor && doorOpeningAreaMm2 > 0) {
+          dimTotalM2 -= doorOpeningAreaMm2;
+          dimLines.push(`Дверной проём (вычет): −${(doorOpeningAreaMm2 / 1e6).toFixed(2).replace('.', ',')} м²`);
+          const dLeft = doorRevealSizes.left, dRight = doorRevealSizes.right, dTop = doorRevealSizes.top;
+          let revealArea = 0;
+          if (dLeft.depthMm > 0 && dLeft.heightMm > 0) revealArea += (dLeft.depthMm / 1000) * (dLeft.heightMm / 1000);
+          if (dRight.depthMm > 0 && dRight.heightMm > 0) revealArea += (dRight.depthMm / 1000) * (dRight.heightMm / 1000);
+          if (dTop.depthMm > 0 && dTop.widthMm > 0) revealArea += (dTop.depthMm / 1000) * (dTop.widthMm / 1000);
+          if (revealArea > 0) {
+            dimTotalM2 += revealArea;
+            dimLines.push(`Откосы проёма: +${revealArea.toFixed(2).replace('.', ',')} м²`);
+          }
+        }
+        if (isTvBuiltin && tvCutoutWidthMm > 0 && tvCutoutHeightMm > 0 && tvCutoutDepthMm > 0) {
+          const cutArea = 2 * (tvCutoutDepthMm / 1000) * (tvCutoutHeightMm / 1000)
+                        + 2 * (tvCutoutDepthMm / 1000) * (tvCutoutWidthMm / 1000);
+          dimTotalM2 += cutArea;
+          dimLines.push(`Загибы ТВ-выреза: ${Math.round(tvCutoutWidthMm / 10)} × ${Math.round(tvCutoutHeightMm / 10)} см, гл. ${Math.round(tvCutoutDepthMm / 10)} см · +${cutArea.toFixed(2).replace('.', ',')} м²`);
+        }
+      }
+
+      if (dimLines.length > 0 || dimTotalM2 > 0) {
+        y += 18;
+        c.fillStyle = '#111111'; c.font = 'bold 18px sans-serif';
+        c.fillText('Размеры зон', 60, y + 10);
+        y += 34;
+        c.font = '16px sans-serif'; c.fillStyle = '#444444';
+        for (const line of dimLines) {
+          c.fillText(line, 60, y + 8, W - 120);
+          y += 28;
+        }
+        if (dimTotalM2 > 0) {
+          c.fillStyle = '#111111'; c.font = 'bold 17px sans-serif';
+          c.fillText(`Общая площадь стен: ${dimTotalM2.toFixed(2).replace('.', ',')} м²`, 60, y + 8);
+          y += 36;
+        }
+      }
+    }
+
     // Total
     c.strokeStyle = '#111111'; c.lineWidth = 2;
     c.beginPath(); c.moveTo(60, y + 4); c.lineTo(W - 60, y + 4); c.stroke();
