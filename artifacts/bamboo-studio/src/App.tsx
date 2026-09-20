@@ -688,6 +688,10 @@ const BambooStudio = () => {
   // Current positions of adopted seams (updated as they are dragged).
   // Used to remove all adopted seams (including moved ones) when jpp changes.
   const adoptedSeamCurrentRef = useRef<Set<number>>(new Set());
+  // Paired companion seams: maps primary hMolding position key → companion magnitude
+  // (singleRowH / wallH). The companion is always drawn at primary ± magnitude.
+  // The companion is virtual — it is not stored in hMoldingPositions.
+  const hMoldingCompanionMapRef = useRef<Map<string, number>>(new Map());
   const [panelOrientation, setPanelOrientation] = useState<'vertical' | 'horizontal'>('vertical');
   const panelOrientationRef = useRef<'vertical' | 'horizontal'>('vertical');
   const [dividerStyleOverrides, setDividerStyleOverrides] = useState<Record<number, MoldingStyle>>({});
@@ -1504,6 +1508,41 @@ const BambooStudio = () => {
             drawMoldLine(lx, ly, rx, ry, hStyle as Exclude<MoldingStyle,'none'>, curHMoldingWidth);
           }
 
+          // Draw virtual companion seam — always 2800 mm (singleRowH) away from this primary.
+          // Companion is derived, never stored in hMoldingPositions.
+          if (isActive) {
+            const cMag = hMoldingCompanionMapRef.current.get(r.toFixed(6));
+            if (cMag !== undefined) {
+              for (const cr of [r + cMag, r - cMag]) {
+                if (cr <= 0 || cr >= 1) continue;
+                const clx = qp[0].x + (qp[3].x - qp[0].x) * cr;
+                const cly = qp[0].y + (qp[3].y - qp[0].y) * cr;
+                const crx2 = qp[1].x + (qp[2].x - qp[1].x) * cr;
+                const cry2 = qp[1].y + (qp[2].y - qp[1].y) * cr;
+                const cmX = (clx + crx2) / 2, cmY = (cly + cry2) / 2;
+                // Profile line (same style as primary)
+                if (hStyle !== 'none') {
+                  drawMoldLine(clx, cly, crx2, cry2, hStyle as Exclude<MoldingStyle,'none'>, curHMoldingWidth);
+                }
+                // Drag handle (edit mode only)
+                if (!curIsErasing && !forExportRef.current) {
+                  tCtx.save();
+                  tCtx.strokeStyle = 'rgba(255,255,255,0.45)'; tCtx.lineWidth = 1; tCtx.setLineDash([4, 4]);
+                  tCtx.beginPath(); tCtx.moveTo(clx, cly); tCtx.lineTo(crx2, cry2); tCtx.stroke();
+                  tCtx.restore();
+                  tCtx.save();
+                  tCtx.fillStyle = 'rgba(255,255,255,0.85)';
+                  tCtx.strokeStyle = 'rgba(0,0,0,0.20)'; tCtx.lineWidth = 1.5; tCtx.setLineDash([]);
+                  tCtx.beginPath(); tCtx.arc(cmX, cmY, 8, 0, Math.PI * 2); tCtx.fill(); tCtx.stroke();
+                  tCtx.fillStyle = '#555'; tCtx.font = 'bold 10px sans-serif';
+                  tCtx.textAlign = 'center'; tCtx.textBaseline = 'middle';
+                  tCtx.fillText('↕', cmX, cmY);
+                  tCtx.restore();
+                }
+              }
+            }
+          }
+
           // Draw drag handle — always visible (on every surface, not just active),
           // hidden only during eraser mode and export.
           if (!curIsErasing && !forExportRef.current) {
@@ -2100,6 +2139,22 @@ const BambooStudio = () => {
       if (Math.sqrt((cx - midX) ** 2 + (cy - midY) ** 2) <= 14) return i;
       if (distToSeg(lx, ly, rx, ry) <= 8) return i;
     }
+    // Also hit-test virtual companion lines — clicking a companion drags the primary.
+    for (let i = 0; i < positions.length; i++) {
+      const r = positions[i];
+      const cMag = hMoldingCompanionMapRef.current.get(r.toFixed(6));
+      if (cMag === undefined) continue;
+      for (const cr of [r + cMag, r - cMag]) {
+        if (cr <= 0 || cr >= 1) continue;
+        const clx = q[0].x + (q[3].x - q[0].x) * cr;
+        const cly = q[0].y + (q[3].y - q[0].y) * cr;
+        const crx2 = q[1].x + (q[2].x - q[1].x) * cr;
+        const cry2 = q[1].y + (q[2].y - q[1].y) * cr;
+        const cmX = (clx + crx2) / 2, cmY = (cly + cry2) / 2;
+        if (Math.sqrt((cx - cmX) ** 2 + (cy - cmY) ** 2) <= 14) return i;
+        if (distToSeg(clx, cly, crx2, cry2) <= 8) return i;
+      }
+    }
     return -1;
   }, []);
 
@@ -2204,6 +2259,27 @@ const BambooStudio = () => {
     const seamR = findNearAutoSeam(x, y);
     if (seamR !== -1) {
       pushHistory();
+
+      // Register paired companion: companion is always ±singleRowH away from this primary.
+      // When the primary is dragged, the companion is redrawn at primary ± magnitude.
+      const wallH = wallHeightMmRef.current;
+      const singleRowH = getActiveSingleRowH();
+      if (wallH > 0 && singleRowH > 0) {
+        const cMag = singleRowH / wallH;
+        hMoldingCompanionMapRef.current.set(seamR.toFixed(6), cMag);
+        // If the companion position is itself a visible red auto-seam, suppress it so it
+        // doesn't keep showing as a red line after the primary is adopted.
+        const jpp = jointProfilePositionRef.current ?? ['bottom'];
+        const allSeams = computeAutoSeamPositions(wallH, singleRowH, jpp);
+        for (const cr of [seamR + cMag, seamR - cMag]) {
+          if (cr > 0 && cr < 1 &&
+              allSeams.some(s => Math.abs(s - cr) < 0.003) &&
+              !hMoldingPositionsRef.current.some(p => Math.abs(p - cr) < 0.005)) {
+            adoptedSeamOriginalsRef.current.add(cr);
+          }
+        }
+      }
+
       // Remember the original computed position so drawHSeam won't redraw it after drag.
       adoptedSeamOriginalsRef.current.add(seamR);
       adoptedSeamCurrentRef.current.add(seamR);
@@ -2249,6 +2325,27 @@ const BambooStudio = () => {
       const singleRowH = getActiveSingleRowH();
 
       setHMoldingPositions(prev => {
+        const oldPos = prev[idx];
+        const cMag = hMoldingCompanionMapRef.current.get(oldPos.toFixed(6));
+
+        // Paired seam: companion is virtual (not in hMoldingPositions).
+        // Relax section-size clamping — allow primary to roam the full wall so the
+        // companion can enter and leave the visible area (0–1) freely.
+        if (cMag !== undefined) {
+          const newRatio = Math.max(0.01, Math.min(0.99, rawRatio));
+          const updated = [...prev.filter((_, i) => i !== idx), newRatio].sort((a, b) => a - b);
+          const newDragIdx = updated.findIndex(p => Math.abs(p - newRatio) < 0.002);
+          if (newDragIdx !== -1) draggingHMoldingIndexRef.current = newDragIdx;
+          hMoldingCompanionMapRef.current.delete(oldPos.toFixed(6));
+          hMoldingCompanionMapRef.current.set(newRatio.toFixed(6), cMag);
+          if (adoptedSeamCurrentRef.current.has(oldPos)) {
+            adoptedSeamCurrentRef.current.delete(oldPos);
+            adoptedSeamCurrentRef.current.add(newRatio);
+          }
+          return updated;
+        }
+
+        // Non-paired seam: existing section-size clamping logic.
         // Remove the dragged profile to find its neighbors cleanly.
         const others = prev.filter((_, i) => i !== idx).sort((a, b) => a - b);
 
@@ -2280,7 +2377,6 @@ const BambooStudio = () => {
         const newDragIdx = updated.findIndex(p => Math.abs(p - newRatio) < 0.001);
         if (newDragIdx !== -1) draggingHMoldingIndexRef.current = newDragIdx;
         // Track current position of adopted seams as they move.
-        const oldPos = prev[idx];
         if (adoptedSeamCurrentRef.current.has(oldPos)) {
           adoptedSeamCurrentRef.current.delete(oldPos);
           adoptedSeamCurrentRef.current.add(newRatio);
@@ -4367,6 +4463,7 @@ const BambooStudio = () => {
                                       setHMoldingPositions(filtered);
                                       adoptedSeamOriginalsRef.current = new Set();
                                       adoptedSeamCurrentRef.current = new Set();
+                                      hMoldingCompanionMapRef.current = new Map();
                                     }
                                     setJointProfilePosition(prev =>
                                       prev.includes(pos)
