@@ -404,7 +404,7 @@ const defaultSurfaceConfig = (): SurfaceConfig => ({
 const SURFACE_LABELS = ['Стена 1 · Основная', 'Стена 2', 'Стена 3'];
 const COLUMN_SURFACE_LABELS = ['Грань 1 · Основная', 'Грань 2', 'Грань 3'];
 const WINDOW_STD_LABELS = ['Откос', 'Подоконник', '—'];
-const TV_ZONE_LABELS = ['Передняя · Основная', 'Верхняя', 'Боковая'];
+const TV_ZONE_LABELS = ['Стена', 'Короб'];
 const WINDOW_PAN_LABELS = ['Откос', 'Горизонтальная плоскость', '—'];
 // Door: standard=2 quads (left dobor, right dobor); with-transom=3 quads (left, transom, right)
 type DoorRevealZone = 'left' | 'right' | 'top';
@@ -1762,7 +1762,9 @@ const BambooStudio = () => {
       }
 
       // Corner edge visual between adjacent quads (right edge of previous quad)
+      // Skip for TV builtin — Стена/Короб quads are not physical adjacent corners
       for (let q = 1; q < nQuads; q++) {
+        if (wallZoneRef.current === 'tv' && tvTypeRef.current !== 'surface') continue;
         const e1 = pts[(q - 1) * 4 + 1], e2 = pts[(q - 1) * 4 + 2];
         const cTopX = e1.x, cTopY = e1.y;
         const cBotX = e2.x, cBotY = e2.y;
@@ -2478,7 +2480,7 @@ const BambooStudio = () => {
       } else if (doorMarkMode === 'wall' && points.length < 4) {
         setPoints([...points, { x, y }]);
       }
-    } else if (step === 'mark' && points.length < (wallZone === 'wall-niche' || (wallZone === 'tv' && tvType !== 'surface') ? 12 : wallZone === 'column' || wallZone === 'window' ? 8 : 4)) {
+    } else if (step === 'mark' && points.length < (wallZone === 'wall-niche' ? 12 : wallZone === 'column' || wallZone === 'window' || (wallZone === 'tv' && tvType !== 'surface') ? 8 : 4)) {
       setPoints([...points, { x, y }]);
     } else if (step === 'edit') {
       const pts = pointsRef.current;
@@ -4291,7 +4293,7 @@ const BambooStudio = () => {
                   {wallZone === 'wall-niche'
                     ? (points.length < 4 ? `Стена 1: точка ${points.length + 1}/4` : points.length < 8 ? `Стена 2 (опц.): точка ${points.length - 3}/4 или «Начать»` : points.length < 12 ? `Стена 3 (опц.): точка ${points.length - 7}/4 или «Начать»` : 'Нажмите «Начать примерку»')
                     : wallZone === 'tv' && tvType !== 'surface'
-                    ? (points.length < 4 ? `Передняя: точка ${points.length + 1}/4` : points.length < 8 ? `Верхняя (опц.): точка ${points.length - 3}/4 или «Начать»` : points.length < 12 ? `Боковая (опц.): точка ${points.length - 7}/4 или «Начать»` : 'Нажмите «Начать примерку»')
+                    ? (points.length < 4 ? `Стена: точка ${points.length + 1}/4` : points.length < 8 ? `Короб: точка ${points.length - 3}/4 или «Начать»` : 'Нажмите «Начать примерку»')
                     : wallZone === 'tv' && tvType === 'surface'
                     ? (points.length < 4 ? `Основная плоскость: точка ${points.length + 1}/4` : 'Нажмите «Начать примерку»')
                     : wallZone === 'column'
@@ -4327,7 +4329,7 @@ const BambooStudio = () => {
                 {wallZone === 'wall-niche'
                   ? (points.length < 4 ? `Стена 1: точка ${points.length + 1}/4` : points.length < 8 ? `Стена 2 (опц.): точка ${points.length - 3}/4 или «Начать»` : points.length < 12 ? `Стена 3 (опц.): точка ${points.length - 7}/4 или «Начать»` : 'Нажмите «Начать примерку»')
                   : wallZone === 'tv' && tvType !== 'surface'
-                  ? (points.length < 4 ? `Передняя: точка ${points.length + 1}/4` : points.length < 8 ? `Верхняя (опц.): точка ${points.length - 3}/4 или «Начать»` : points.length < 12 ? `Боковая (опц.): точка ${points.length - 7}/4 или «Начать»` : 'Нажмите «Начать примерку»')
+                  ? (points.length < 4 ? `Стена: точка ${points.length + 1}/4` : points.length < 8 ? `Короб: точка ${points.length - 3}/4 или «Начать»` : 'Нажмите «Начать примерку»')
                   : wallZone === 'tv' && tvType === 'surface'
                   ? (points.length < 4 ? `Основная плоскость: точка ${points.length + 1}/4` : 'Нажмите «Начать примерку»')
                   : wallZone === 'column'
@@ -4407,17 +4409,8 @@ const BambooStudio = () => {
                 )}
               </>) : wallZone === 'tv' && tvType !== 'surface' ? (<>
                 <p className="text-[9px] text-gray-400 mb-2 leading-relaxed">
-                  Каждая плоскость короба отмечается <span className="font-bold text-gray-600">отдельно</span> — 4 угла по часовой стрелке.<br/>
-                  <span className="font-bold text-[#007aff]">Передняя</span> — основная плоскость (обязательно).<br/>
-                  <span className="font-bold text-[#7ec662]">Верхняя</span> и <span className="font-bold text-[#ff9500]">Боковая</span> — по желанию.<br/>
-                  Углы короба — <span className="font-bold text-gray-600">внешние</span>, стыкуются через профиль или загиб панели.
+                  Сначала отметьте <span className="font-bold text-[#007aff]">4 угла стены</span> (Стена), затем <span className="font-bold text-[#7ec662]">4 угла ТВ-короба</span> (Короб) — каждый квадрат по часовой стрелке.
                 </p>
-                {points.length >= 8 && (
-                  <div className="mb-3">
-                    <p className="text-[9px] text-gray-400 mb-1.5 font-bold uppercase tracking-wide">Тип углов:</p>
-                    <CornerTypeCheckboxes nJunctions={Math.min(2, Math.floor(points.length / 4) - 1)} cornerTypes={cornerTypes} setCornerTypes={(v) => { pushHistory(); setCornerTypes(v); }} wrapJunctions={wrapJunctions} setWrapJunctions={(v) => { pushHistory(); setWrapJunctions(v); }} />
-                  </div>
-                )}
               </>) : wallZone === 'tv' && tvType === 'surface' ? (<>
                 <p className="text-[9px] text-gray-400 mb-2 leading-relaxed">
                   Отметьте <span className="font-bold text-gray-600">основную плоскость</span> — 4 угла по часовой стрелке.<br/>
@@ -4446,7 +4439,7 @@ const BambooStudio = () => {
                 <p className="text-[9px] text-gray-400 mb-4 leading-relaxed">Кликайте по 4 углам стены по часовой стрелке.</p>
               )}
               <div className="flex flex-wrap gap-1.5 mb-5">
-                {Array.from({ length: wallZone === 'wall-niche' || (wallZone === 'tv' && tvType !== 'surface') ? 12 : wallZone === 'column' || wallZone === 'window' ? 8 : 4 }, (_, i) => i + 1).map(i => (
+                {Array.from({ length: wallZone === 'wall-niche' ? 12 : wallZone === 'column' || wallZone === 'window' || (wallZone === 'tv' && tvType !== 'surface') ? 8 : 4 }, (_, i) => i + 1).map(i => (
                   <div key={i} className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-all ${
                     points.length >= i
                       ? (i <= 4 ? 'bg-[#007aff] text-white border-[#007aff]' : i <= 8 ? 'bg-[#7ec662] text-white border-[#7ec662]' : 'bg-[#ff9500] text-white border-[#ff9500]')
@@ -4490,7 +4483,9 @@ const BambooStudio = () => {
                     className="relative flex rounded-xl bg-gray-100 p-0.5 h-9 cursor-pointer select-none"
                     onClick={(e) => {
                       const rect = e.currentTarget.getBoundingClientRect();
-                      setTvZoneView(e.clientX - rect.left < rect.width / 2 ? 'wall' : 'box');
+                      const next = e.clientX - rect.left < rect.width / 2 ? 'wall' : 'box';
+                      setTvZoneView(next);
+                      if (tvType === 'builtin') switchSurface(next === 'wall' ? 0 : 1);
                     }}
                   >
                     <div className={`absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-lg bg-black shadow-sm transition-all duration-200 ${tvZoneView === 'box' ? 'left-[calc(50%+2px)]' : 'left-0.5'}`} />
@@ -5291,8 +5286,8 @@ const BambooStudio = () => {
               </div>
             </div>
 
-            {/* Surface selector — per-surface editing */}
-            {points.length >= 8 && (
+            {/* Surface selector — per-surface editing (hidden for TV zone — toggle handles it) */}
+            {points.length >= 8 && wallZone !== 'tv' && (
               <div className="bg-white rounded-2xl p-4 shadow-sm">
                 <div className="flex items-center gap-1.5 mb-2.5">
                   <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Поверхность</span>
@@ -5309,8 +5304,8 @@ const BambooStudio = () => {
               </div>
             )}
 
-            {/* Corner types — shown for wall-niche, tv-zone (builtin), column with 8+ points */}
-            {(wallZone === 'wall-niche' || (wallZone === 'tv' && tvType !== 'surface') || wallZone === 'column') && points.length >= 8 && (
+            {/* Corner types — shown for wall-niche and column with 8+ points (TV builtin uses toggle, not corner types) */}
+            {(wallZone === 'wall-niche' || wallZone === 'column') && points.length >= 8 && (
               <div className="bg-white rounded-2xl p-4 shadow-sm">
                 <div className="flex items-center gap-1.5 mb-2.5">
                   <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Тип углов</span>
