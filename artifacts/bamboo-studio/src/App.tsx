@@ -4260,6 +4260,15 @@ const BambooStudio = () => {
                                   checked={checked}
                                   onChange={() => {
                                     pushHistory();
+                                    // When jpp changes, remove stationary adopted seams (adopted but
+                                    // not yet moved) to prevent copy artifacts. Moved seams stay.
+                                    const adopted = adoptedSeamOriginalsRef.current;
+                                    if (adopted.size > 0) {
+                                      const filtered = hMoldingPositionsRef.current.filter(p => !adopted.has(p));
+                                      hMoldingPositionsRef.current = filtered;
+                                      setHMoldingPositions(filtered);
+                                      adoptedSeamOriginalsRef.current = new Set();
+                                    }
                                     setJointProfilePosition(prev =>
                                       prev.includes(pos)
                                         ? prev.filter(p => p !== pos)
