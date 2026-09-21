@@ -4881,11 +4881,20 @@ const BambooStudio = () => {
                                       adoptedSeamCurrentRef.current = new Set();
                                       hMoldingCompanionMapRef.current = new Map();
                                     }
-                                    setJointProfilePosition(prev =>
-                                      prev.includes(pos)
-                                        ? prev.filter(p => p !== pos)
-                                        : [...prev, pos]
-                                    );
+                                    const newJpp: ('bottom' | 'top')[] = jointProfilePosition.includes(pos)
+                                      ? jointProfilePosition.filter(p => p !== pos)
+                                      : [...jointProfilePosition, pos];
+                                    setJointProfilePosition(newJpp);
+                                    // wall-niche: propagate seam position to all other surfaces
+                                    // so the forced profile applies uniformly across every wall.
+                                    if (wallZone === 'wall-niche') {
+                                      const nSurfaces = Math.floor(points.length / 4);
+                                      for (let s = 0; s < nSurfaces; s++) {
+                                        if (s === activeSurface) continue;
+                                        const existing = surfacesRef.current[s] ?? defaultSurfaceConfig();
+                                        surfacesRef.current[s] = { ...existing, jointProfilePosition: newJpp };
+                                      }
+                                    }
                                   }}
                                   className="w-3 h-3 accent-amber-600 cursor-pointer"
                                 />
