@@ -3499,6 +3499,11 @@ const BambooStudio = () => {
       addItem(mat.article, `Панель «${matLabel(mat)}» (наружние грани короба ТВ)`, tvBuiltinOuterCut.panels, getPanelPrice(mat.id));
       panelArticles.add(mat.article);
     }
+    // TV backlight: LED profile pieces
+    if (tvBacklightRuns > 0) {
+      const blInfo = MOLDING_INFO['light'];
+      addItem(blInfo.article + '-3M', `${blInfo.name} (3 м)`, tvBacklightRuns, getEffectiveMoldingPrice('light'));
+    }
     // Door zone: add reveal panels on top of the wall panels
     if (doorCut) {
       panelsTableTotal += doorCut.panels;
