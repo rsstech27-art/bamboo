@@ -1976,7 +1976,9 @@ const BambooStudio = () => {
         }
       }
 
-      // Vertical decorative profile at the outer edge of wall-niche side walls (surfaces 1 and 2)
+      // Vertical decorative profile at the junction edge between the main wall and each side wall.
+      // Drawn at the RIGHT edge of the PREVIOUS quad (top-right → bottom-right), which runs
+      // vertically along the main wall surface where it meets the niche side wall.
       if (wallZoneRef.current === 'wall-niche') {
         for (let qi = 1; qi < nQuads; qi++) {
           const sc = surfacesRef.current[qi];
@@ -1984,12 +1986,11 @@ const BambooStudio = () => {
           const vstyle = (sc.vProfileStyle ?? 'black') as MoldingStyle;
           const vwidth = sc.vProfileWidth ?? 2;
           if (vstyle === 'none') continue;
-          const qpts = pts.slice(qi * 4, qi * 4 + 4);
-          if (qpts.length < 4) continue;
-          // Wall 2 (qi=1): outer edge = left side  (qpts[0] top-left → qpts[3] bottom-left)
-          // Wall 3 (qi=2): outer edge = right side (qpts[1] top-right → qpts[2] bottom-right)
-          const vp1 = qi === 1 ? qpts[0] : qpts[1];
-          const vp2 = qi === 1 ? qpts[3] : qpts[2];
+          // Junction edge: right side of the previous quad (top-right → bottom-right).
+          // This always runs vertically along the main wall at the niche corner.
+          const vp1 = pts[(qi - 1) * 4 + 1]; // top-right of previous quad
+          const vp2 = pts[(qi - 1) * 4 + 2]; // bottom-right of previous quad
+          if (!vp1 || !vp2) continue;
           drawMoldLine(vp1.x, vp1.y, vp2.x, vp2.y, vstyle as Exclude<MoldingStyle, 'none'>, vwidth);
         }
       }

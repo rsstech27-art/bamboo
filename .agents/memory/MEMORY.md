@@ -1,1 +1,2 @@
 - [Switch-sync per-surface state](switch-sync-surfaces.md) — canvas editor uses globals-as-active-surface model; all reset paths must also reset activeSurface + stored configs, and draw must clamp the active index.
+- [Wall-niche vProfile axis](wall-niche-vprofile.md) — profile must draw at previous quad's right edge (pts[(qi-1)*4+1]→pts[(qi-1)*4+2]), not at the side wall's own left/right edge.
