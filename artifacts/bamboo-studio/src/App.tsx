@@ -315,7 +315,7 @@ const PanelThumb = ({ panel, selected, onClick }: { panel: Panel; selected: bool
       : <div className="w-full aspect-square" style={{ backgroundColor: panel.color }}/>
     }
     <div className="bg-white px-0.5 pb-0.5 pt-px flex-1">
-      <div className="text-[6px] font-bold text-center text-gray-600 leading-tight truncate">{panel.name}</div>
+      <div className="text-[12px] font-bold text-center text-gray-600 leading-tight truncate">{panel.name}</div>
     </div>
   </button>
 );
