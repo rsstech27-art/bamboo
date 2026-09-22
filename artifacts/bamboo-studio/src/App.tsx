@@ -552,6 +552,7 @@ const BambooStudio = () => {
   const [tvCutoutHeightMm, setTvCutoutHeightMm] = useState(0);
   const [tvCutoutDepthMm, setTvCutoutDepthMm] = useState(0);
   const [tvCutoutJoint, setTvCutoutJoint] = useState<'bend' | 'profile'>('profile');
+  const [tvCutoutJointColor, setTvCutoutJointColor] = useState<'black' | 'gold' | 'metallic' | 'brass' | 'bronze'>('black');
   const [tvCutoutInputMode, setTvCutoutInputMode] = useState<'size' | 'inches'>('size');
   const [tvCutoutPresetInches, setTvCutoutPresetInches] = useState<50 | 55 | 65 | null>(null);
 
@@ -564,6 +565,7 @@ const BambooStudio = () => {
   const [tvSurfaceSideDepthMm, setTvSurfaceSideDepthMm] = useState(0);
   const [tvSurfaceTopBottomDepthMm, setTvSurfaceTopBottomDepthMm] = useState(0);
   const [tvSurfaceJoint, setTvSurfaceJoint] = useState<'bend' | 'profile'>('profile');
+  const [tvSurfaceJointColor, setTvSurfaceJointColor] = useState<'black' | 'gold' | 'metallic' | 'brass' | 'bronze'>('black');
   // TV zone: main wall behind the TV box + LED backlight
   const [tvMainWallWidthMm, setTvMainWallWidthMm] = useState(0);
   const [tvMainWallHeightMm, setTvMainWallHeightMm] = useState(0);
@@ -1308,11 +1310,11 @@ const BambooStudio = () => {
         const panelH = maxY - minY;
         const cx = (minX + maxX) / 2;
         const cy = (minY + maxY) / 2;
-        // Rotate drawing context -90° around panel center for horizontal orientation
+        // Rotate drawing context +90° around panel center for horizontal orientation
         // so texture grain and slat gaps appear rotated in screen space.
         if (isHoriz) {
           tCtx.translate(cx, cy);
-          tCtx.rotate(-Math.PI / 2);
+          tCtx.rotate(Math.PI / 2);
           tCtx.translate(-cx, -cy);
         }
         // Draw coordinates in (possibly rotated) context space
@@ -1333,7 +1335,7 @@ const BambooStudio = () => {
               wCtx.moveTo(p1.x, p1.y); wCtx.lineTo(p2.x, p2.y);
               wCtx.lineTo(p3.x, p3.y); wCtx.lineTo(p4.x, p4.y);
               wCtx.closePath(); wCtx.clip();
-              if (isHoriz) { wCtx.translate(cx, cy); wCtx.rotate(-Math.PI / 2); wCtx.translate(-cx, -cy); }
+              if (isHoriz) { wCtx.translate(cx, cy); wCtx.rotate(Math.PI / 2); wCtx.translate(-cx, -cy); }
               wCtx.drawImage(cachedTex, dX, dY, dW, dH);
               wCtx.restore();
             } else {
@@ -1345,7 +1347,7 @@ const BambooStudio = () => {
               wCtx.moveTo(p1.x, p1.y); wCtx.lineTo(p2.x, p2.y);
               wCtx.lineTo(p3.x, p3.y); wCtx.lineTo(p4.x, p4.y);
               wCtx.closePath(); wCtx.clip();
-              if (isHoriz) { wCtx.translate(cx, cy); wCtx.rotate(-Math.PI / 2); wCtx.translate(-cx, -cy); }
+              if (isHoriz) { wCtx.translate(cx, cy); wCtx.rotate(Math.PI / 2); wCtx.translate(-cx, -cy); }
               wCtx.drawImage(cachedTex, dX, dY, dW, dH);
               wCtx.restore();
             }
@@ -1674,14 +1676,8 @@ const BambooStudio = () => {
           const ry = qp[1].y + (qp[2].y - qp[1].y) * r;
           const midX = (lx + rx) / 2;
           const midY = (ly + ry) / 2;
-          // Forced row-join: always single stripe, drawn in red to signal draggable seam.
-          tCtx.save();
-          tCtx.strokeStyle = '#ef4444';
-          tCtx.lineWidth = autoHWidth;
-          tCtx.lineCap = 'butt';
-          tCtx.setLineDash([]);
-          tCtx.beginPath(); tCtx.moveTo(lx, ly); tCtx.lineTo(rx, ry); tCtx.stroke();
-          tCtx.restore();
+          // Forced row-join: draw using active hMolding style (or molding style fallback).
+          drawMoldLine(lx, ly, rx, ry, autoHStyle, autoHWidth);
           // Drag handle — visible only on active surface, not during erase/export.
           if (isActive && !curIsErasing && !forExportRef.current) {
             tCtx.save();
@@ -4679,7 +4675,7 @@ const BambooStudio = () => {
                         </label>
                       </div>
                       <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Угловое соединение</p>
-                      <div className="flex gap-1.5 mb-2">
+                      <div className="flex gap-1.5 mb-1.5">
                         {([{ id: 'profile', label: 'Профиль' }, { id: 'bend', label: 'Загиб' }] as const).map(({ id, label }) => (
                           <button key={id} onClick={() => { pushHistory(); setTvSurfaceJoint(id); }}
                             className={`flex-1 py-1.5 rounded-lg text-[9px] font-bold border transition-all active:scale-95 ${tvSurfaceJoint === id ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
@@ -4687,6 +4683,17 @@ const BambooStudio = () => {
                           </button>
                         ))}
                       </div>
+                      {tvSurfaceJoint === 'profile' && (
+                        <div className="flex gap-1 flex-wrap mb-2">
+                          {([['black','#222','Чёрный'],['gold','#c8a040','Золото'],['metallic','#b0b0b0','Металл'],['brass','#b09050','Латунь'],['bronze','#8b6040','Бронза']] as const).map(([c,hex,lbl]) => (
+                            <button key={c} onClick={() => { pushHistory(); setTvSurfaceJointColor(c); }}
+                              className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[8px] font-bold border transition-all active:scale-95 ${tvSurfaceJointColor === c ? 'border-gray-600 bg-gray-100' : 'border-gray-100 bg-white hover:border-gray-300'}`}>
+                              <span className="w-2.5 h-2.5 rounded-full border border-gray-200 shrink-0" style={{ background: hex }}/>
+                              {lbl}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       <button
                         onClick={() => { pushHistory(); setTvBacklightEnabled(v => !v); }}
                         className={`w-full py-1.5 rounded-lg text-[9px] font-bold border transition-all active:scale-95 flex items-center justify-center gap-1.5 ${tvBacklightEnabled ? 'bg-amber-50 text-amber-700 border-amber-300' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
@@ -4796,6 +4803,89 @@ const BambooStudio = () => {
                       })()}
                     </div>
                   )}
+                  {/* Короб mode — лицевая плоскость: размеры + принудительный профиль */}
+                  {tvZoneView === 'box' && (
+                    <div className="bg-white rounded-2xl p-4 shadow-sm">
+                      <div className="flex items-center gap-1.5 mb-2.5">
+                        <Columns size={12} className="text-gray-400"/>
+                        <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Лицевая плоскость короба</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 mb-2">
+                        <label className="block">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase">Ширина, см</span>
+                          <MeterInput placeholder="напр. 360" valueMm={wallWidthMm} onChangeMm={(v) => { pushHistory(); setWallWidthMm(v); }} />
+                        </label>
+                        <label className="block">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase">Высота, см</span>
+                          <MeterInput placeholder="напр. 270" valueMm={wallHeightMm} onChangeMm={(v) => { pushHistory(); setWallHeightMm(v); }} />
+                        </label>
+                      </div>
+                      {wallWidthMm > 0 && wallHeightMm > 0 && (() => {
+                        const pMat = sectorMaterials[0];
+                        const pW = pMat?.panelWidthMm ?? PANEL_W_MM;
+                        const pH = pMat?.panelHeightMm ?? PANEL_H_MM;
+                        const isHorizBox = panelOrientation === 'horizontal';
+                        // For horizontal panels, single row height = panel WIDTH
+                        const singleRowH = isHorizBox ? pW : pH;
+                        const areaM2 = (wallWidthMm / 1000) * (wallHeightMm / 1000);
+                        const tooTall = wallHeightMm > singleRowH;
+                        const opt = optimizedPanelCalc(
+                          isHorizBox ? Math.ceil(wallHeightMm / pW) : Math.ceil(wallWidthMm / pW),
+                          isHorizBox ? wallWidthMm : wallHeightMm,
+                          isHorizBox ? pW : pH
+                        );
+                        return (
+                          <div className="space-y-1 mb-1">
+                            <p className="text-[8px] text-gray-400">
+                              Панель: {(pH / 10).toFixed(0)} × {(pW / 10).toFixed(0)} см · {isHorizBox ? 'горизонт.' : 'вертик.'} · ряд = {(singleRowH / 10).toFixed(0)} см
+                            </p>
+                            <p className="text-[9px] font-bold text-gray-600">Площадь лицевой: {areaM2.toFixed(2).replace('.', ',')} м²</p>
+                            {tooTall && (
+                              <div className="space-y-1.5">
+                                <p className="text-[9px] font-bold text-amber-600">
+                                  {`⚠ ${isHorizBox ? 'Высота короба' : 'Высота'} > ${(singleRowH / 10).toFixed(0)} см — ${opt.fullRows} ${rowsWord(opt.fullRows)} по ${isHorizBox ? 'высоте' : 'вертикали'}, итого ${opt.needed} ${panelsWord(opt.needed)}`}
+                                </p>
+                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 space-y-1">
+                                  <p className="text-[9px] font-black text-amber-700 uppercase tracking-wide">Стыковочный профиль</p>
+                                  {(['bottom', 'top'] as const).map(pos => {
+                                    const label = pos === 'bottom' ? 'Снизу' : 'Сверху';
+                                    const checked = jointProfilePosition.includes(pos);
+                                    return (
+                                      <label key={pos} className="flex items-center gap-2 cursor-pointer group">
+                                        <input
+                                          type="checkbox"
+                                          checked={checked}
+                                          onChange={() => {
+                                            pushHistory();
+                                            const current = adoptedSeamCurrentRef.current;
+                                            if (current.size > 0) {
+                                              const filtered = hMoldingPositionsRef.current.filter(p => !current.has(p));
+                                              hMoldingPositionsRef.current = filtered;
+                                              setHMoldingPositions(filtered);
+                                              adoptedSeamOriginalsRef.current = new Set();
+                                              adoptedSeamCurrentRef.current = new Set();
+                                              hMoldingCompanionMapRef.current = new Map();
+                                            }
+                                            setJointProfilePosition(prev =>
+                                              prev.includes(pos)
+                                                ? prev.filter(p => p !== pos)
+                                                : [...prev, pos]
+                                            );
+                                          }}
+                                          className="w-3 h-3 accent-amber-600 cursor-pointer"
+                                        />
+                                        <span className="text-[9px] font-bold text-amber-800 group-hover:text-amber-900">{label}</span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
                   {/* Короб mode — вырез под телевизор: размеры, глубина, грани */}
                   {tvZoneView === 'box' && (
                     <div className="bg-white rounded-2xl p-4 shadow-sm">
@@ -4847,7 +4937,7 @@ const BambooStudio = () => {
                       {tvCutoutDepthMm > 0 && (
                         <div className="mb-2">
                           <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Тип соединения на углах</p>
-                          <div className="flex gap-1.5">
+                          <div className="flex gap-1.5 mb-1.5">
                             {(['profile', 'bend'] as const).map(jt => (
                               <button key={jt} onClick={() => { pushHistory(); setTvCutoutJoint(jt); }}
                                 className={`flex-1 py-1.5 rounded-lg text-[9px] font-bold border transition-all active:scale-95 ${tvCutoutJoint === jt ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
@@ -4855,6 +4945,17 @@ const BambooStudio = () => {
                               </button>
                             ))}
                           </div>
+                          {tvCutoutJoint === 'profile' && (
+                            <div className="flex gap-1 flex-wrap">
+                              {([['black','#222','Чёрный'],['gold','#c8a040','Золото'],['metallic','#b0b0b0','Металл'],['brass','#b09050','Латунь'],['bronze','#8b6040','Бронза']] as const).map(([c,hex,lbl]) => (
+                                <button key={c} onClick={() => { pushHistory(); setTvCutoutJointColor(c); }}
+                                  className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[8px] font-bold border transition-all active:scale-95 ${tvCutoutJointColor === c ? 'border-gray-600 bg-gray-100' : 'border-gray-100 bg-white hover:border-gray-300'}`}>
+                                  <span className="w-2.5 h-2.5 rounded-full border border-gray-200 shrink-0" style={{ background: hex }}/>
+                                  {lbl}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
                       {tvCutoutWidthMm > 0 && tvCutoutHeightMm > 0 && (() => {
@@ -5053,7 +5154,7 @@ const BambooStudio = () => {
                 <input type="range" min="1" max="15" value={panelCount}
                   onChange={(e) => handleChangePanelCount(parseInt(e.target.value))}
                   className="w-full h-1 bg-gray-100 rounded-full appearance-none accent-black"/>
-                {wallZone === 'tv' && (
+                {wallZone === 'tv' && !(tvType === 'builtin' && activeSurface === 0) && (
                   <div className="flex gap-1 mt-2">
                     {(['vertical', 'horizontal'] as const).map(ori => (
                       <button key={ori} onClick={() => { pushHistory(); setPanelOrientation(ori); }}
