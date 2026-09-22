@@ -2004,9 +2004,10 @@ const BambooStudio = () => {
         }
       }
 
-      // TV: LED backlight glow around the box perimeter.
-      // Surface-mounted box: quad 0 (the only marked surface) is the box face.
-      // Built-in box: quad 0 is the wall, quad 1 (Короб) is the box face.
+      // TV: LED backlight — warm 3000K light radiating OUTWARD from box edges.
+      // Surface-mounted: quad 0 is the box face. Built-in: quad 1 (Короб) is the box face.
+      // Technique: gradient strips along each edge on a separate canvas, box interior punched out
+      // with destination-out — pure gradient rendering (no shadowBlur quirks).
       let tvGlowFacePts: Point[] | null = null;
       if (wallZoneRef.current === 'tv' && tvBacklightEnabledRef.current) {
         if (tvTypeRef.current === 'surface' && pts.length >= 4) tvGlowFacePts = pts.slice(0, 4);
@@ -2014,21 +2015,74 @@ const BambooStudio = () => {
       }
       if (tvGlowFacePts) {
         const facePts = tvGlowFacePts;
-        // Outer warm-amber glow pass
-        tCtx.save();
-        tCtx.shadowColor = 'rgba(255, 200, 60, 0.85)';
-        tCtx.shadowBlur = 50;
-        tCtx.strokeStyle = 'rgba(255, 230, 120, 0.55)';
-        tCtx.lineWidth = 10;
-        tCtx.setLineDash([]);
-        tCtx.lineCap = 'round';
-        tCtx.lineJoin = 'round';
-        tCtx.beginPath();
-        tCtx.moveTo(facePts[0].x, facePts[0].y);
-        facePts.forEach(p => tCtx.lineTo(p.x, p.y));
-        tCtx.closePath();
-        tCtx.stroke();
-        tCtx.restore();
+        const W = tCtx.canvas.width, H = tCtx.canvas.height;
+        const centX = facePts.reduce((s, p) => s + p.x, 0) / 4;
+        const centY = facePts.reduce((s, p) => s + p.y, 0) / 4;
+
+        const glowC = document.createElement('canvas');
+        glowC.width = W; glowC.height = H;
+        const gCtx = glowC.getContext('2d')!;
+
+        // For each edge: draw a gradient strip extending outward from the edge.
+        // Strips are drawn exactly between the two corner points (no extension past endpoints)
+        // so adjacent strips meet cleanly at corners without overlap artifacts.
+        const drawEdgeGlow = (glowSize: number, a0: string, a1: string, a2: string) => {
+          for (let i = 0; i < 4; i++) {
+            const a = facePts[i], b = facePts[(i + 1) % 4];
+            const edgeDx = b.x - a.x, edgeDy = b.y - a.y;
+            const edgeLen = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy) || 1;
+            // Outward-facing normal (away from centroid)
+            let nx = -edgeDy / edgeLen, ny = edgeDx / edgeLen;
+            const midX = (a.x + b.x) / 2, midY = (a.y + b.y) / 2;
+            if ((midX + nx - centX) * nx + (midY + ny - centY) * ny < 0) { nx = -nx; ny = -ny; }
+            const grad = gCtx.createLinearGradient(midX, midY, midX + nx * glowSize, midY + ny * glowSize);
+            grad.addColorStop(0,    a0);
+            grad.addColorStop(0.35, a1);
+            grad.addColorStop(1,    a2);
+            // Exact parallelogram from a to b — no extension to avoid corner overlap
+            gCtx.beginPath();
+            gCtx.moveTo(a.x,               a.y);
+            gCtx.lineTo(b.x,               b.y);
+            gCtx.lineTo(b.x + nx * glowSize, b.y + ny * glowSize);
+            gCtx.lineTo(a.x + nx * glowSize, a.y + ny * glowSize);
+            gCtx.closePath();
+            gCtx.fillStyle = grad;
+            gCtx.fill();
+          }
+        };
+        // Wide far scatter (3000K: deep amber fading to transparent)
+        drawEdgeGlow(80,  'rgba(255, 150, 35, 0.50)', 'rgba(255, 105, 10, 0.22)', 'rgba(200, 70, 0, 0)');
+        // Mid bloom
+        drawEdgeGlow(38,  'rgba(255, 185, 75, 0.70)', 'rgba(255, 140, 35, 0.32)', 'rgba(255, 90, 0, 0)');
+        // Tight near-edge bright seam
+        drawEdgeGlow(11,  'rgba(255, 228, 155, 0.90)', 'rgba(255, 195, 100, 0.50)', 'rgba(255, 160, 55, 0)');
+
+        // Corner radial patches — fill the gap where adjacent edge strips don't meet
+        for (let i = 0; i < 4; i++) {
+          const c = facePts[i];
+          const rg = gCtx.createRadialGradient(c.x, c.y, 0, c.x, c.y, 70);
+          rg.addColorStop(0,    'rgba(255, 195, 80, 0.70)');
+          rg.addColorStop(0.3,  'rgba(255, 140, 30, 0.35)');
+          rg.addColorStop(1,    'rgba(200, 80, 0, 0)');
+          gCtx.beginPath();
+          gCtx.arc(c.x, c.y, 70, 0, Math.PI * 2);
+          gCtx.fillStyle = rg;
+          gCtx.fill();
+        }
+
+        // Punch out the box interior — glow only on the surrounding wall
+        gCtx.save();
+        gCtx.globalCompositeOperation = 'destination-out';
+        gCtx.beginPath();
+        gCtx.moveTo(facePts[0].x, facePts[0].y);
+        facePts.forEach(p => gCtx.lineTo(p.x, p.y));
+        gCtx.closePath();
+        gCtx.fillStyle = 'rgba(0,0,0,1)';
+        gCtx.fill();
+        gCtx.restore();
+
+        // Composite glow layer onto main scene
+        tCtx.drawImage(glowC, 0, 0);
       }
 
       // Apply eraser mask — replay strokes from memory (never lost on canvas reset)
@@ -2363,7 +2417,7 @@ const BambooStudio = () => {
   useEffect(() => {
     if (!image) return;
     drawFullScene();
-  }, [points, doorOpeningPoints, doorMarkMode, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, lightMode, cylHighlightPos, activeSurface, cornerTypes, wrapJunctions, wallZone, columnShape, drawFullScene, image, panelOrientation, edgeProfileSides, edgeProfileColor, jointProfilePosition, vProfileStyle, vProfileWidth]);
+  }, [points, doorOpeningPoints, doorMarkMode, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, lightMode, cylHighlightPos, activeSurface, cornerTypes, wrapJunctions, wallZone, columnShape, drawFullScene, image, panelOrientation, edgeProfileSides, edgeProfileColor, jointProfilePosition, vProfileStyle, vProfileWidth, tvBacklightEnabled]);
 
   const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = mainCanvasRef.current;
