@@ -1266,17 +1266,37 @@ const BambooStudio = () => {
       };
 
       // Helper: render one 4-point quad with panels, dividers, and moldings
-      const renderQuad = (qp: Point[], cfg: SurfaceConfig, isActive: boolean, overrideFirstMaterial?: Panel) => {
+      const renderQuad = (qp: Point[], cfg: SurfaceConfig, isActive: boolean, overrideFirstMaterial?: Panel, _noSectorRot = false): void => {
+        // 'lengthwise': rotate canvas +90° CW around quad centroid, counter-rotate qp,
+        // then recurse as 'horizontal' with _noSectorRot=true (no per-sector rotation).
+        // → horizontal rows on screen, texture/grain identical to vertical but rotated 90°.
+        if (cfg.panelOrientation === 'lengthwise' && !_noSectorRot) {
+          const fullCx = (qp[0].x + qp[1].x + qp[2].x + qp[3].x) / 4;
+          const fullCy = (qp[0].y + qp[1].y + qp[2].y + qp[3].y) / 4;
+          [tCtx, wCtx].forEach(ctx => {
+            ctx.save();
+            ctx.translate(fullCx, fullCy);
+            ctx.rotate(Math.PI / 2);
+            ctx.translate(-fullCx, -fullCy);
+          });
+          // Counter-rotate qp: new_x = cx + (p.y − cy), new_y = cy − (p.x − cx)
+          const rotQp: Point[] = qp.map(p => ({
+            x: fullCx + (p.y - fullCy),
+            y: fullCy - (p.x - fullCx),
+          }));
+          renderQuad(rotQp, { ...cfg, panelOrientation: 'horizontal' }, isActive, overrideFirstMaterial, true);
+          [tCtx, wCtx].forEach(ctx => ctx.restore());
+          return;
+        }
         const bounds = getSectorBounds(cfg.dividerPositions, cfg.panelCount);
-        const isHoriz = cfg.panelOrientation === 'horizontal';
-        // 'lengthwise': horizontal rows like isHoriz but texture NOT rotated —
-        // each row shows a vertical slice of the texture for a seamless unified sheet.
-        const isLengthwise = cfg.panelOrientation === 'lengthwise';
-        const dividesHoriz = isHoriz || isLengthwise;
-        // Top Y of the full quad — used to anchor the tiled pattern consistently
-        // across all rows in lengthwise mode so pattern doesn't reset per row.
-        const fullQMinY = isLengthwise
-          ? Math.min(qp[0].y, qp[1].y, qp[2].y, qp[3].y) : 0;
+        // isHoriz: horizontal division WITH per-sector context rotation (original 'horizontal' mode)
+        const isHoriz = cfg.panelOrientation === 'horizontal' && !_noSectorRot;
+        // dividesHoriz: true for both isHoriz and _noSectorRot (globally-rotated 'lengthwise' pass)
+        const dividesHoriz = cfg.panelOrientation === 'horizontal';
+        // Pre-compute full quad min coords for pattern anchoring when _noSectorRot,
+        // so all sectors share the same canvas-space origin → seamless tiling.
+        const fullQRotMinX = _noSectorRot ? Math.min(qp[0].x, qp[1].x, qp[2].x, qp[3].x) : 0;
+        const fullQRotMinY = _noSectorRot ? Math.min(qp[0].y, qp[1].y, qp[2].y, qp[3].y) : 0;
 
       for (let i = 0; i < cfg.panelCount; i++) {
         const { start: rStart, end: rEnd } = bounds[i];
@@ -1333,15 +1353,13 @@ const BambooStudio = () => {
         if (cachedTex) {
           if (material.textureStretch) {
             // Source-rect slicing for seamless unified sheet:
-            // • isHoriz: context is rotated 90°, so slice texture width per row
-            //   (rStart..rEnd of tex.width → consecutive columns in rotated space)
-            // • isLengthwise: no rotation, slice texture height per row
-            //   (rStart..rEnd of tex.height → consecutive vertical strips in screen space)
+            // • isHoriz or _noSectorRot (globally-rotated 'В длину'): slice texture width per row
+            //   (rStart..rEnd of tex.width → consecutive horizontal strips in screen space)
             // • vertical: full texture stretched per column (unchanged)
-            const texSrcX = isHoriz ? rStart * cachedTex.width : 0;
-            const texSrcW = isHoriz ? (rEnd - rStart) * cachedTex.width : cachedTex.width;
-            const texSrcY = isLengthwise ? rStart * cachedTex.height : 0;
-            const texSrcH = isLengthwise ? (rEnd - rStart) * cachedTex.height : cachedTex.height;
+            const texSrcX = (isHoriz || _noSectorRot) ? rStart * cachedTex.width : 0;
+            const texSrcW = (isHoriz || _noSectorRot) ? (rEnd - rStart) * cachedTex.width : cachedTex.width;
+            const texSrcY = 0;
+            const texSrcH = cachedTex.height;
             const drawTex = (ctx: CanvasRenderingContext2D) => {
               ctx.drawImage(cachedTex, texSrcX, texSrcY, texSrcW, texSrcH, dX, dY, dW, dH);
             };
@@ -1368,25 +1386,27 @@ const BambooStudio = () => {
             }
           } else {
             // Tiled/repeat pattern. Scale base covers full row height.
-            const baseScale = isHoriz
+            const horizMode = isHoriz || _noSectorRot;
+            const baseScale = horizMode
               ? dW / cachedTex.width
               : dH / cachedTex.height;
             const tsX = material.textureScaleX;
             const tsY = material.textureScaleY;
-            const drawScaleX = isHoriz
+            const drawScaleX = horizMode
               ? (tsY != null && tsY > 0 ? 1 / tsY : baseScale)
               : (tsX != null && tsX > 0 ? 1 / tsX : baseScale);
-            const drawScaleY = isHoriz
+            const drawScaleY = horizMode
               ? (tsX != null && tsX > 0 ? 1 / tsX : baseScale)
               : (tsY != null && tsY > 0 ? 1 / tsY : baseScale);
             const pattern = tCtx.createPattern(cachedTex, 'repeat');
             if (pattern) {
               const m = new DOMMatrix();
               m.scaleSelf(drawScaleX, drawScaleY);
-              // For lengthwise: anchor pattern at top of full quad (fullQMinY)
-              // so tiles align consistently across all rows instead of resetting per row.
-              const anchorY = isLengthwise ? fullQMinY : dY;
-              m.translateSelf(dX / drawScaleX, anchorY / drawScaleY);
+              // For _noSectorRot: anchor at full quad rotated-canvas min coords so
+              // tiles align seamlessly across all sectors (same canvas-space origin).
+              const anchorX = _noSectorRot ? fullQRotMinX : dX;
+              const anchorY = _noSectorRot ? fullQRotMinY : dY;
+              m.translateSelf(anchorX / drawScaleX, anchorY / drawScaleY);
               pattern.setTransform(m);
               tCtx.fillStyle = pattern;
             } else {
@@ -1530,7 +1550,7 @@ const BambooStudio = () => {
       // Vertical panels: one column = panel width (default 1220 mm, or custom from product).
       // Horizontal TV panels: one column = panel height (default 2800 mm, or custom from product).
       {
-        const isHorizTvV = wallZoneRef.current === 'tv' && (isHoriz || isLengthwise);
+        const isHorizTvV = wallZoneRef.current === 'tv' && cfg.panelOrientation === 'horizontal';
         const autoVStyle: Exclude<MoldingStyle, 'none'> =
           curMoldingStyle !== 'none' ? curMoldingStyle as Exclude<MoldingStyle, 'none'> : 'black';
         const autoVWidth = curMoldingStyle !== 'none' ? curMoldingWidth : 2;
@@ -1655,7 +1675,7 @@ const BambooStudio = () => {
       // Vertical panels: row height = panel height (default 2800 mm, or custom from product).
       // Horizontal TV panels: row height = panel width (default 1220 mm, or custom from product).
       {
-        const isHorizTvH = wallZoneRef.current === 'tv' && (isHoriz || isLengthwise);
+        const isHorizTvH = wallZoneRef.current === 'tv' && cfg.panelOrientation === 'horizontal';
         const primaryMatH = cfg.sectorMaterials[0];
         const singleRowH = isHorizTvH
           ? (primaryMatH?.panelWidthMm ?? PANEL_W_MM)
