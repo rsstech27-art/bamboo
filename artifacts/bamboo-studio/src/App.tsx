@@ -571,6 +571,8 @@ const BambooStudio = () => {
   const [tvCutoutJointColor, setTvCutoutJointColor] = useState<'black' | 'gold' | 'metallic' | 'bronze'>('black');
   const [tvCutoutInputMode, setTvCutoutInputMode] = useState<'size' | 'inches'>('size');
   const [tvCutoutPresetInches, setTvCutoutPresetInches] = useState<50 | 55 | 65 | null>(null);
+  const [tvBoxDepthMm, setTvBoxDepthMm] = useState(0);
+  const [tvBoxJoint, setTvBoxJoint] = useState<'profile' | 'bend'>('profile');
 
   const TV_INCH_PRESETS: Record<50 | 55 | 65, { wMm: number; hMm: number }> = {
     50: { wMm: 1130, hMm: 660 },
@@ -2890,14 +2892,19 @@ const BambooStudio = () => {
           return packWindowPieces(pieces);
         })()
       : null;
-    // Built-in TV: outer visible faces of the box (same 4 pieces as inner загибы)
-    const tvBuiltinOuterCut = isTvBuiltin && tvCutoutDepthMm > 0 && tvCutoutWidthMm > 0 && tvCutoutHeightMm > 0
+    // Built-in TV: outer visible faces of the box (grains around Стена 2 perimeter)
+    // Uses tvBoxDepthMm (box depth) × box face width/height from kpCfgs[1].
+    const tvBuiltinOuterCut = isTvBuiltin && tvBoxDepthMm > 0
       ? (() => {
+          const boxCfg = kpCfgs[1];
+          const bW = boxCfg?.wallWidthMm ?? 0;
+          const bH = boxCfg?.wallHeightMm ?? 0;
+          if (bW <= 0 || bH <= 0) return null;
           const pieces: import('./lib/panelCalc').WindowPiece[] = [];
-          pieces.push({ wMm: tvCutoutDepthMm, lMm: tvCutoutHeightMm }); // боковая левая
-          pieces.push({ wMm: tvCutoutDepthMm, lMm: tvCutoutHeightMm }); // боковая правая
-          pieces.push({ wMm: tvCutoutDepthMm, lMm: tvCutoutWidthMm });  // верхняя
-          pieces.push({ wMm: tvCutoutDepthMm, lMm: tvCutoutWidthMm });  // нижняя
+          pieces.push({ wMm: tvBoxDepthMm, lMm: bH }); // боковая левая
+          pieces.push({ wMm: tvBoxDepthMm, lMm: bH }); // боковая правая
+          pieces.push({ wMm: tvBoxDepthMm, lMm: bW }); // верхняя
+          pieces.push({ wMm: tvBoxDepthMm, lMm: bW }); // нижняя
           return packWindowPieces(pieces);
         })()
       : null;
@@ -3097,6 +3104,15 @@ const BambooStudio = () => {
       const style = visStyle && visStyle !== 'none' ? visStyle : 'black';
       addRuns(style, tvCutoutHeightMm, 2); // left + right vertical joints
       addRuns(style, tvCutoutWidthMm, 2);  // top + bottom horizontal joints
+    }
+    // Built-in TV: profiles along box outer edge joints (grains of Стена 2)
+    if (isTvBuiltin && tvBoxJoint === 'profile' && tvBoxDepthMm > 0) {
+      const bW = kpCfgs[1]?.wallWidthMm ?? 0;
+      const bH = kpCfgs[1]?.wallHeightMm ?? 0;
+      const visStyle = kpCfgs.find(cfg => cfg.moldingStyle !== 'none')?.moldingStyle;
+      const style = visStyle && visStyle !== 'none' ? visStyle : 'black';
+      if (bH > 0) addRuns(style, bH, 2); // left + right vertical edge
+      if (bW > 0) addRuns(style, bW, 2); // top + bottom horizontal edge
     }
     // Surface TV: corner profiles joining front face to sides / top / bottom
     if (isTvSurface && tvSurfaceJoint === 'profile') {
@@ -3720,9 +3736,9 @@ const BambooStudio = () => {
         c.fillText('Наружные грани короба ТВ (видимые торцы)', 60, y + 10);
         y += 28;
         c.font = '16px sans-serif'; c.fillStyle = '#333333';
-        const cWo = Math.round(tvCutoutWidthMm / 10), cHo = Math.round(tvCutoutHeightMm / 10), cDo = Math.round(tvCutoutDepthMm / 10);
+        const bWo = Math.round((kpCfgs[1]?.wallWidthMm ?? 0) / 10), bHo = Math.round((kpCfgs[1]?.wallHeightMm ?? 0) / 10), cDo = Math.round(tvBoxDepthMm / 10);
         c.fillText(
-          `Бок. ×2: ${cDo} × ${cHo} см · верх/низ: ${cDo} × ${cWo} см`,
+          `Бок. ×2: ${cDo} × ${bHo} см · верх/низ: ${cDo} × ${bWo} см`,
           60, y + 8);
         y += 28;
         c.fillText(
@@ -4250,7 +4266,7 @@ const BambooStudio = () => {
             )}
             {step !== 'zone' && (
               <button
-                 onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setHistoryLen(0); surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setSavedPng(null); setWinSlopeDepthMm(0); setWinWidthMm(0); setWinHeightMm(0); setWinJoint('profile'); setTvCutoutWidthMm(0); setTvCutoutHeightMm(0); setTvCutoutDepthMm(0); setTvCutoutJoint('profile'); setTvCutoutInputMode('size'); setTvCutoutPresetInches(null); setTvType(null); setTvSurfaceSideDepthMm(0); setTvSurfaceTopBottomDepthMm(0); setTvSurfaceJoint('profile'); setDoorType(null); setDoorWidthMm(0); setDoorHeightMm(0); setDoorRevealDepthMm(0); setDoorTransomHeightMm(0); setDoorJoint('profile'); setDoorShowDoor(true); setDoorOpeningPoints([]); setDoorMarkMode('wall'); setDoorSelectedReveal('left'); setDoorRevealSizes({ left: { ...EMPTY_DOOR_REVEAL }, right: { ...EMPTY_DOOR_REVEAL }, top: { ...EMPTY_DOOR_REVEAL } }); setStep('zone'); setWallZone(null); setWindowType(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
+                 onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setHistoryLen(0); surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setSavedPng(null); setWinSlopeDepthMm(0); setWinWidthMm(0); setWinHeightMm(0); setWinJoint('profile'); setTvCutoutWidthMm(0); setTvCutoutHeightMm(0); setTvCutoutDepthMm(0); setTvCutoutJoint('profile'); setTvCutoutInputMode('size'); setTvCutoutPresetInches(null); setTvBoxDepthMm(0); setTvBoxJoint('profile'); setTvType(null); setTvSurfaceSideDepthMm(0); setTvSurfaceTopBottomDepthMm(0); setTvSurfaceJoint('profile'); setDoorType(null); setDoorWidthMm(0); setDoorHeightMm(0); setDoorRevealDepthMm(0); setDoorTransomHeightMm(0); setDoorJoint('profile'); setDoorShowDoor(true); setDoorOpeningPoints([]); setDoorMarkMode('wall'); setDoorSelectedReveal('left'); setDoorRevealSizes({ left: { ...EMPTY_DOOR_REVEAL }, right: { ...EMPTY_DOOR_REVEAL }, top: { ...EMPTY_DOOR_REVEAL } }); setStep('zone'); setWallZone(null); setWindowType(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
                 className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
               >
                 ← Назад
@@ -4999,6 +5015,46 @@ const BambooStudio = () => {
                         className={`w-full py-1.5 rounded-lg text-[9px] font-bold border transition-all active:scale-95 flex items-center justify-center gap-1.5 ${tvBacklightEnabled ? 'bg-amber-50 text-amber-700 border-amber-300' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
                         {tvBacklightEnabled ? '✦ Подсветка включена' : '✦ Подсветка вокруг короба'}
                       </button>
+                    </div>
+                  )}
+                  {/* Короб mode — глубина короба (грани стены 2) */}
+                  {tvZoneView === 'box' && (
+                    <div className="bg-white rounded-2xl p-4 shadow-sm">
+                      <div className="flex items-center gap-1.5 mb-2.5">
+                        <Columns size={12} className="text-gray-400"/>
+                        <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Глубина короба</span>
+                      </div>
+                      <label className="block mb-2">
+                        <span className="text-[10px] font-bold text-gray-400 uppercase">Глубина, см</span>
+                        <MeterInput placeholder="напр. 20" valueMm={tvBoxDepthMm} onChangeMm={(v) => { pushHistory(); setTvBoxDepthMm(v); }} />
+                      </label>
+                      {tvBoxDepthMm > 0 && tvCutoutDepthMm > 0 && tvBoxDepthMm < tvCutoutDepthMm && (
+                        <p className="text-[9px] font-bold text-red-500 mb-2">
+                          ⚠ Глубина короба ({Math.round(tvBoxDepthMm / 10)} см) меньше глубины выреза под ТВ ({Math.round(tvCutoutDepthMm / 10)} см)
+                        </p>
+                      )}
+                      {tvBoxDepthMm > 0 && (() => {
+                        const bW = wallWidthMm;
+                        const bH = wallHeightMm;
+                        if (bW <= 0 || bH <= 0) return null;
+                        const d = tvBoxDepthMm / 1000;
+                        const sidesArea = 2 * d * (bH / 1000);
+                        const tbArea = 2 * d * (bW / 1000);
+                        return (
+                          <p className="text-[9px] text-[#5a9c3e] font-bold mb-2">
+                            Грани: бок. ×2 ({sidesArea.toFixed(2).replace('.', ',')} м²) + верх/низ ({tbArea.toFixed(2).replace('.', ',')} м²) = {(sidesArea + tbArea).toFixed(2).replace('.', ',')} м²
+                          </p>
+                        );
+                      })()}
+                      <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Угловое соединение граней</p>
+                      <div className="flex gap-1.5">
+                        {([{ id: 'profile', label: 'Профиль' }, { id: 'bend', label: 'Загиб' }] as const).map(({ id, label }) => (
+                          <button key={id} onClick={() => { pushHistory(); setTvBoxJoint(id); }}
+                            className={`flex-1 py-1.5 rounded-lg text-[9px] font-bold border transition-all active:scale-95 ${tvBoxJoint === id ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   )}
                   {/* Короб mode — вырез под телевизор: размеры, глубина, грани */}
