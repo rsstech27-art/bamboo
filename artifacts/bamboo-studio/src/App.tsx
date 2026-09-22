@@ -4952,15 +4952,23 @@ const BambooStudio = () => {
                         const pW = pMat?.panelWidthMm ?? PANEL_W_MM;
                         const pH = pMat?.panelHeightMm ?? PANEL_H_MM;
                         const isHorizBox = panelOrientation === 'horizontal' || panelOrientation === 'lengthwise';
-                        // For horizontal/lengthwise panels, single row height = panel WIDTH
+                        // For horizontal panels, single row height = panel WIDTH; for vertical = panel HEIGHT
                         const singleRowH = isHorizBox ? pW : pH;
                         const areaM2 = (wallWidthMm / 1000) * (wallHeightMm / 1000);
+                        // tooTall: height > single panel span → horizontal stacking seam needed
                         const tooTall = wallHeightMm > singleRowH;
                         const opt = optimizedPanelCalc(
                           isHorizBox ? Math.ceil(wallHeightMm / pW) : Math.ceil(wallWidthMm / pW),
                           isHorizBox ? wallWidthMm : wallHeightMm,
                           isHorizBox ? pW : pH
                         );
+                        // tooWide (vertical only): width > panel width → multiple columns → vertical seam profiles
+                        const colsNeeded = !isHorizBox ? Math.ceil(wallWidthMm / pW) : 0;
+                        const tooWide = !isHorizBox && wallWidthMm > pW;
+                        const seamCount = colsNeeded > 1 ? colsNeeded - 1 : 0;
+                        const seamProfileRuns = seamCount > 0
+                          ? packProfileRuns(Array(seamCount).fill(wallHeightMm))
+                          : 0;
                         return (
                           <div className="space-y-1 mb-1">
                             <p className="text-[8px] text-gray-400">
@@ -4973,7 +4981,7 @@ const BambooStudio = () => {
                                   {`⚠ ${isHorizBox ? 'Высота короба' : 'Высота'} > ${(singleRowH / 10).toFixed(0)} см — ${opt.fullRows} ${rowsWord(opt.fullRows)} по ${isHorizBox ? 'высоте' : 'вертикали'}, итого ${opt.needed} ${panelsWord(opt.needed)}`}
                                 </p>
                                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 space-y-1">
-                                  <p className="text-[9px] font-black text-amber-700 uppercase tracking-wide">Стыковочный профиль</p>
+                                  <p className="text-[9px] font-black text-amber-700 uppercase tracking-wide">Стыковочный профиль (горизонт.)</p>
                                   {(['bottom', 'top'] as const).map(pos => {
                                     const label = pos === 'bottom' ? 'Снизу' : 'Сверху';
                                     const checked = jointProfilePosition.includes(pos);
@@ -5005,6 +5013,19 @@ const BambooStudio = () => {
                                       </label>
                                     );
                                   })}
+                                </div>
+                              </div>
+                            )}
+                            {tooWide && (
+                              <div className="space-y-1.5">
+                                <p className="text-[9px] font-bold text-amber-600">
+                                  {`⚠ Ширина ${Math.round(wallWidthMm / 10)} см > ${Math.round(pW / 10)} см — ${colsNeeded} кол., ${seamCount} верт. ${seamCount === 1 ? 'стык' : seamCount < 5 ? 'стыка' : 'стыков'} по ${Math.round(wallHeightMm / 10)} см`}
+                                </p>
+                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5">
+                                  <p className="text-[9px] font-black text-amber-700 uppercase tracking-wide mb-0.5">Стыковочный профиль (вертик.)</p>
+                                  <p className="text-[9px] text-amber-800">
+                                    {`${seamCount} ${seamCount === 1 ? 'стык' : seamCount < 5 ? 'стыка' : 'стыков'} × ${Math.round(wallHeightMm / 10)} см → ${seamProfileRuns} хл. 3 м`}
+                                  </p>
                                 </div>
                               </div>
                             )}
