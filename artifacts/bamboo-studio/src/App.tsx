@@ -1860,7 +1860,7 @@ const BambooStudio = () => {
       // Corner edge visual between adjacent quads (right edge of previous quad)
       // Skip for TV builtin — Стена/Короб quads are not physical adjacent corners
       for (let q = 1; q < nQuads; q++) {
-        if (wallZoneRef.current === 'tv' && tvTypeRef.current !== 'surface') continue;
+        if (wallZoneRef.current === 'tv') continue; // Стена/Короб quads are not physical adjacent corners
         const e1 = pts[(q - 1) * 4 + 1], e2 = pts[(q - 1) * 4 + 2];
         const cTopX = e1.x, cTopY = e1.y;
         const cBotX = e2.x, cBotY = e2.y;
@@ -2016,8 +2016,7 @@ const BambooStudio = () => {
       // Per-edge: tvBacklightEdgesRef.current[0..3] = [top, right, bottom, left].
       let tvGlowFacePts: Point[] | null = null;
       if (wallZoneRef.current === 'tv' && tvBacklightEnabledRef.current) {
-        if (tvTypeRef.current === 'surface' && pts.length >= 4) tvGlowFacePts = pts.slice(0, 4);
-        else if (tvTypeRef.current === 'builtin' && pts.length >= 8) tvGlowFacePts = pts.slice(4, 8);
+        if (pts.length >= 8) tvGlowFacePts = pts.slice(4, 8); // quad 1 = Короб face for both types
       }
       if (tvGlowFacePts) {
         const facePts = tvGlowFacePts;
@@ -2652,7 +2651,7 @@ const BambooStudio = () => {
       } else if (doorMarkMode === 'wall' && points.length < 4) {
         setPoints([...points, { x, y }]);
       }
-    } else if (step === 'mark' && points.length < (wallZone === 'wall-niche' ? 12 : wallZone === 'column' || wallZone === 'window' || (wallZone === 'tv' && tvType !== 'surface') ? 8 : 4)) {
+    } else if (step === 'mark' && points.length < (wallZone === 'wall-niche' ? 12 : wallZone === 'column' || wallZone === 'window' || wallZone === 'tv' ? 8 : 4)) {
       setPoints([...points, { x, y }]);
     } else if (step === 'edit') {
       const pts = pointsRef.current;
@@ -2832,8 +2831,8 @@ const BambooStudio = () => {
     const isTvSurface = wallZone === 'tv' && tvType === 'surface';
     const tvSurfaceCut = isTvSurface
       ? (() => {
-          const faceW = kpCfgs[0]?.wallWidthMm ?? 0;
-          const faceH = kpCfgs[0]?.wallHeightMm ?? 0;
+          const faceW = kpCfgs[1]?.wallWidthMm ?? 0;
+          const faceH = kpCfgs[1]?.wallHeightMm ?? 0;
           if (faceW <= 0 || faceH <= 0) return null;
           const pieces: import('./lib/panelCalc').WindowPiece[] = [];
           pieces.push({ wMm: faceW, lMm: faceH });
@@ -2848,12 +2847,15 @@ const BambooStudio = () => {
           return pieces.length > 0 ? packWindowPieces(pieces) : null;
         })()
       : null;
-    // TV surface main wall: panels for the wall area around the TV box
-    const tvMainWallCalc = isTvSurface && tvMainWallWidthMm > 0 && tvMainWallHeightMm > 0
+    // TV surface main wall: panels for the wall area (surface 0) around the TV box (surface 1)
+    const tvMainWallCalc = isTvSurface
       ? (() => {
-          const faceW = kpCfgs[0]?.wallWidthMm ?? 0;
-          const faceH = kpCfgs[0]?.wallHeightMm ?? 0;
-          const mainAreaMm2 = tvMainWallWidthMm * tvMainWallHeightMm;
+          const mainW = kpCfgs[0]?.wallWidthMm ?? 0;
+          const mainH = kpCfgs[0]?.wallHeightMm ?? 0;
+          if (mainW <= 0 || mainH <= 0) return null;
+          const faceW = kpCfgs[1]?.wallWidthMm ?? 0;
+          const faceH = kpCfgs[1]?.wallHeightMm ?? 0;
+          const mainAreaMm2 = mainW * mainH;
           const faceAreaMm2 = faceW > 0 && faceH > 0 ? faceW * faceH : 0;
           const netAreaMm2 = Math.max(0, mainAreaMm2 - faceAreaMm2);
           const pMat = kpCfgs[0]?.sectorMaterials[0] ?? BAMBOO_PANELS[0];
@@ -2874,7 +2876,7 @@ const BambooStudio = () => {
     // Surface-mounted: box face is quad 0. Built-in: box face (Короб) is quad 1.
     const tvBacklightRuns = tvBacklightEnabled && (isTvSurface || isTvBuiltin)
       ? (() => {
-          const faceCfg = isTvBuiltin ? kpCfgs[1] : kpCfgs[0];
+          const faceCfg = kpCfgs[1]; // surface 1 = Короб face for both surface and builtin TV
           const faceW = faceCfg?.wallWidthMm ?? 0;
           const faceH = faceCfg?.wallHeightMm ?? 0;
           if (faceW <= 0 || faceH <= 0) return 0;
@@ -3122,8 +3124,8 @@ const BambooStudio = () => {
     }
     // Surface TV: corner profiles joining front face to sides / top / bottom
     if (isTvSurface && tvSurfaceJoint === 'profile') {
-      const faceW = kpCfgs[0]?.wallWidthMm ?? 0;
-      const faceH = kpCfgs[0]?.wallHeightMm ?? 0;
+      const faceW = kpCfgs[1]?.wallWidthMm ?? 0;
+      const faceH = kpCfgs[1]?.wallHeightMm ?? 0;
       const visStyle = kpCfgs.find(cfg => cfg.moldingStyle !== 'none')?.moldingStyle;
       const style = visStyle && visStyle !== 'none' ? visStyle : 'black';
       if (faceH > 0) addRuns(style, faceH, 2); // 2 вертикальных: левый и правый угол
@@ -3767,8 +3769,8 @@ const BambooStudio = () => {
 
     // Main wall block (Основная стена, TV surface zone only)
     if (tvMainWallCalc) {
-      const mWcm = Math.round(tvMainWallWidthMm / 10), mHcm = Math.round(tvMainWallHeightMm / 10);
-      const faceW0 = kpCfgs[0]?.wallWidthMm ?? 0, faceH0 = kpCfgs[0]?.wallHeightMm ?? 0;
+      const mWcm = Math.round((kpCfgs[0]?.wallWidthMm ?? 0) / 10), mHcm = Math.round((kpCfgs[0]?.wallHeightMm ?? 0) / 10);
+      const faceW0 = kpCfgs[1]?.wallWidthMm ?? 0, faceH0 = kpCfgs[1]?.wallHeightMm ?? 0;
       y += 18;
       c.fillStyle = '#111111'; c.font = 'bold 18px sans-serif';
       c.fillText('Основная стена — расчёт материала', 60, y + 10);
@@ -3794,8 +3796,8 @@ const BambooStudio = () => {
 
     // Surface-mounted TV block: face + sides + top + bottom, no cutout
     if (tvSurfaceCut) {
-      const faceW = kpCfgs[0]?.wallWidthMm ?? 0;
-      const faceH = kpCfgs[0]?.wallHeightMm ?? 0;
+      const faceW = kpCfgs[1]?.wallWidthMm ?? 0;
+      const faceH = kpCfgs[1]?.wallHeightMm ?? 0;
       const faceWcm = Math.round(faceW / 10), faceHcm = Math.round(faceH / 10);
       y += 18;
       c.fillStyle = '#111111'; c.font = 'bold 18px sans-serif';
@@ -3897,23 +3899,30 @@ const BambooStudio = () => {
           dimLines.push(`Откосы: глубина ${dCm} см · площадь откосов: ${slopeArea.toFixed(2).replace('.', ',')} м²`);
         }
       } else if (isTvSurface) {
-        const faceW = kpCfgs[0]?.wallWidthMm ?? 0;
-        const faceH = kpCfgs[0]?.wallHeightMm ?? 0;
+        // Surface 0 = main wall
+        const mainW = kpCfgs[0]?.wallWidthMm ?? 0;
+        const mainH = kpCfgs[0]?.wallHeightMm ?? 0;
+        if (mainW > 0 && mainH > 0) {
+          const a = (mainW / 1000) * (mainH / 1000);
+          dimLines.push(`Стена: ${Math.round(mainW / 10)} × ${Math.round(mainH / 10)} см · ${a.toFixed(2).replace('.', ',')} м²`);
+          dimTotalM2 += a;
+        }
+        // Surface 1 = Короб face
+        const faceW = kpCfgs[1]?.wallWidthMm ?? 0;
+        const faceH = kpCfgs[1]?.wallHeightMm ?? 0;
         if (faceW > 0 && faceH > 0) {
           const a = (faceW / 1000) * (faceH / 1000);
           dimLines.push(`ТВ-зона лицевая: ${Math.round(faceW / 10)} × ${Math.round(faceH / 10)} см · ${a.toFixed(2).replace('.', ',')} м²`);
           dimTotalM2 += a;
         }
-        if (tvSurfaceSideDepthMm > 0 && (kpCfgs[0]?.wallHeightMm ?? 0) > 0) {
-          const fH = kpCfgs[0]!.wallHeightMm;
-          const a = 2 * (tvSurfaceSideDepthMm / 1000) * (fH / 1000);
-          dimLines.push(`Боковые (×2): ${Math.round(tvSurfaceSideDepthMm / 10)} × ${Math.round(fH / 10)} см · ${a.toFixed(2).replace('.', ',')} м²`);
+        if (tvSurfaceSideDepthMm > 0 && faceH > 0) {
+          const a = 2 * (tvSurfaceSideDepthMm / 1000) * (faceH / 1000);
+          dimLines.push(`Боковые (×2): ${Math.round(tvSurfaceSideDepthMm / 10)} × ${Math.round(faceH / 10)} см · ${a.toFixed(2).replace('.', ',')} м²`);
           dimTotalM2 += a;
         }
-        if (tvSurfaceTopBottomDepthMm > 0 && (kpCfgs[0]?.wallWidthMm ?? 0) > 0) {
-          const fW = kpCfgs[0]!.wallWidthMm;
-          const a = 2 * (fW / 1000) * (tvSurfaceTopBottomDepthMm / 1000);
-          dimLines.push(`Верх/Низ (×2): ${Math.round(fW / 10)} × ${Math.round(tvSurfaceTopBottomDepthMm / 10)} см · ${a.toFixed(2).replace('.', ',')} м²`);
+        if (tvSurfaceTopBottomDepthMm > 0 && faceW > 0) {
+          const a = 2 * (faceW / 1000) * (tvSurfaceTopBottomDepthMm / 1000);
+          dimLines.push(`Верх/Низ (×2): ${Math.round(faceW / 10)} × ${Math.round(tvSurfaceTopBottomDepthMm / 10)} см · ${a.toFixed(2).replace('.', ',')} м²`);
           dimTotalM2 += a;
         }
       } else {
@@ -4710,7 +4719,7 @@ const BambooStudio = () => {
                       const rect = e.currentTarget.getBoundingClientRect();
                       const next = e.clientX - rect.left < rect.width / 2 ? 'wall' : 'box';
                       setTvZoneView(next);
-                      if (tvType === 'builtin') switchSurface(next === 'wall' ? 0 : 1);
+                      switchSurface(next === 'wall' ? 0 : 1);
                     }}
                   >
                     <div className={`absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-lg bg-black shadow-sm transition-all duration-200 ${tvZoneView === 'box' ? 'left-[calc(50%+2px)]' : 'left-0.5'}`} />
@@ -4719,55 +4728,108 @@ const BambooStudio = () => {
                   </div>
                 </div>
 
-                {/* ── НАКЛАДНОЙ ТВ (surface) ── */}
+                {/* ── НАКЛАДНОЙ ТВ (surface) — 2 поверхности: Стена + Короб ── */}
                 {tvType === 'surface' && (<>
-                  {/* Стена mode — основная стена за коробом */}
+                  {/* Стена mode — основная стена (surface 0) */}
                   {tvZoneView === 'wall' && (
                     <div className="bg-white rounded-2xl p-4 shadow-sm">
                       <div className="flex items-center gap-1.5 mb-2.5">
                         <Columns size={12} className="text-gray-400"/>
-                        <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Стена</span>
+                        <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">{`ТВ-зона — ${TV_ZONE_LABELS[activeSurface]}`}</span>
                       </div>
                       <div className="grid grid-cols-2 gap-2 mb-2">
                         <label className="block">
                           <span className="text-[10px] font-bold text-gray-400 uppercase">Ширина, см</span>
-                          <MeterInput placeholder="напр. 450" valueMm={tvMainWallWidthMm} onChangeMm={(v) => { pushHistory(); setTvMainWallWidthMm(v); }} />
+                          <MeterInput placeholder="напр. 360" valueMm={wallWidthMm} onChangeMm={(v) => { pushHistory(); setWallWidthMm(v); }} />
                         </label>
                         <label className="block">
                           <span className="text-[10px] font-bold text-gray-400 uppercase">Высота, см</span>
-                          <MeterInput placeholder="напр. 270" valueMm={tvMainWallHeightMm} onChangeMm={(v) => { pushHistory(); setTvMainWallHeightMm(v); }} />
+                          <MeterInput placeholder="напр. 270" valueMm={wallHeightMm} onChangeMm={(v) => { pushHistory(); setWallHeightMm(v); }} />
                         </label>
                       </div>
-                      {tvMainWallWidthMm > 0 && tvMainWallHeightMm > 0 && (() => {
-                        const faceW = wallWidthMm, faceH = wallHeightMm;
-                        const mainAreaM2 = (tvMainWallWidthMm / 1000) * (tvMainWallHeightMm / 1000);
-                        const faceAreaM2 = faceW > 0 && faceH > 0 ? (faceW / 1000) * (faceH / 1000) : 0;
-                        const netAreaM2 = Math.max(0, mainAreaM2 - faceAreaM2);
+                      {(() => {
                         const pMat = sectorMaterials[0];
                         const pW = pMat?.panelWidthMm ?? PANEL_W_MM;
                         const pH = pMat?.panelHeightMm ?? PANEL_H_MM;
                         const pAreaM2 = (pW * pH) / 1e6;
-                        const panelsEst = pAreaM2 > 0 ? Math.ceil(netAreaM2 / pAreaM2) : 0;
+                        return (
+                          <p className="text-[8px] text-gray-400 mb-1.5">
+                            Панель: {(pH / 10).toFixed(0)} × {(pW / 10).toFixed(0)} см ({pAreaM2.toFixed(2).replace('.', ',')} м²)
+                          </p>
+                        );
+                      })()}
+                      {wallWidthMm > 0 && wallHeightMm > 0 && (() => {
+                        const pMat = sectorMaterials[0];
+                        const pW = pMat?.panelWidthMm ?? PANEL_W_MM;
+                        const pH = pMat?.panelHeightMm ?? PANEL_H_MM;
+                        const areaM2 = (wallWidthMm / 1000) * (wallHeightMm / 1000);
+                        const cols = Math.ceil(wallWidthMm / pW);
+                        const opt = optimizedPanelCalc(cols, wallHeightMm, pH);
+                        const enough = panelCount >= cols;
+                        const tooTall = wallHeightMm > pH;
                         return (
                           <div className="space-y-1">
-                            <p className="text-[9px] font-bold text-gray-600">
-                              Площадь: {mainAreaM2.toFixed(2).replace('.', ',')} м²
-                              {faceAreaM2 > 0 && ` − короб ${faceAreaM2.toFixed(2).replace('.', ',')} м²`}
+                            <p className="text-[9px] font-bold text-gray-600">Площадь стены: {areaM2.toFixed(2).replace('.', ',')} м²</p>
+                            <p className={`text-[9px] font-bold ${enough ? 'text-[#5a9c3e]' : 'text-amber-600'}`}>
+                              {enough
+                                ? `✓ Панелей в ряду достаточно: ${panelCount} (по ширине ${cols})`
+                                : `⚠ По ширине нужно ${cols} ${panelsWord(cols)} в ряду — в проекте ${panelCount}`}
                             </p>
-                            <p className="text-[9px] text-[#5a9c3e] font-bold">
-                              Чистая: {netAreaM2.toFixed(2).replace('.', ',')} м² ≈ {panelsEst} {panelsWord(panelsEst)}
-                            </p>
+                            {!enough && (
+                              <button onClick={() => handleChangePanelCount(cols)}
+                                className="w-full py-1.5 text-[9px] font-bold rounded-lg bg-[#7ec662] text-white hover:bg-[#6db453] transition-all active:scale-95">
+                                Установить {cols} {panelsWord(cols)} в ряд
+                              </button>
+                            )}
+                            {tooTall && (
+                              <div className="space-y-1.5">
+                                <p className="text-[9px] font-bold text-amber-600">
+                                  {`⚠ Высота стены больше 2,8 м — ${opt.fullRows} ${rowsWord(opt.fullRows)} по высоте, всего ${opt.needed} ${panelsWord(opt.needed)} (в расчёте КП учтено)`}
+                                </p>
+                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 space-y-1">
+                                  <p className="text-[9px] font-black text-amber-700 uppercase tracking-wide">Стыковочный профиль</p>
+                                  {(['bottom', 'top'] as const).map(pos => {
+                                    const label = pos === 'bottom' ? 'Снизу' : 'Сверху';
+                                    const checked = jointProfilePosition.includes(pos);
+                                    return (
+                                      <label key={pos} className="flex items-center gap-2 cursor-pointer group">
+                                        <input type="checkbox" checked={checked}
+                                          onChange={() => {
+                                            pushHistory();
+                                            const current = adoptedSeamCurrentRef.current;
+                                            if (current.size > 0) {
+                                              const filtered = hMoldingPositionsRef.current.filter(p => !current.has(p));
+                                              hMoldingPositionsRef.current = filtered;
+                                              setHMoldingPositions(filtered);
+                                              adoptedSeamOriginalsRef.current = new Set();
+                                              adoptedSeamCurrentRef.current = new Set();
+                                              hMoldingCompanionMapRef.current = new Map();
+                                            }
+                                            setJointProfilePosition(prev =>
+                                              prev.includes(pos) ? prev.filter(p => p !== pos) : [...prev, pos]
+                                            );
+                                          }}
+                                          className="w-3 h-3 accent-amber-600 cursor-pointer"
+                                        />
+                                        <span className="text-[9px] font-bold text-amber-800 group-hover:text-amber-900">{label}</span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                            <p className="text-[8px] text-gray-400">Ширина панели в проекте: {Math.round(wallWidthMm / panelCount / 10)} см (макс. 122 см)</p>
                           </div>
                         );
                       })()}
                     </div>
                   )}
-                  {/* Короб mode — лицевая плоскость + грани + стыки + подсветка */}
-                  {tvZoneView === 'box' && (<>
+                  {/* Короб mode — Лицевая плоскость короба (surface 1) */}
+                  {tvZoneView === 'box' && (
                     <div className="bg-white rounded-2xl p-4 shadow-sm">
                       <div className="flex items-center gap-1.5 mb-2.5">
                         <Columns size={12} className="text-gray-400"/>
-                        <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Короб</span>
+                        <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Лицевая плоскость короба</span>
                       </div>
                       <div className="grid grid-cols-2 gap-2 mb-2">
                         <label className="block">
@@ -4783,23 +4845,105 @@ const BambooStudio = () => {
                         const pMat = sectorMaterials[0];
                         const pW = pMat?.panelWidthMm ?? PANEL_W_MM;
                         const pH = pMat?.panelHeightMm ?? PANEL_H_MM;
-                        const pAreaM2 = (pW * pH) / 1e6;
-                        const totalArea =
-                          (wallWidthMm / 1000) * (wallHeightMm / 1000) +
-                          2 * (tvSurfaceSideDepthMm / 1000) * (wallHeightMm / 1000) +
-                          2 * (wallWidthMm / 1000) * (tvSurfaceTopBottomDepthMm / 1000);
+                        const isHorizBox = panelOrientation === 'horizontal' || panelOrientation === 'lengthwise';
+                        const singleRowH = isHorizBox ? pW : pH;
+                        const areaM2 = (wallWidthMm / 1000) * (wallHeightMm / 1000);
+                        const tooTall = wallHeightMm > singleRowH;
+                        const opt = optimizedPanelCalc(
+                          isHorizBox ? Math.ceil(wallHeightMm / pW) : Math.ceil(wallWidthMm / pW),
+                          isHorizBox ? wallWidthMm : wallHeightMm,
+                          isHorizBox ? pW : pH
+                        );
+                        const colsNeeded = !isHorizBox ? Math.ceil(wallWidthMm / pW) : 0;
+                        const tooWide = !isHorizBox && wallWidthMm > pW;
+                        const seamCount = colsNeeded > 1 ? colsNeeded - 1 : 0;
+                        const seamProfileRuns = seamCount > 0 ? packProfileRuns(Array(seamCount).fill(wallHeightMm)) : 0;
                         return (
-                          <>
-                            <p className="text-[8px] text-gray-400 mb-1">
-                              Панель: {(pH / 10).toFixed(0)} × {(pW / 10).toFixed(0)} см ({pAreaM2.toFixed(2).replace('.', ',')} м²)
+                          <div className="space-y-1 mb-1">
+                            <p className="text-[8px] text-gray-400">
+                              Панель: {(pH / 10).toFixed(0)} × {(pW / 10).toFixed(0)} см · {isHorizBox ? 'горизонт.' : 'вертик.'} · ряд = {(singleRowH / 10).toFixed(0)} см
                             </p>
-                            <p className="text-[9px] text-gray-500">
-                              Площадь короба: <span className="font-bold text-gray-700">{totalArea.toFixed(2).replace('.', ',')} м²</span>
-                            </p>
-                          </>
+                            <p className="text-[9px] font-bold text-gray-600">Площадь лицевой: {areaM2.toFixed(2).replace('.', ',')} м²</p>
+                            {tooTall && (
+                              <div className="space-y-1.5">
+                                <p className="text-[9px] font-bold text-amber-600">
+                                  {`⚠ ${isHorizBox ? 'Высота короба' : 'Высота'} > ${(singleRowH / 10).toFixed(0)} см — ${opt.fullRows} ${rowsWord(opt.fullRows)} по ${isHorizBox ? 'высоте' : 'вертикали'}, итого ${opt.needed} ${panelsWord(opt.needed)}`}
+                                </p>
+                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 space-y-1">
+                                  <p className="text-[9px] font-black text-amber-700 uppercase tracking-wide">Стыковочный профиль (горизонт.)</p>
+                                  {(['bottom', 'top'] as const).map(pos => {
+                                    const label = pos === 'bottom' ? 'Снизу' : 'Сверху';
+                                    const checked = jointProfilePosition.includes(pos);
+                                    return (
+                                      <label key={pos} className="flex items-center gap-2 cursor-pointer group">
+                                        <input type="checkbox" checked={checked}
+                                          onChange={() => {
+                                            pushHistory();
+                                            const current = adoptedSeamCurrentRef.current;
+                                            if (current.size > 0) {
+                                              const filtered = hMoldingPositionsRef.current.filter(p => !current.has(p));
+                                              hMoldingPositionsRef.current = filtered;
+                                              setHMoldingPositions(filtered);
+                                              adoptedSeamOriginalsRef.current = new Set();
+                                              adoptedSeamCurrentRef.current = new Set();
+                                              hMoldingCompanionMapRef.current = new Map();
+                                            }
+                                            setJointProfilePosition(prev =>
+                                              prev.includes(pos) ? prev.filter(p => p !== pos) : [...prev, pos]
+                                            );
+                                          }}
+                                          className="w-3 h-3 accent-amber-600 cursor-pointer"
+                                        />
+                                        <span className="text-[9px] font-bold text-amber-800 group-hover:text-amber-900">{label}</span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                            {tooWide && (
+                              <div className="space-y-1.5">
+                                <p className="text-[9px] font-bold text-amber-600">
+                                  {`⚠ Ширина ${Math.round(wallWidthMm / 10)} см > ${Math.round(pW / 10)} см — ${colsNeeded} кол., ${seamCount} верт. ${seamCount === 1 ? 'стык' : seamCount < 5 ? 'стыка' : 'стыков'} по ${Math.round(wallHeightMm / 10)} см`}
+                                </p>
+                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5">
+                                  <p className="text-[9px] font-black text-amber-700 uppercase tracking-wide mb-0.5">Стыковочный профиль (вертик.)</p>
+                                  <p className="text-[9px] text-amber-800">
+                                    {`${seamCount} ${seamCount === 1 ? 'стык' : seamCount < 5 ? 'стыка' : 'стыков'} × ${Math.round(wallHeightMm / 10)} см → ${seamProfileRuns} хл. 3 м`}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                      <button
+                        onClick={() => { pushHistory(); setTvBacklightEnabled(v => !v); }}
+                        className={`w-full py-1.5 rounded-lg text-[9px] font-bold border transition-all active:scale-95 flex items-center justify-center gap-1.5 ${tvBacklightEnabled ? 'bg-amber-50 text-amber-700 border-amber-300' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
+                        {tvBacklightEnabled ? '✦ Подсветка включена' : '✦ Подсветка вокруг короба'}
+                      </button>
+                      {tvBacklightEnabled && (() => {
+                        const blBtn = (i: 0|1|2|3, lbl: string) => (
+                          <button onClick={() => { pushHistory(); setTvBacklightEdges(e => { const n=[...e] as [boolean,boolean,boolean,boolean]; n[i]=!n[i]; return n; }); }}
+                            className={`py-1 rounded text-[8px] font-bold border transition-all active:scale-95 ${tvBacklightEdges[i] ? 'bg-amber-400 text-white border-amber-500' : 'bg-gray-50 text-gray-400 border-gray-200 hover:border-gray-300'}`}>{lbl}</button>
+                        );
+                        return (
+                          <div className="mt-2">
+                            <p className="text-[9px] font-bold text-gray-400 uppercase mb-1.5">Грани с подсветкой</p>
+                            <div className="grid grid-cols-3 gap-1">
+                              <div/>{blBtn(0,'↑ Верх')}<div/>
+                              {blBtn(3,'← Лево')}
+                              <div className="rounded bg-gray-50 flex items-center justify-center"><span className="text-[7px] text-gray-300">✦</span></div>
+                              {blBtn(1,'Право →')}
+                              <div/>{blBtn(2,'↓ Низ')}<div/>
+                            </div>
+                          </div>
                         );
                       })()}
                     </div>
+                  )}
+                  {/* Короб mode — Глубина граней короба */}
+                  {tvZoneView === 'box' && (
                     <div className="bg-white rounded-2xl p-4 shadow-sm">
                       <div className="flex items-center gap-1.5 mb-2.5">
                         <Columns size={12} className="text-gray-400"/>
@@ -4825,7 +4969,7 @@ const BambooStudio = () => {
                         ))}
                       </div>
                       {tvSurfaceJoint === 'profile' && (
-                        <div className="grid grid-cols-4 gap-1 mb-2">
+                        <div className="grid grid-cols-4 gap-1">
                           {PROFILE_COLOR_OPTS.map(o => {
                             const active = tvSurfaceJointColor === o.id;
                             return (
@@ -4839,31 +4983,8 @@ const BambooStudio = () => {
                           })}
                         </div>
                       )}
-                      <button
-                        onClick={() => { pushHistory(); setTvBacklightEnabled(v => !v); }}
-                        className={`w-full py-1.5 rounded-lg text-[9px] font-bold border transition-all active:scale-95 flex items-center justify-center gap-1.5 ${tvBacklightEnabled ? 'bg-amber-50 text-amber-700 border-amber-300' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
-                        {tvBacklightEnabled ? '✦ Подсветка включена' : '✦ Подсветка вокруг короба'}
-                      </button>
-                      {tvBacklightEnabled && (() => {
-                        const blBtn = (i: 0|1|2|3, lbl: string) => (
-                          <button onClick={() => { pushHistory(); setTvBacklightEdges(e => { const n=[...e] as [boolean,boolean,boolean,boolean]; n[i]=!n[i]; return n; }); }}
-                            className={`py-1 rounded text-[8px] font-bold border transition-all active:scale-95 ${tvBacklightEdges[i] ? 'bg-amber-400 text-white border-amber-500' : 'bg-gray-50 text-gray-400 border-gray-200 hover:border-gray-300'}`}>{lbl}</button>
-                        );
-                        return (
-                          <div className="mt-2">
-                            <p className="text-[9px] font-bold text-gray-400 uppercase mb-1.5">Грани с подсветкой</p>
-                            <div className="grid grid-cols-3 gap-1">
-                              <div/>{blBtn(0,'↑ Верх')}<div/>
-                              {blBtn(3,'← Лево')}
-                              <div className="rounded bg-gray-50 flex items-center justify-center"><span className="text-[7px] text-gray-300">✦</span></div>
-                              {blBtn(1,'Право →')}
-                              <div/>{blBtn(2,'↓ Низ')}<div/>
-                            </div>
-                          </div>
-                        );
-                      })()}
                     </div>
-                  </>)}
+                  )}
                 </>)}
 
                 {/* ── ВСТРОЕННЫЙ ТВ (builtin) ── */}
