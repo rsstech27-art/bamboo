@@ -1805,7 +1805,9 @@ const BambooStudio = () => {
       };
       const quadCfgs: SurfaceConfig[] = [];
       for (let q = 0; q < nQuads; q++) {
-        quadCfgs.push(q === curActiveSurf ? liveCfg : (surfacesRef.current[q] ?? defaultSurfaceConfig()));
+        const base = q === curActiveSurf ? liveCfg : (surfacesRef.current[q] ?? defaultSurfaceConfig());
+        // wall-niche: panels are always vertical (no UI toggle exposed for this zone)
+        quadCfgs.push(wallZoneRef.current === 'wall-niche' ? { ...base, panelOrientation: 'vertical' } : base);
       }
       // Door zone: draw a grey silhouette for the door opening BEFORE panel quads
       // so panels always render on top. Opening = area between inner edges of side strips.
@@ -5533,7 +5535,7 @@ const BambooStudio = () => {
                 <input type="range" min="1" max="15" value={panelCount}
                   onChange={(e) => handleChangePanelCount(parseInt(e.target.value))}
                   className="w-full h-1 bg-gray-100 rounded-full appearance-none accent-black"/>
-                {((wallZone === 'tv' && !(tvType === 'builtin' && activeSurface === 0)) || wallZone === 'wall-niche') && (
+                {wallZone === 'tv' && !(tvType === 'builtin' && activeSurface === 0) && (
                   <div className="flex gap-1 mt-2">
                     {(['vertical', 'horizontal'] as const).map(ori => (
                       <button key={ori} onClick={() => { pushHistory(); setPanelOrientation(ori); }}
