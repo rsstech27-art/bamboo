@@ -573,6 +573,7 @@ const BambooStudio = () => {
   const [tvCutoutPresetInches, setTvCutoutPresetInches] = useState<50 | 55 | 65 | null>(null);
   const [tvBoxDepthMm, setTvBoxDepthMm] = useState(0);
   const [tvBoxJoint, setTvBoxJoint] = useState<'profile' | 'bend'>('profile');
+  const [tvBoxJointColor, setTvBoxJointColor] = useState<'black' | 'gold' | 'metallic' | 'bronze'>('black');
 
   const TV_INCH_PRESETS: Record<50 | 55 | 65, { wMm: number; hMm: number }> = {
     50: { wMm: 1130, hMm: 660 },
@@ -4266,7 +4267,7 @@ const BambooStudio = () => {
             )}
             {step !== 'zone' && (
               <button
-                 onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setHistoryLen(0); surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setSavedPng(null); setWinSlopeDepthMm(0); setWinWidthMm(0); setWinHeightMm(0); setWinJoint('profile'); setTvCutoutWidthMm(0); setTvCutoutHeightMm(0); setTvCutoutDepthMm(0); setTvCutoutJoint('profile'); setTvCutoutInputMode('size'); setTvCutoutPresetInches(null); setTvBoxDepthMm(0); setTvBoxJoint('profile'); setTvType(null); setTvSurfaceSideDepthMm(0); setTvSurfaceTopBottomDepthMm(0); setTvSurfaceJoint('profile'); setDoorType(null); setDoorWidthMm(0); setDoorHeightMm(0); setDoorRevealDepthMm(0); setDoorTransomHeightMm(0); setDoorJoint('profile'); setDoorShowDoor(true); setDoorOpeningPoints([]); setDoorMarkMode('wall'); setDoorSelectedReveal('left'); setDoorRevealSizes({ left: { ...EMPTY_DOOR_REVEAL }, right: { ...EMPTY_DOOR_REVEAL }, top: { ...EMPTY_DOOR_REVEAL } }); setStep('zone'); setWallZone(null); setWindowType(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
+                 onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setHistoryLen(0); surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setSavedPng(null); setWinSlopeDepthMm(0); setWinWidthMm(0); setWinHeightMm(0); setWinJoint('profile'); setTvCutoutWidthMm(0); setTvCutoutHeightMm(0); setTvCutoutDepthMm(0); setTvCutoutJoint('profile'); setTvCutoutInputMode('size'); setTvCutoutPresetInches(null); setTvBoxDepthMm(0); setTvBoxJoint('profile'); setTvBoxJointColor('black'); setTvType(null); setTvSurfaceSideDepthMm(0); setTvSurfaceTopBottomDepthMm(0); setTvSurfaceJoint('profile'); setDoorType(null); setDoorWidthMm(0); setDoorHeightMm(0); setDoorRevealDepthMm(0); setDoorTransomHeightMm(0); setDoorJoint('profile'); setDoorShowDoor(true); setDoorOpeningPoints([]); setDoorMarkMode('wall'); setDoorSelectedReveal('left'); setDoorRevealSizes({ left: { ...EMPTY_DOOR_REVEAL }, right: { ...EMPTY_DOOR_REVEAL }, top: { ...EMPTY_DOOR_REVEAL } }); setStep('zone'); setWallZone(null); setWindowType(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
                 className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
               >
                 ← Назад
@@ -5047,7 +5048,7 @@ const BambooStudio = () => {
                         );
                       })()}
                       <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Угловое соединение граней</p>
-                      <div className="flex gap-1.5">
+                      <div className="flex gap-1.5 mb-1.5">
                         {([{ id: 'profile', label: 'Профиль' }, { id: 'bend', label: 'Загиб' }] as const).map(({ id, label }) => (
                           <button key={id} onClick={() => { pushHistory(); setTvBoxJoint(id); }}
                             className={`flex-1 py-1.5 rounded-lg text-[9px] font-bold border transition-all active:scale-95 ${tvBoxJoint === id ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
@@ -5055,6 +5056,21 @@ const BambooStudio = () => {
                           </button>
                         ))}
                       </div>
+                      {tvBoxJoint === 'profile' && (
+                        <div className="grid grid-cols-4 gap-1">
+                          {PROFILE_COLOR_OPTS.map(o => {
+                            const active = tvBoxJointColor === o.id;
+                            return (
+                              <button key={o.id} onClick={() => { pushHistory(); setTvBoxJointColor(o.id); }}
+                                className="flex flex-col items-center gap-1 transition-all">
+                                <div className={`w-full h-5 rounded-sm border-2 transition-all ${active ? 'border-gray-800 shadow-md' : 'border-transparent opacity-55'}`}
+                                  style={PROFILE_COLOR_BAR[o.id]}/>
+                                <span className={`text-[7px] font-bold uppercase leading-none ${active ? 'text-gray-800' : 'text-gray-400'}`}>{o.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   )}
                   {/* Короб mode — вырез под телевизор: размеры, глубина, грани */}
