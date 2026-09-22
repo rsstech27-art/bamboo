@@ -382,6 +382,8 @@ type SurfaceConfig = {
   jointProfilePosition: ('bottom' | 'top')[];
   dividerStyleOverrides?: Record<number, MoldingStyle>; // per-divider style override
   hMoldingStyleOverrides?: Record<number, MoldingStyle>; // per-hMolding style override
+  vProfileStyle?: MoldingStyle;  // vertical decorative profile at outer edge (wall-niche surfaces 1+)
+  vProfileWidth?: number;        // thickness of the vertical profile
 };
 const defaultSurfaceConfig = (): SurfaceConfig => ({
   panelCount: 5,
@@ -399,6 +401,8 @@ const defaultSurfaceConfig = (): SurfaceConfig => ({
   jointProfilePosition: ['bottom'],
   dividerStyleOverrides: {},
   hMoldingStyleOverrides: {},
+  vProfileStyle: 'black',
+  vProfileWidth: 2,
 });
 
 const SURFACE_LABELS = ['Стена 1 · Основная', 'Стена 2', 'Стена 3'];
@@ -619,6 +623,8 @@ const BambooStudio = () => {
   const [hMoldingCount, setHMoldingCount] = useState(0);
   const [hMoldingWidth, setHMoldingWidth] = useState(1);
   const [hMoldingPositions, setHMoldingPositions] = useState<number[]>([]);
+  const [vProfileStyle, setVProfileStyle] = useState<MoldingStyle>('black');
+  const [vProfileWidth, setVProfileWidth] = useState(2);
   const [openSeries, setOpenSeries] = useState<Set<string>>(() => new Set(['metall-25']));
   const [footerCatalogOpen, setFooterCatalogOpen] = useState(false);
   const [lightMode, setLightMode] = useState<'off' | 'morning' | 'evening'>('off');
@@ -686,6 +692,8 @@ const BambooStudio = () => {
   const hMoldingCountRef = useRef(1);
   const hMoldingWidthRef = useRef(1);
   const hMoldingPositionsRef = useRef<number[]>([]);
+  const vProfileStyleRef = useRef<MoldingStyle>('black');
+  const vProfileWidthRef = useRef(2);
   const draggingHMoldingIndexRef = useRef<number | null>(null);
   // Original positions of auto-seams that have been adopted into hMoldingPositions.
   // drawHSeam skips these so the original red line does not reappear after drag.
@@ -742,6 +750,8 @@ const BambooStudio = () => {
     jointProfilePosition: ('bottom' | 'top')[];
     dividerStyleOverrides: Record<number, MoldingStyle>;
     hMoldingStyleOverrides: Record<number, MoldingStyle>;
+    vProfileStyle: MoldingStyle;
+    vProfileWidth: number;
   };
   const historyRef = useRef<HistorySnapshot[]>([]);
   const redoRef   = useRef<HistorySnapshot[]>([]);
@@ -774,6 +784,8 @@ const BambooStudio = () => {
       jointProfilePosition: [...jointProfilePositionRef.current],
       dividerStyleOverrides: { ...dividerStyleOverridesRef.current },
       hMoldingStyleOverrides: { ...hMoldingStyleOverridesRef.current },
+      vProfileStyle: vProfileStyleRef.current,
+      vProfileWidth: vProfileWidthRef.current,
     });
     if (historyRef.current.length > 50) historyRef.current.shift();
     setHistoryLen(historyRef.current.length);
@@ -801,6 +813,8 @@ const BambooStudio = () => {
     jointProfilePosition: [...jointProfilePositionRef.current],
     dividerStyleOverrides: { ...dividerStyleOverridesRef.current },
     hMoldingStyleOverrides: { ...hMoldingStyleOverridesRef.current },
+    vProfileStyle: vProfileStyleRef.current,
+    vProfileWidth: vProfileWidthRef.current,
   }), []);
 
   // Restore a snapshot to live state
@@ -825,6 +839,8 @@ const BambooStudio = () => {
       setJointProfilePosition(prev.jointProfilePosition ?? ['bottom']);
       setDividerStyleOverrides(prev.dividerStyleOverrides ?? {});
       setHMoldingStyleOverrides(prev.hMoldingStyleOverrides ?? {});
+      setVProfileStyle(prev.vProfileStyle ?? 'black');
+      setVProfileWidth(prev.vProfileWidth ?? 2);
     } else {
       const cfg = surfacesRef.current[prev.surfaceIndex] ?? defaultSurfaceConfig();
       surfacesRef.current[prev.surfaceIndex] = {
@@ -844,6 +860,8 @@ const BambooStudio = () => {
         jointProfilePosition: prev.jointProfilePosition ?? ['bottom'],
         dividerStyleOverrides: prev.dividerStyleOverrides ?? {},
         hMoldingStyleOverrides: prev.hMoldingStyleOverrides ?? {},
+        vProfileStyle: prev.vProfileStyle ?? 'black',
+        vProfileWidth: prev.vProfileWidth ?? 2,
       };
       setPoints(pv => [...pv]);
     }
@@ -916,13 +934,17 @@ const BambooStudio = () => {
       jointProfilePosition,
       dividerStyleOverrides,
       hMoldingStyleOverrides,
+      vProfileStyle,
+      vProfileWidth,
     };
-  }, [activeSurface, panelCount, dividerPositions, sectorMaterials, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, wallWidthMm, wallHeightMm, panelOrientation, jointProfilePosition, dividerStyleOverrides, hMoldingStyleOverrides]);
+  }, [activeSurface, panelCount, dividerPositions, sectorMaterials, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, wallWidthMm, wallHeightMm, panelOrientation, jointProfilePosition, dividerStyleOverrides, hMoldingStyleOverrides, vProfileStyle, vProfileWidth]);
   useEffect(() => { jointProfilePositionRef.current = jointProfilePosition; }, [jointProfilePosition]);
   useEffect(() => { dividerStyleOverridesRef.current = dividerStyleOverrides; }, [dividerStyleOverrides]);
   useEffect(() => { selectedDividerIdxRef.current = selectedDividerIdx; }, [selectedDividerIdx]);
   useEffect(() => { hMoldingStyleOverridesRef.current = hMoldingStyleOverrides; }, [hMoldingStyleOverrides]);
   useEffect(() => { selectedHMoldingIdxRef.current = selectedHMoldingIdx; }, [selectedHMoldingIdx]);
+  useEffect(() => { vProfileStyleRef.current = vProfileStyle; }, [vProfileStyle]);
+  useEffect(() => { vProfileWidthRef.current = vProfileWidth; }, [vProfileWidth]);
   useEffect(() => { tvTypeRef.current = tvType; }, [tvType]);
   useEffect(() => { tvBacklightEnabledRef.current = tvBacklightEnabled; }, [tvBacklightEnabled]);
 
@@ -960,6 +982,8 @@ const BambooStudio = () => {
       jointProfilePosition: [...jointProfilePositionRef.current],
       dividerStyleOverrides: { ...dividerStyleOverridesRef.current },
       hMoldingStyleOverrides: { ...hMoldingStyleOverridesRef.current },
+      vProfileStyle: vProfileStyleRef.current,
+      vProfileWidth: vProfileWidthRef.current,
     };
     // For wall-niche: if the target surface was never configured, inherit the
     // current wall's config as a starting point so panels/materials carry over.
@@ -981,6 +1005,8 @@ const BambooStudio = () => {
           jointProfilePosition: [...jointProfilePositionRef.current],
           dividerStyleOverrides: { ...dividerStyleOverridesRef.current },
           hMoldingStyleOverrides: { ...hMoldingStyleOverridesRef.current },
+          vProfileStyle: 'black',
+          vProfileWidth: 2,
         }
       : (surfacesRef.current[idx] ?? defaultSurfaceConfig());
     const cfg = inheritedCfg;
@@ -1002,6 +1028,8 @@ const BambooStudio = () => {
     setJointProfilePosition(cfg.jointProfilePosition ?? ['bottom']);
     setDividerStyleOverrides(cfg.dividerStyleOverrides ?? {});
     setHMoldingStyleOverrides(cfg.hMoldingStyleOverrides ?? {});
+    setVProfileStyle(cfg.vProfileStyle ?? 'black');
+    setVProfileWidth(cfg.vProfileWidth ?? 2);
     setActiveSector(null);
   }, []);
 
@@ -1897,6 +1925,24 @@ const BambooStudio = () => {
         }
       }
 
+      // Vertical decorative profile at the outer edge of wall-niche side walls (surfaces 1 and 2)
+      if (wallZoneRef.current === 'wall-niche') {
+        for (let qi = 1; qi < nQuads; qi++) {
+          const sc = surfacesRef.current[qi];
+          if (!sc) continue;
+          const vstyle = (sc.vProfileStyle ?? 'black') as MoldingStyle;
+          const vwidth = sc.vProfileWidth ?? 2;
+          if (vstyle === 'none') continue;
+          const qpts = pts.slice(qi * 4, qi * 4 + 4);
+          if (qpts.length < 4) continue;
+          // Wall 2 (qi=1): outer edge = left side  (qpts[0] top-left → qpts[3] bottom-left)
+          // Wall 3 (qi=2): outer edge = right side (qpts[1] top-right → qpts[2] bottom-right)
+          const vp1 = qi === 1 ? qpts[0] : qpts[1];
+          const vp2 = qi === 1 ? qpts[3] : qpts[2];
+          drawMoldLine(vp1.x, vp1.y, vp2.x, vp2.y, vstyle as Exclude<MoldingStyle, 'none'>, vwidth);
+        }
+      }
+
       // Active surface outline (only with multiple surfaces, hidden on export)
       if (nQuads > 1 && !forExportRef.current && !curIsErasing) {
         const aq = pts.slice(curActiveSurf * 4, curActiveSurf * 4 + 4);
@@ -2266,7 +2312,7 @@ const BambooStudio = () => {
   useEffect(() => {
     if (!image) return;
     drawFullScene();
-  }, [points, doorOpeningPoints, doorMarkMode, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, lightMode, cylHighlightPos, activeSurface, cornerTypes, wrapJunctions, wallZone, columnShape, drawFullScene, image, panelOrientation, edgeProfileSides, edgeProfileColor, jointProfilePosition]);
+  }, [points, doorOpeningPoints, doorMarkMode, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, lightMode, cylHighlightPos, activeSurface, cornerTypes, wrapJunctions, wallZone, columnShape, drawFullScene, image, panelOrientation, edgeProfileSides, edgeProfileColor, jointProfilePosition, vProfileStyle, vProfileWidth]);
 
   const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = mainCanvasRef.current;
@@ -5248,6 +5294,29 @@ const BambooStudio = () => {
                 )}
               </div>
             </div>
+
+            {/* Vertical decorative profile — wall-niche side walls only */}
+            {wallZone === 'wall-niche' && activeSurface > 0 && (
+              <div className="bg-white rounded-2xl p-3 shadow-sm">
+                <div className="flex items-center gap-1 mb-2">
+                  <div className="w-0.5 h-3 bg-yellow-500 rounded-full"/>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Профиль вертик. (внешний)</span>
+                </div>
+                <MoldingStyleRow value={vProfileStyle} onChange={(v) => { pushHistory(); setVProfileStyle(v); }} vertical={true}/>
+                {vProfileStyle !== 'none' && (
+                  <div className="mt-2">
+                    <div className="flex justify-between mb-1">
+                      <span className="text-[9px] text-gray-400 font-bold">Толщина</span>
+                      <span className="text-[9px] font-bold">{vProfileWidth}px</span>
+                    </div>
+                    <input type="range" min="1" max="6" value={vProfileWidth}
+                      onPointerDown={pushHistory}
+                      onChange={(e) => { setVProfileWidth(parseInt(e.target.value)); }}
+                      className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Торцевой профиль + Освещение — ряд */}
             <div className="grid grid-cols-2 gap-1.5">
