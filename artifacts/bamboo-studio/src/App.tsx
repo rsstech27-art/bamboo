@@ -1326,9 +1326,14 @@ const BambooStudio = () => {
         const cachedTex = textureCacheRef.current[material.id];
         if (cachedTex) {
           if (material.textureStretch) {
+            // For horizontal panels: each row draws only its proportional slice of the texture
+            // (rStart..rEnd fraction of texture width) so all rows together form one continuous
+            // canvas. For vertical panels the full texture is stretched per-column (unchanged).
+            const texSrcX = isHoriz ? rStart * cachedTex.width : 0;
+            const texSrcW = isHoriz ? (rEnd - rStart) * cachedTex.width : cachedTex.width;
             if (material.slatOverlay) {
-              // Slat panels: stretch texture to fill the entire panel (no tiling)
-              tCtx.drawImage(cachedTex, dX, dY, dW, dH);
+              // Slat panels: stretch texture to fill the panel
+              tCtx.drawImage(cachedTex, texSrcX, 0, texSrcW, cachedTex.height, dX, dY, dW, dH);
               // Also draw to woodCanvas for extra opacity boost
               wCtx.save();
               wCtx.beginPath();
@@ -1336,11 +1341,11 @@ const BambooStudio = () => {
               wCtx.lineTo(p3.x, p3.y); wCtx.lineTo(p4.x, p4.y);
               wCtx.closePath(); wCtx.clip();
               if (isHoriz) { wCtx.translate(cx, cy); wCtx.rotate(Math.PI / 2); wCtx.translate(-cx, -cy); }
-              wCtx.drawImage(cachedTex, dX, dY, dW, dH);
+              wCtx.drawImage(cachedTex, texSrcX, 0, texSrcW, cachedTex.height, dX, dY, dW, dH);
               wCtx.restore();
             } else {
-              // Wood panels: stretch to fill panel seamlessly (no tiling)
-              tCtx.drawImage(cachedTex, dX, dY, dW, dH);
+              // Wood panels: stretch to fill panel seamlessly
+              tCtx.drawImage(cachedTex, texSrcX, 0, texSrcW, cachedTex.height, dX, dY, dW, dH);
               // Also draw to woodCanvas for extra opacity boost
               wCtx.save();
               wCtx.beginPath();
@@ -1348,7 +1353,7 @@ const BambooStudio = () => {
               wCtx.lineTo(p3.x, p3.y); wCtx.lineTo(p4.x, p4.y);
               wCtx.closePath(); wCtx.clip();
               if (isHoriz) { wCtx.translate(cx, cy); wCtx.rotate(Math.PI / 2); wCtx.translate(-cx, -cy); }
-              wCtx.drawImage(cachedTex, dX, dY, dW, dH);
+              wCtx.drawImage(cachedTex, texSrcX, 0, texSrcW, cachedTex.height, dX, dY, dW, dH);
               wCtx.restore();
             }
           } else {
