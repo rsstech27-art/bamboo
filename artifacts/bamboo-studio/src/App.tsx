@@ -589,6 +589,8 @@ const BambooStudio = () => {
   const [tvMainWallWidthMm, setTvMainWallWidthMm] = useState(0);
   const [tvMainWallHeightMm, setTvMainWallHeightMm] = useState(0);
   const [tvBacklightEnabled, setTvBacklightEnabled] = useState(false);
+  // Per-edge backlight: [top, right, bottom, left] — indices match quad edge order
+  const [tvBacklightEdges, setTvBacklightEdges] = useState<[boolean,boolean,boolean,boolean]>([true,true,true,true]);
   const [tvZoneView, setTvZoneView] = useState<'wall' | 'box'>('wall');
   // Door zone
   const [doorType, setDoorType] = useState<'standard' | 'with-transom' | null>(null);
@@ -729,6 +731,7 @@ const BambooStudio = () => {
   // TV surface zone refs (used in drawFullScene)
   const tvTypeRef = useRef<'builtin' | 'surface' | null>(null);
   const tvBacklightEnabledRef = useRef(false);
+  const tvBacklightEdgesRef = useRef<[boolean,boolean,boolean,boolean]>([true,true,true,true]);
   const [panelOrientation, setPanelOrientation] = useState<'vertical' | 'horizontal' | 'lengthwise'>('vertical');
   const panelOrientationRef = useRef<'vertical' | 'horizontal' | 'lengthwise'>('vertical');
   const [dividerStyleOverrides, setDividerStyleOverrides] = useState<Record<number, MoldingStyle>>({});
@@ -968,6 +971,7 @@ const BambooStudio = () => {
   useEffect(() => { vProfileWidthRef.current = vProfileWidth; }, [vProfileWidth]);
   useEffect(() => { tvTypeRef.current = tvType; }, [tvType]);
   useEffect(() => { tvBacklightEnabledRef.current = tvBacklightEnabled; }, [tvBacklightEnabled]);
+  useEffect(() => { tvBacklightEdgesRef.current = tvBacklightEdges; }, [tvBacklightEdges]);
 
   // Ctrl+Z global undo / Ctrl+Y global redo
   useEffect(() => {
@@ -2007,10 +2011,9 @@ const BambooStudio = () => {
         }
       }
 
-      // TV: LED backlight — warm 3000K light radiating OUTWARD from box edges.
+      // TV: LED backlight — soft 4000K warm-white light radiating OUTWARD from selected box edges.
       // Surface-mounted: quad 0 is the box face. Built-in: quad 1 (Короб) is the box face.
-      // Technique: gradient strips along each edge on a separate canvas, box interior punched out
-      // with destination-out — pure gradient rendering (no shadowBlur quirks).
+      // Per-edge: tvBacklightEdgesRef.current[0..3] = [top, right, bottom, left].
       let tvGlowFacePts: Point[] | null = null;
       if (wallZoneRef.current === 'tv' && tvBacklightEnabledRef.current) {
         if (tvTypeRef.current === 'surface' && pts.length >= 4) tvGlowFacePts = pts.slice(0, 4);
@@ -2018,6 +2021,7 @@ const BambooStudio = () => {
       }
       if (tvGlowFacePts) {
         const facePts = tvGlowFacePts;
+        const activeEdges = tvBacklightEdgesRef.current;
         const W = tCtx.canvas.width, H = tCtx.canvas.height;
         const centX = facePts.reduce((s, p) => s + p.x, 0) / 4;
         const centY = facePts.reduce((s, p) => s + p.y, 0) / 4;
@@ -2026,15 +2030,13 @@ const BambooStudio = () => {
         glowC.width = W; glowC.height = H;
         const gCtx = glowC.getContext('2d')!;
 
-        // For each edge: draw a gradient strip extending outward from the edge.
-        // Strips are drawn exactly between the two corner points (no extension past endpoints)
-        // so adjacent strips meet cleanly at corners without overlap artifacts.
+        // For each ENABLED edge: draw a gradient strip extending outward.
         const drawEdgeGlow = (glowSize: number, a0: string, a1: string, a2: string) => {
           for (let i = 0; i < 4; i++) {
+            if (!activeEdges[i]) continue;
             const a = facePts[i], b = facePts[(i + 1) % 4];
             const edgeDx = b.x - a.x, edgeDy = b.y - a.y;
             const edgeLen = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy) || 1;
-            // Outward-facing normal (away from centroid)
             let nx = -edgeDy / edgeLen, ny = edgeDx / edgeLen;
             const midX = (a.x + b.x) / 2, midY = (a.y + b.y) / 2;
             if ((midX + nx - centX) * nx + (midY + ny - centY) * ny < 0) { nx = -nx; ny = -ny; }
@@ -2042,7 +2044,6 @@ const BambooStudio = () => {
             grad.addColorStop(0,    a0);
             grad.addColorStop(0.35, a1);
             grad.addColorStop(1,    a2);
-            // Exact parallelogram from a to b — no extension to avoid corner overlap
             gCtx.beginPath();
             gCtx.moveTo(a.x,               a.y);
             gCtx.lineTo(b.x,               b.y);
@@ -2053,20 +2054,20 @@ const BambooStudio = () => {
             gCtx.fill();
           }
         };
-        // Wide far scatter (3000K: deep amber fading to transparent)
-        drawEdgeGlow(80,  'rgba(255, 150, 35, 0.25)', 'rgba(255, 105, 10, 0.11)', 'rgba(200, 70, 0, 0)');
-        // Mid bloom
-        drawEdgeGlow(38,  'rgba(255, 185, 75, 0.35)', 'rgba(255, 140, 35, 0.16)', 'rgba(255, 90, 0, 0)');
-        // Tight near-edge bright seam
-        drawEdgeGlow(11,  'rgba(255, 228, 155, 0.45)', 'rgba(255, 195, 100, 0.25)', 'rgba(255, 160, 55, 0)');
+        // 4000K: softer warm-white (more yellow-white, less orange than 3000K)
+        drawEdgeGlow(80,  'rgba(255, 212, 155, 0.25)', 'rgba(255, 180, 105, 0.11)', 'rgba(220, 145, 55, 0)');
+        drawEdgeGlow(38,  'rgba(255, 225, 175, 0.35)', 'rgba(255, 200, 130, 0.16)', 'rgba(240, 165, 70, 0)');
+        drawEdgeGlow(11,  'rgba(255, 248, 215, 0.45)', 'rgba(255, 232, 180, 0.25)', 'rgba(255, 212, 135, 0)');
 
-        // Corner radial patches — fill the gap where adjacent edge strips don't meet
+        // Corner radial patches — only where at least one adjacent edge is enabled
         for (let i = 0; i < 4; i++) {
+          const prevEdge = (i + 3) % 4;
+          if (!activeEdges[prevEdge] && !activeEdges[i]) continue;
           const c = facePts[i];
           const rg = gCtx.createRadialGradient(c.x, c.y, 0, c.x, c.y, 70);
-          rg.addColorStop(0,    'rgba(255, 195, 80, 0.35)');
-          rg.addColorStop(0.3,  'rgba(255, 140, 30, 0.18)');
-          rg.addColorStop(1,    'rgba(200, 80, 0, 0)');
+          rg.addColorStop(0,    'rgba(255, 228, 170, 0.35)');
+          rg.addColorStop(0.3,  'rgba(255, 200, 125, 0.18)');
+          rg.addColorStop(1,    'rgba(220, 158, 58, 0)');
           gCtx.beginPath();
           gCtx.arc(c.x, c.y, 70, 0, Math.PI * 2);
           gCtx.fillStyle = rg;
@@ -2420,7 +2421,7 @@ const BambooStudio = () => {
   useEffect(() => {
     if (!image) return;
     drawFullScene();
-  }, [points, doorOpeningPoints, doorMarkMode, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, lightMode, cylHighlightPos, activeSurface, cornerTypes, wrapJunctions, wallZone, columnShape, drawFullScene, image, panelOrientation, edgeProfileSides, edgeProfileColor, jointProfilePosition, vProfileStyle, vProfileWidth, tvBacklightEnabled]);
+  }, [points, doorOpeningPoints, doorMarkMode, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, lightMode, cylHighlightPos, activeSurface, cornerTypes, wrapJunctions, wallZone, columnShape, drawFullScene, image, panelOrientation, edgeProfileSides, edgeProfileColor, jointProfilePosition, vProfileStyle, vProfileWidth, tvBacklightEnabled, tvBacklightEdges]);
 
   const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = mainCanvasRef.current;
@@ -2877,7 +2878,11 @@ const BambooStudio = () => {
           const faceW = faceCfg?.wallWidthMm ?? 0;
           const faceH = faceCfg?.wallHeightMm ?? 0;
           if (faceW <= 0 || faceH <= 0) return 0;
-          return packProfileRuns([faceH, faceH, faceW, faceW]); // 2×height + 2×width
+          // Edge 0=top(W), 1=right(H), 2=bottom(W), 3=left(H)
+          const edgeDims = [faceW, faceH, faceW, faceH];
+          const enabledLens = edgeDims.filter((_, i) => tvBacklightEdges[i]);
+          if (enabledLens.length === 0) return 0;
+          return packProfileRuns(enabledLens);
         })()
       : 0;
     const tvBuiltinCut = isTvBuiltin && tvCutoutDepthMm > 0 && tvCutoutWidthMm > 0 && tvCutoutHeightMm > 0
@@ -3747,6 +3752,12 @@ const BambooStudio = () => {
           60, y + 8);
         y += 30;
       }
+      if (isTvBuiltin && tvBacklightEnabled && tvBacklightRuns > 0) {
+        const edgeNames = ['Верх', 'Право', 'Низ', 'Лево'];
+        const onEdges = edgeNames.filter((_, i) => tvBacklightEdges[i]).join(', ');
+        c.fillText(`Подсветка (${onEdges}) · профиль с подсветкой 3 м: ${tvBacklightRuns} шт.`, 60, y + 8);
+        y += 28;
+      }
     }
 
     // Main wall block (Основная стена, TV surface zone only)
@@ -3803,7 +3814,9 @@ const BambooStudio = () => {
       c.fillText(`Угловое соединение: ${tvSurfaceJoint === 'profile' ? 'через профиль' : 'загиб панелей'}`, 60, y + 8);
       y += 28;
       if (tvBacklightEnabled && tvBacklightRuns > 0) {
-        c.fillText(`Подсветка по периметру: 2×${faceWcm} + 2×${faceHcm} см · профилей 3 м: ${tvBacklightRuns} шт.`, 60, y + 8);
+        const edgeNames = ['Верх', 'Право', 'Низ', 'Лево'];
+        const onEdges = edgeNames.filter((_, i) => tvBacklightEdges[i]).join(', ');
+        c.fillText(`Подсветка (${onEdges}) · профиль с подсветкой 3 м: ${tvBacklightRuns} шт.`, 60, y + 8);
         y += 28;
       }
       c.fillText(`Деталей короба: ${tvSurfaceCut.pieces.length} · панелей: ${tvSurfaceCut.panels} (обрезки полос используются повторно)`, 60, y + 8);
@@ -4267,7 +4280,7 @@ const BambooStudio = () => {
             )}
             {step !== 'zone' && (
               <button
-                 onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setHistoryLen(0); surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setSavedPng(null); setWinSlopeDepthMm(0); setWinWidthMm(0); setWinHeightMm(0); setWinJoint('profile'); setTvCutoutWidthMm(0); setTvCutoutHeightMm(0); setTvCutoutDepthMm(0); setTvCutoutJoint('profile'); setTvCutoutInputMode('size'); setTvCutoutPresetInches(null); setTvBoxDepthMm(0); setTvBoxJoint('profile'); setTvBoxJointColor('black'); setTvType(null); setTvSurfaceSideDepthMm(0); setTvSurfaceTopBottomDepthMm(0); setTvSurfaceJoint('profile'); setDoorType(null); setDoorWidthMm(0); setDoorHeightMm(0); setDoorRevealDepthMm(0); setDoorTransomHeightMm(0); setDoorJoint('profile'); setDoorShowDoor(true); setDoorOpeningPoints([]); setDoorMarkMode('wall'); setDoorSelectedReveal('left'); setDoorRevealSizes({ left: { ...EMPTY_DOOR_REVEAL }, right: { ...EMPTY_DOOR_REVEAL }, top: { ...EMPTY_DOOR_REVEAL } }); setStep('zone'); setWallZone(null); setWindowType(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
+                 onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setHistoryLen(0); surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setSavedPng(null); setWinSlopeDepthMm(0); setWinWidthMm(0); setWinHeightMm(0); setWinJoint('profile'); setTvCutoutWidthMm(0); setTvCutoutHeightMm(0); setTvCutoutDepthMm(0); setTvCutoutJoint('profile'); setTvCutoutInputMode('size'); setTvCutoutPresetInches(null); setTvBoxDepthMm(0); setTvBoxJoint('profile'); setTvBoxJointColor('black'); setTvBacklightEdges([true,true,true,true]); setTvType(null); setTvSurfaceSideDepthMm(0); setTvSurfaceTopBottomDepthMm(0); setTvSurfaceJoint('profile'); setDoorType(null); setDoorWidthMm(0); setDoorHeightMm(0); setDoorRevealDepthMm(0); setDoorTransomHeightMm(0); setDoorJoint('profile'); setDoorShowDoor(true); setDoorOpeningPoints([]); setDoorMarkMode('wall'); setDoorSelectedReveal('left'); setDoorRevealSizes({ left: { ...EMPTY_DOOR_REVEAL }, right: { ...EMPTY_DOOR_REVEAL }, top: { ...EMPTY_DOOR_REVEAL } }); setStep('zone'); setWallZone(null); setWindowType(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
                 className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
               >
                 ← Назад
@@ -4826,6 +4839,24 @@ const BambooStudio = () => {
                         className={`w-full py-1.5 rounded-lg text-[9px] font-bold border transition-all active:scale-95 flex items-center justify-center gap-1.5 ${tvBacklightEnabled ? 'bg-amber-50 text-amber-700 border-amber-300' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
                         {tvBacklightEnabled ? '✦ Подсветка включена' : '✦ Подсветка вокруг короба'}
                       </button>
+                      {tvBacklightEnabled && (() => {
+                        const blBtn = (i: 0|1|2|3, lbl: string) => (
+                          <button onClick={() => { pushHistory(); setTvBacklightEdges(e => { const n=[...e] as [boolean,boolean,boolean,boolean]; n[i]=!n[i]; return n; }); }}
+                            className={`py-1 rounded text-[8px] font-bold border transition-all active:scale-95 ${tvBacklightEdges[i] ? 'bg-amber-400 text-white border-amber-500' : 'bg-gray-50 text-gray-400 border-gray-200 hover:border-gray-300'}`}>{lbl}</button>
+                        );
+                        return (
+                          <div className="mt-2">
+                            <p className="text-[9px] font-bold text-gray-400 uppercase mb-1.5">Грани с подсветкой</p>
+                            <div className="grid grid-cols-3 gap-1">
+                              <div/>{blBtn(0,'↑ Верх')}<div/>
+                              {blBtn(3,'← Лево')}
+                              <div className="rounded bg-gray-50 flex items-center justify-center"><span className="text-[7px] text-gray-300">✦</span></div>
+                              {blBtn(1,'Право →')}
+                              <div/>{blBtn(2,'↓ Низ')}<div/>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </>)}
                 </>)}
@@ -5037,6 +5068,24 @@ const BambooStudio = () => {
                         className={`w-full py-1.5 rounded-lg text-[9px] font-bold border transition-all active:scale-95 flex items-center justify-center gap-1.5 ${tvBacklightEnabled ? 'bg-amber-50 text-amber-700 border-amber-300' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
                         {tvBacklightEnabled ? '✦ Подсветка включена' : '✦ Подсветка вокруг короба'}
                       </button>
+                      {tvBacklightEnabled && (() => {
+                        const blBtn = (i: 0|1|2|3, lbl: string) => (
+                          <button onClick={() => { pushHistory(); setTvBacklightEdges(e => { const n=[...e] as [boolean,boolean,boolean,boolean]; n[i]=!n[i]; return n; }); }}
+                            className={`py-1 rounded text-[8px] font-bold border transition-all active:scale-95 ${tvBacklightEdges[i] ? 'bg-amber-400 text-white border-amber-500' : 'bg-gray-50 text-gray-400 border-gray-200 hover:border-gray-300'}`}>{lbl}</button>
+                        );
+                        return (
+                          <div className="mt-2">
+                            <p className="text-[9px] font-bold text-gray-400 uppercase mb-1.5">Грани с подсветкой</p>
+                            <div className="grid grid-cols-3 gap-1">
+                              <div/>{blBtn(0,'↑ Верх')}<div/>
+                              {blBtn(3,'← Лево')}
+                              <div className="rounded bg-gray-50 flex items-center justify-center"><span className="text-[7px] text-gray-300">✦</span></div>
+                              {blBtn(1,'Право →')}
+                              <div/>{blBtn(2,'↓ Низ')}<div/>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                   {/* Короб mode — глубина короба (грани стены 2) */}
