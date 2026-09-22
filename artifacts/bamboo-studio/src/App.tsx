@@ -2004,9 +2004,16 @@ const BambooStudio = () => {
         }
       }
 
-      // TV surface: LED backlight glow around the TV box perimeter
-      if (wallZoneRef.current === 'tv' && tvTypeRef.current === 'surface' && tvBacklightEnabledRef.current && pts.length >= 4) {
-        const facePts = pts.slice(0, 4);
+      // TV: LED backlight glow around the box perimeter.
+      // Surface-mounted box: quad 0 (the only marked surface) is the box face.
+      // Built-in box: quad 0 is the wall, quad 1 (Короб) is the box face.
+      let tvGlowFacePts: Point[] | null = null;
+      if (wallZoneRef.current === 'tv' && tvBacklightEnabledRef.current) {
+        if (tvTypeRef.current === 'surface' && pts.length >= 4) tvGlowFacePts = pts.slice(0, 4);
+        else if (tvTypeRef.current === 'builtin' && pts.length >= 8) tvGlowFacePts = pts.slice(4, 8);
+      }
+      if (tvGlowFacePts) {
+        const facePts = tvGlowFacePts;
         // Outer warm-amber glow pass
         tCtx.save();
         tCtx.shadowColor = 'rgba(255, 200, 60, 0.85)';
@@ -2810,17 +2817,19 @@ const BambooStudio = () => {
           };
         })()
       : null;
-    // TV surface backlight: profile length around perimeter of the TV face
-    const tvBacklightRuns = isTvSurface && tvBacklightEnabled
+    // Built-in TV: загибы inside the cutout — 2 sides + top + bottom
+    const isTvBuiltin = wallZone === 'tv' && tvType === 'builtin';
+    // TV backlight: profile length around perimeter of the box face.
+    // Surface-mounted: box face is quad 0. Built-in: box face (Короб) is quad 1.
+    const tvBacklightRuns = tvBacklightEnabled && (isTvSurface || isTvBuiltin)
       ? (() => {
-          const faceW = kpCfgs[0]?.wallWidthMm ?? 0;
-          const faceH = kpCfgs[0]?.wallHeightMm ?? 0;
+          const faceCfg = isTvBuiltin ? kpCfgs[1] : kpCfgs[0];
+          const faceW = faceCfg?.wallWidthMm ?? 0;
+          const faceH = faceCfg?.wallHeightMm ?? 0;
           if (faceW <= 0 || faceH <= 0) return 0;
           return packProfileRuns([faceH, faceH, faceW, faceW]); // 2×height + 2×width
         })()
       : 0;
-    // Built-in TV: загибы inside the cutout — 2 sides + top + bottom
-    const isTvBuiltin = wallZone === 'tv' && tvType === 'builtin';
     const tvBuiltinCut = isTvBuiltin && tvCutoutDepthMm > 0 && tvCutoutWidthMm > 0 && tvCutoutHeightMm > 0
       ? (() => {
           const pieces: import('./lib/panelCalc').WindowPiece[] = [];
@@ -4938,6 +4947,11 @@ const BambooStudio = () => {
                           </div>
                         );
                       })()}
+                      <button
+                        onClick={() => { pushHistory(); setTvBacklightEnabled(v => !v); }}
+                        className={`w-full py-1.5 rounded-lg text-[9px] font-bold border transition-all active:scale-95 flex items-center justify-center gap-1.5 ${tvBacklightEnabled ? 'bg-amber-50 text-amber-700 border-amber-300' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
+                        {tvBacklightEnabled ? '✦ Подсветка включена' : '✦ Подсветка вокруг короба'}
+                      </button>
                     </div>
                   )}
                   {/* Короб mode — вырез под телевизор: размеры, глубина, грани */}
