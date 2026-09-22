@@ -961,7 +961,29 @@ const BambooStudio = () => {
       dividerStyleOverrides: { ...dividerStyleOverridesRef.current },
       hMoldingStyleOverrides: { ...hMoldingStyleOverridesRef.current },
     };
-    const cfg = surfacesRef.current[idx] ?? defaultSurfaceConfig();
+    // For wall-niche: if the target surface was never configured, inherit the
+    // current wall's config as a starting point so panels/materials carry over.
+    const isFirstVisit = surfacesRef.current[idx] == null;
+    const inheritedCfg: SurfaceConfig = isFirstVisit && wallZoneRef.current === 'wall-niche'
+      ? {
+          panelCount: panelCountRef.current,
+          dividerPositions: [...dividerPositionsRef.current],
+          sectorMaterials: { ...sectorMaterialsRef.current },
+          moldingStyle: moldingStyleRef.current,
+          moldingWidth: moldingWidthRef.current,
+          hMoldingStyle: hMoldingStyleRef.current,
+          hMoldingCount: hMoldingCountRef.current,
+          hMoldingWidth: hMoldingWidthRef.current,
+          hMoldingPositions: [],
+          wallWidthMm: 0,
+          wallHeightMm: 0,
+          panelOrientation: panelOrientationRef.current,
+          jointProfilePosition: [...jointProfilePositionRef.current],
+          dividerStyleOverrides: { ...dividerStyleOverridesRef.current },
+          hMoldingStyleOverrides: { ...hMoldingStyleOverridesRef.current },
+        }
+      : (surfacesRef.current[idx] ?? defaultSurfaceConfig());
+    const cfg = inheritedCfg;
     surfacesRef.current[idx] = cfg;
     activeSurfaceRef.current = idx;
     setActiveSurface(idx);
@@ -4488,7 +4510,14 @@ const BambooStudio = () => {
                     </button>
                   ))}
                 </div>
-                <p className="text-[8px] text-gray-400 mt-2 leading-relaxed">Кликните по плоскости на фото или выберите здесь. Панели, количество и профили настраиваются для каждой поверхности отдельно.</p>
+                {/* Active wall badge */}
+                <div className="mt-2.5 flex items-center gap-1.5 px-2 py-1.5 bg-[#7ec662]/10 rounded-lg">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#7ec662] shrink-0"/>
+                  <span className="text-[9px] font-bold text-[#5a9c3e]">
+                    Редактирование: {SURFACE_LABELS[activeSurface]}
+                  </span>
+                </div>
+                <p className="text-[8px] text-gray-400 mt-1.5 leading-relaxed">Кликните по стене на фото — панель переключится автоматически.</p>
               </div>
             )}
 
