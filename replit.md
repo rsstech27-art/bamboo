@@ -51,7 +51,45 @@ Textures for Рейки: tex-443..tex-469 range (light blonde to near-black ebon
 - **Footer** (`#111111`): brand, catalogue series, buyer links, contacts + "Открыть примерочную" button
 - Page title: "ALL WALL — Онлайн-примерочная стеновых панелей"
 
-### Architecture (`src/App.tsx`, ~1488 lines)
+### Per-surface editing (multi-quad)
+- Zone «Стена с выступом»: up to 12 marked points = up to 3 quads (main wall / protrusion / 3rd plane)
+- Each surface has its own `SurfaceConfig` {panelCount, dividerPositions, sectorMaterials, molding + hMolding settings} in `surfacesRef`
+- Global state = ACTIVE surface (switch-sync model): persist-effect writes globals into `surfacesRef[activeSurface]`; `switchSurface(idx)` snapshots refs into old index, loads target config into setters
+- Surface selection: click on a quad in canvas (point-in-quad) or «Поверхность» buttons in edit sidebar; active quad shown with green dashed outline
+- Divider/molding handles + sector highlight rendered only for the active surface; interactive helpers (findNearDivider, canvasX/YToWallRatio, findNearHMolding) operate on active quad
+- Undo is surface-aware (`surfaceIndex` in HistorySnapshot); upload/«Назад» reset `activeSurface` and `surfacesRef`
+- `cornerTypes` array ('external'|'internal' per junction; junction j = walls j+1/j+2) controls edge visual between adjacent quads (bright bend vs dark seam); UI = `CornerTypeCheckboxes` (checkbox pair per junction, one type per junction, different types can coexist across junctions)
+- `wrapJunctions` boolean[] («Загиб одной панели»): on an external junction one panel bends around the corner — first sector of the next wall reuses the previous wall's last panel material (overrideFirstMaterial in renderQuad), seam drawn as soft light bend (no profile), КП counts it as ONE panel «(с загибом на угол)» and deducts junction profiles; corner/wrap state is in undo history and redraw deps
+
+### Wall dimensions & area check
+- Panel physical size: `PANEL_H_MM=2800`, `PANEL_W_MM=1220` (area `PANEL_AREA_M2`≈3,42 м²)
+- Per-surface `wallWidthMm`/`wallHeightMm` in `SurfaceConfig` (0 = not set); persisted/switched/reset/undone like other surface fields; also in `liveCfg` (draw) and `kpCfgs` (КП)
+- Edit sidebar «Размеры стены N»: width/height inputs in meters (stored ×1000 as mm); shows area; the check/«Установить» button uses **cols only** (`ceil(width/1220)`) because the visualiser lays panels in a single row — never suggest cols×rows in the UI; height>2800 note mentions rows and total needed (КП handles the full cols×rows count in cost)
+- КП PDF gains a «Размеры стен и расход материала» section (per-wall dims, area, project vs computed panel count, total wall area, per-wall + total расчётная стоимость = needed × avg price of the wall's billed materials, wrap-aware)
+- «Начать примерку» auto-places panels VERTICALLY: panel count per marked quad is derived from its pixel proportions so each sector ≈ upright 1220×2800 panel (clamped 1–15, equal dividers); user can still change count with the slider
+- Profiles in КП counted like panels: pieces are 3 m long (`PROFILE_LEN_MM`, `packProfileRuns` in lib/panelCalc); all runs per style (vertical = wall height, horizontal = wall width) pooled and packed FFD so profile offcuts are reused project-wide; item name «Профиль X (3 м, раскрой оптимизирован)»
+- Mandatory joint profiles: wall wider than one panel (1,22 м) ⇒ panels in a row MUST be joined by vertical profiles between them (perRow−1 joints, default metallic) even when no molding style chosen; if width unknown, panelCount is used as panels-per-row
+- Column invisible faces: checkbox list in the column sidebar offers panels already used on the visualization; checked panels price the hidden portion of the perimeter in КП (otherwise average of visible), PDF shows a «Невидимые стороны» line
+- Mandatory corner profiles in КП: external corner WITHOUT загиб always gets a vertical profile at the shared edge (default metallic) if neither adjacent wall has its own vertical molding; skipped for round/oval column
+- Wrap (загиб) junction is drawn with NO seam/highlight — texture simply continues around the corner (realistic bend visual removed by user request)
+- Загиб is NEVER auto-enabled (also not for columns) — the client checks it manually
+- Dimension inputs (walls + column sides/height) use `MeterInput`: local text state, comma decimals, values like «0,5» type correctly; syncs from prop only when it disagrees with parsed text
+- КП shows «Расчётное количество материалов»: panels (calc by dimensions, else project count) + profile pieces (3 m)
+- КП TABLE rows show CALCULATED quantities: panel item qtys rescaled (largest remainder) to the calc total (walls: ownPanels+shared; column: columnCalc.needed); Итого = table sum
+- Column hidden faces counted by perimeter FACES (perRow − visible), not optimized purchases; client-selected hidden panels appear as separate table lines «(невидимая сторона)»
+- Докрой ТЕМ ЖЕ видом панели: for dimensioned walls, each wall's calculated qty (own panels + height donors + width strips) is distributed only over that wall's own articles (largest remainder); article targets then split across rows sharing the article (e.g. «с загибом»)
+- Standard window (оконный проём → «Стандартное окно»): mark 2 quads (Откос, Подоконник; 8 points like column). Calc: 3 slopes (2×H×depth + W×depth) + 1 sill; `windowStdPieces`/`packWindowPieces` strip packing with offcut reuse (oversized pieces split by width AND length). Joint toggle «профиль/загиб»: profile ⇒ runs 2×H + 1×W (visible molding style else metallic); загиб ⇒ no profiles. Per-quad molding/mandatory joints and corner profiles skipped for window-std; table scaled to windowCut.panels (fallback default panel line if no rows)
+- Column hidden-part JOINT profiles: closed contour of N panels ⇒ N joints (загиб removes one); `columnHiddenJoints` in panelCalc.ts; unique visible joints = per-face internal seams + outer edges (molding) + junctions counted once; missing joints added as runs (visible molding style else metallic)
+- Width-offcut reuse (`packWidthRemainders`, FFD bin packing): narrow full-height strips (width remainder < 1220mm) of all rows/walls are cut from shared donor panels; КП wall lines show «целых панелей N + полоса X см из общего докроя», plus a green «Докрой по ширине» summary line with saved-panel count; column calc packs its own rows' remainders the same way; per-wall calcCost = ownPanels + proportional share of shared panels, × wall avg price
+- Divider drag clamp: when active surface's `wallWidthMm` is set, a sector cannot be dragged wider than one physical panel (`maxSectorRatio = 1220/wallWidthMm` applied to both adjacent sectors)
+- КП «Итого» prioritises calculated cost: for walls with dimensions, project panel cost is replaced by расчётная стоимость (`finalTotal = total − projCostDimWalls + calcCost`); project-visualisation total shown below as reference when it differs
+
+### Commercial proposal (КП) PDF
+- After «Сохранить PNG», a green «Рассчитать КП (PDF)» button appears
+- `handleGenerateKP`: re-renders a fresh export image (never stale), aggregates items across all surfaces (panels by article via sectorMaterials with BAMBOO_PANELS[0] fallback; vertical profiles = panelCount+1 if moldingStyle set; horizontal = hMoldingCount), prices from `SERIES_PRICES` (placeholder ₽/panel per series) + `MOLDING_INFO` (profile article/name/price)
+- PDF built by drawing an A4 canvas (1240×1754, Cyrillic-safe via canvas text) and embedding into jsPDF as JPEG → `allwall-kp.pdf`
+
+### Architecture (`src/App.tsx`, ~1900 lines)
 - `PANEL_SERIES` — array of 12 series, each with `{ id, name, panels[] }`
 - `BAMBOO_PANELS` — flat array derived from `PANEL_SERIES.flatMap(s => s.panels)` (81 панель)
 - `openSeries` state — `Set<string>` of expanded series IDs (accordion)

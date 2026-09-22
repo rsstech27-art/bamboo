@@ -1,5 +1,15 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Upload, Layout, Eraser, RotateCcw, Download, Check, Columns, Undo2, Sun, Moon } from 'lucide-react';
+import { Upload, Layout, Eraser, RotateCcw, Download, Check, Columns, Undo2, Redo2, Sun, Moon, FileText } from 'lucide-react';
+import { PANEL_H_MM, PANEL_W_MM, PANEL_AREA_M2, optimizedPanelCalc, packWidthRemainders, packProfileRuns, columnHiddenJoints, packWindowPieces, windowStdPieces, panelsWord, rowsWord } from './lib/panelCalc';
+import {
+  DEFAULT_SERIES_PRICES,
+  DEFAULT_MOLDING_PRICES,
+  useManagerPrices,
+  getEffectiveSeriesName,
+  getEffectiveMoldingName,
+  DEFAULT_EXTRAS,
+} from './hooks/useManagerPrices';
+import { ManagerPanel } from './components/ManagerPanel';
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -191,34 +201,134 @@ const PANEL_SERIES = [
   },
 ];
 
-type Panel = { id: string; article: string; name: string; color: string; texture: string; textureScale?: number; textureStretch?: boolean; slatOverlay?: boolean };
+type Panel = { id: string; article: string; name: string; color: string; texture: string; textureScale?: number; textureScaleX?: number; textureScaleY?: number; textureStretch?: boolean; slatOverlay?: boolean; noMetallicProfile?: boolean; kpName?: string; panelWidthMm?: number; panelHeightMm?: number };
 type PanelSeries = { id: string; name: string; panels: Panel[] };
 
 const BAMBOO_PANELS: Panel[] = (PANEL_SERIES as PanelSeries[]).flatMap(s => s.panels);
+
+// ─── Auto-seam position helper ───────────────────────────────────────────────
+// Returns the fractional Y ratios (0–1) of mandatory horizontal seam lines for
+// a wall of wallHeightMm with panels of singleRowH mm, given joint placement
+// (jpp = jointProfilePosition array, e.g. ['bottom'] or ['top','bottom']).
+const computeAutoSeamPositions = (
+  wallHeightMm: number,
+  singleRowH: number,
+  jpp: string[],
+): number[] => {
+  if (wallHeightMm <= singleRowH || wallHeightMm <= 0 || singleRowH <= 0) return [];
+  const rowCount = Math.ceil(wallHeightMm / singleRowH);
+  const cutH = wallHeightMm - (rowCount - 1) * singleRowH;
+  const hasTop    = jpp.includes('top');
+  const hasBottom = jpp.includes('bottom');
+  const positions: number[] = [];
+  if (hasTop && hasBottom) {
+    const halfCut = cutH / 2;
+    positions.push(halfCut / wallHeightMm, (wallHeightMm - halfCut) / wallHeightMm);
+  } else {
+    if (hasTop)    positions.push(cutH / wallHeightMm);
+    if (hasBottom) positions.push(((rowCount - 1) * singleRowH) / wallHeightMm);
+  }
+  for (let ri = 1; ri <= rowCount - 2; ri++) {
+    positions.push((ri * singleRowH) / wallHeightMm);
+  }
+  return positions.filter(r => r > 0 && r < 1);
+};
+
+// ─── Dynamic catalog helpers ─────────────────────────────────────────────────
+// Module-level lookup maps built once from the hardcoded catalog.
+// Used to merge DB product list (name, photoUrl) with local render metadata
+// (color, textureScale, textureStretch, slatOverlay).
+const PANEL_META_MAP = new Map<string, {
+  color: string; texture: string;
+  textureScale?: number; textureStretch?: boolean; slatOverlay?: boolean;
+}>();
+const SERIES_ID_MAP = new Map<string, string>();    // series display name → series id
+const SERIES_ORDER_MAP = new Map<string, number>(); // series id → sort position
+(PANEL_SERIES as PanelSeries[]).forEach((s, i) => {
+  SERIES_ID_MAP.set(s.name, s.id);
+  SERIES_ORDER_MAP.set(s.id, i);
+  s.panels.forEach(p => PANEL_META_MAP.set(p.article, {
+    color: p.color, texture: p.texture,
+    textureScale: p.textureScale, textureStretch: p.textureStretch, slatOverlay: p.slatOverlay,
+  }));
+});
+
+type ApiProduct = { id: number; article: string; name: string; series: string | null; photoUrl: string | null; scaleDown: boolean; noMetallicProfile: boolean; kpName: string | null; panelWidthMm: number | null; panelHeightMm: number | null; category: string | null; cost: number | null };
+
+/** Group API products into PanelSeries[], preserving hardcoded series order. */
+function buildCatalogSeries(products: ApiProduct[]): PanelSeries[] {
+  const seriesMap = new Map<string, PanelSeries>();
+  for (const p of products) {
+    if (!p.series) continue;
+    if (p.category === 'molding') continue;
+    const sId = SERIES_ID_MAP.get(p.series)
+      ?? p.series.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    if (!seriesMap.has(sId)) seriesMap.set(sId, { id: sId, name: p.series, panels: [] });
+    const meta = PANEL_META_MAP.get(p.article);
+    // scaleDown от менеджера переопределяет значение из локального мета-каталога
+    const textureScale = p.scaleDown ? 8 : meta?.textureScale;
+    seriesMap.get(sId)!.panels.push({
+      id: p.article, article: p.article, name: p.name,
+      color: meta?.color ?? '#888888',
+      texture: p.photoUrl ?? meta?.texture ?? '',
+      textureScale,
+      textureStretch: meta?.textureStretch,
+      slatOverlay: meta?.slatOverlay,
+      noMetallicProfile: p.noMetallicProfile,
+      kpName: p.kpName ?? undefined,
+      panelWidthMm: p.panelWidthMm ?? undefined,
+      panelHeightMm: p.panelHeightMm ?? undefined,
+    });
+  }
+  return Array.from(seriesMap.values()).sort((a, b) =>
+    (SERIES_ORDER_MAP.get(a.id) ?? 9999) - (SERIES_ORDER_MAP.get(b.id) ?? 9999)
+  );
+}
+
+// Joint rules for metallic profiles:
+//   1. Wood-family (wood ↔ wood, reiki ↔ reiki, wood ↔ reiki): no profile needed.
+//   2. Reiki ↔ any other type: no profile needed (reiki panels blend into any neighbour).
+//   noMetallicJoint() encodes both rules.
+const _PANEL_SERIES_MAP = new Map<string, string>();
+(PANEL_SERIES as PanelSeries[]).forEach(s => s.panels.forEach(p => _PANEL_SERIES_MAP.set(p.id, s.id)));
+const WOOD_FAMILY = new Set(['wood', 'reiki']);
+const isWoodFamilyId = (panelId: string) => WOOD_FAMILY.has(_PANEL_SERIES_MAP.get(panelId) ?? '');
+const isReikiId     = (panelId: string) => (_PANEL_SERIES_MAP.get(panelId) ?? '') === 'reiki';
+/** Возвращает отображаемое название панели для КП: kpName если задан, иначе name. */
+const matLabel = (m: Panel) => m.kpName ?? m.name;
+
+/** Returns true when no metallic profile is required at the joint between left and right.
+ *  noMetallicProfile === true  → panel is explicitly set to "joins without profile" in DB.
+ *  Also covers wood-family and reiki series rules. */
+const noMetallicJoint = (left: Panel, right: Panel) =>
+  left.noMetallicProfile === true || right.noMetallicProfile === true ||
+  isReikiId(left.id) || isReikiId(right.id) ||
+  (isWoodFamilyId(left.id) && isWoodFamilyId(right.id));
+
 type Point = { x: number; y: number };
 
 const PanelThumb = ({ panel, selected, onClick }: { panel: Panel; selected: boolean; onClick: () => void }) => (
   <button onClick={onClick}
-    className={`rounded-xl overflow-hidden border-2 transition-all active:scale-95 ${selected ? 'border-black shadow-md scale-[1.03]' : 'border-transparent hover:border-gray-200'}`}>
+    className={`rounded-lg overflow-hidden border-2 transition-all active:scale-95 flex flex-col ${selected ? 'border-black shadow-md scale-[1.03]' : 'border-transparent hover:border-gray-200'}`}>
     {panel.texture
-      ? <img src={panel.texture} className="w-full h-12 object-cover" alt={panel.name} loading="lazy"/>
-      : <div className="w-full h-12" style={{ backgroundColor: panel.color }}/>
+      ? <img src={panel.texture} className="w-full aspect-square object-cover" alt={panel.name} loading="lazy"/>
+      : <div className="w-full aspect-square" style={{ backgroundColor: panel.color }}/>
     }
-    <div className="bg-white px-1 pb-1 pt-0.5">
-      <div className="text-[7px] font-bold text-center text-gray-600 leading-tight">{panel.name}</div>
-      <div className="text-[6px] text-center text-gray-300 font-mono">{panel.article}</div>
+    <div className="bg-white px-0.5 pb-0.5 pt-px flex-1">
+      <div className="text-[12px] font-bold text-center text-gray-600 leading-tight truncate">{panel.name}</div>
     </div>
   </button>
 );
 
 const SeriesAccordion = ({
-  series, openIds, onToggle, selectedId, onSelect,
+  series, openIds, onToggle, selectedId, onSelect, nameOverrides = {},
 }: {
   series: PanelSeries[];
   openIds: Set<string>;
   onToggle: (id: string) => void;
   selectedId: string | undefined;
   onSelect: (panel: Panel) => void;
+  nameOverrides?: Record<string, string>;
 }) => (
   <div className="space-y-1">
     {series.map(s => (
@@ -226,11 +336,13 @@ const SeriesAccordion = ({
         <button
           onClick={() => onToggle(s.id)}
           className="w-full flex items-center justify-between px-2.5 py-1.5 bg-gray-50 hover:bg-gray-100 transition-colors">
-          <span className="text-[8px] font-black uppercase tracking-widest text-gray-500">{s.name}</span>
+          <span className="text-[8px] font-black uppercase tracking-widest text-gray-500">
+            {getEffectiveSeriesName(s.id, nameOverrides)}
+          </span>
           <span className="text-[8px] text-gray-400 ml-1">{openIds.has(s.id) ? '▲' : '▼'}</span>
         </button>
         {openIds.has(s.id) && (
-          <div className="grid grid-cols-2 gap-1.5 p-1.5 bg-white">
+          <div className="grid grid-cols-3 gap-1 p-1.5 bg-white">
             {s.panels.map(panel => (
               <PanelThumb key={panel.id} panel={panel}
                 selected={selectedId === panel.id}
@@ -252,10 +364,269 @@ function makeEqualDividers(count: number): number[] {
   return dividers;
 }
 
+type MoldingStyle = 'none' | 'gold' | 'black' | 'metallic' | 'bronze' | 'gap' | 'light'
+  | 'black_gap' | 'black_light' | 'metallic_gap' | 'metallic_light' | 'bronze_gap' | 'bronze_light'
+  | 'gold_gap' | 'gold_light';
+type SurfaceConfig = {
+  panelCount: number;
+  dividerPositions: number[];
+  sectorMaterials: Record<number, Panel>;
+  moldingStyle: MoldingStyle;
+  moldingWidth: number;
+  hMoldingStyle: MoldingStyle;
+  hMoldingCount: number;
+  hMoldingWidth: number;
+  hMoldingPositions: number[];
+  wallWidthMm: number;   // 0 = not specified
+  wallHeightMm: number;  // 0 = not specified
+  panelOrientation: 'vertical' | 'horizontal' | 'lengthwise';
+  jointProfilePosition: ('bottom' | 'top')[];
+  dividerStyleOverrides?: Record<number, MoldingStyle>; // per-divider style override
+  hMoldingStyleOverrides?: Record<number, MoldingStyle>; // per-hMolding style override
+  vProfileStyle?: MoldingStyle;  // vertical decorative profile at outer edge (wall-niche surfaces 1+)
+  vProfileWidth?: number;        // thickness of the vertical profile
+};
+const defaultSurfaceConfig = (): SurfaceConfig => ({
+  panelCount: 5,
+  dividerPositions: makeEqualDividers(5),
+  sectorMaterials: {},
+  moldingStyle: 'black',
+  moldingWidth: 1,
+  hMoldingStyle: 'black',
+  hMoldingCount: 0,
+  hMoldingWidth: 1,
+  hMoldingPositions: [],
+  wallWidthMm: 0,
+  wallHeightMm: 0,
+  panelOrientation: 'vertical',
+  jointProfilePosition: ['bottom'],
+  dividerStyleOverrides: {},
+  hMoldingStyleOverrides: {},
+  vProfileStyle: 'black',
+  vProfileWidth: 2,
+});
+
+const SURFACE_LABELS = ['Стена 1 · Основная', 'Стена 2', 'Стена 3'];
+const COLUMN_SURFACE_LABELS = ['Грань 1 · Основная', 'Грань 2', 'Грань 3'];
+const WINDOW_STD_LABELS = ['Откос', 'Подоконник', '—'];
+const TV_ZONE_LABELS = ['Стена', 'Короб'];
+const WINDOW_PAN_LABELS = ['Откос', 'Горизонтальная плоскость', '—'];
+// Door: standard=2 quads (left dobor, right dobor); with-transom=3 quads (left, transom, right)
+type DoorRevealZone = 'left' | 'right' | 'top';
+type DoorRevealSize = { widthMm: number; heightMm: number; depthMm: number };
+const EMPTY_DOOR_REVEAL: DoorRevealSize = { widthMm: 0, heightMm: 0, depthMm: 0 };
+
+// ── Column (колонна) shapes & perimeter helpers ──
+type ColumnShape = 'rect' | 'round' | 'triangle';
+const COLUMN_SHAPE_LABELS: Record<ColumnShape, string> = {
+  rect: 'Прямоугольная', round: 'Круглая / овальная', triangle: 'Треугольная',
+};
+// sides (mm): rect — 4 стороны; round — [d1, d2] (d2=0 → круг); triangle — 3 стороны
+const columnPerimeterMm = (shape: ColumnShape, sides: number[]): number => {
+  if (shape === 'rect') return (sides[0] || 0) + (sides[1] || 0) + (sides[2] || 0) + (sides[3] || 0);
+  if (shape === 'round') {
+    const d1 = sides[0] || 0, d2 = sides[1] || 0;
+    if (d1 <= 0) return 0;
+    return d2 > 0 ? Math.PI * (d1 + d2) / 2 : Math.PI * d1; // овал — приближение по двум диаметрам
+  }
+  return (sides[0] || 0) + (sides[1] || 0) + (sides[2] || 0);
+};
+const columnSizesText = (shape: ColumnShape, sides: number[]): string => {
+  const cm = (v: number) => `${Math.round(v / 10)}`;
+  if (shape === 'rect') return `стороны ${cm(sides[0]||0)} × ${cm(sides[1]||0)} × ${cm(sides[2]||0)} × ${cm(sides[3]||0)} см`;
+  if (shape === 'round') return (sides[1]||0) > 0 ? `диаметры ${cm(sides[0]||0)} × ${cm(sides[1]||0)} см` : `диаметр ${cm(sides[0]||0)} см`;
+  return `стороны ${cm(sides[0]||0)} × ${cm(sides[1]||0)} × ${cm(sides[2]||0)} см`;
+};
+
+// Retail price (RUB per panel) by series — placeholder pricing, editable
+const SERIES_PRICES: Record<string, number> = {
+  'metall-25': 6900, 'liqmetall-25': 6900, 'pet-25': 5900, 'galv-15': 5400,
+  'liqmetall-10': 4900, 'particles-10': 4900, 'stone-gravel': 4500,
+  'patina-copper': 4500, 'linen-cement': 3900, 'rainbow': 5900,
+  'mirror-gloss': 6400, 'wood': 5200, 'reiki': 7900, 'soft-touch': 4700,
+};
+const PANEL_TO_SERIES: Record<string, string> = {};
+PANEL_SERIES.forEach(sr => sr.panels.forEach(pl => { PANEL_TO_SERIES[pl.id] = sr.id; }));
+const getPanelPrice = (panelId: string) => SERIES_PRICES[PANEL_TO_SERIES[panelId] ?? ''] ?? 4900;
+
+// Profile (molding) catalogue info for the commercial proposal
+// Panel cut-optimization math lives in lib/panelCalc.ts (unit-tested).
+
+const MOLDING_INFO: Record<string, { article: string; name: string; price: number }> = {
+  black:    { article: 'PR-BLACK',  name: 'Профиль чёрный',         price: 890  },
+  metallic: { article: 'PR-METAL',  name: 'Профиль металлик',       price: 940  },
+  bronze:   { article: 'PR-BRONZE', name: 'Профиль бронза',         price: 990  },
+  gold:     { article: 'PR-GOLD',   name: 'Профиль золото',         price: 990  },
+  gap:      { article: 'PR-GAP',    name: 'Профиль с разрывом',     price: 1090 },
+  light:    { article: 'PR-LIGHT',  name: 'Профиль с подсветкой',   price: 1490 },
+  gold_gap:   { article: 'PR-GOLD-GAP',   name: 'Профиль золото с разрывом',    price: 1090 },
+  gold_light: { article: 'PR-GOLD-LGT',   name: 'Профиль золото с подсветкой',  price: 1490 },
+  edge:          { article: 'PR-EDGE',     name: 'Профиль торцевой',             price: 790  },
+  edge_black:    { article: 'PR-EDGE-BLK', name: 'Профиль торцевой чёрный',     price: 790  },
+  edge_metallic: { article: 'PR-EDGE-MTL', name: 'Профиль торцевой металлик',   price: 790  },
+  edge_bronze:   { article: 'PR-EDGE-BRZ', name: 'Профиль торцевой бронза',     price: 790  },
+  edge_gold:     { article: 'PR-EDGE-GLD', name: 'Профиль торцевой золото',     price: 790  },
+};
+
+// Shared rectangular metallic-shine swatches for profile colour pickers (угловые/торцевые соединения)
+const PROFILE_COLOR_BAR: Record<'black' | 'metallic' | 'bronze' | 'gold', React.CSSProperties> = {
+  black:    { background: 'linear-gradient(to bottom, #000 0%, #0c0c0c 20%, #1e1e1e 50%, #0c0c0c 80%, #000 100%)' },
+  metallic: { background: 'linear-gradient(to bottom, #5a5a5a 0%, #9a9a9a 20%, #e8e8e8 45%, #fff 50%, #e0e0e0 55%, #9a9a9a 80%, #4a4a4a 100%)' },
+  bronze:   { background: 'linear-gradient(to bottom, #1a0a00 0%, #5a2e0a 20%, #a0602a 45%, #c8844a 50%, #a0602a 55%, #5a2e0a 80%, #1a0a00 100%)' },
+  gold:     { background: 'linear-gradient(to bottom, #5a3d00 0%, #b8860b 20%, #ffd700 45%, #fff8c0 50%, #ffd700 55%, #b8860b 80%, #5a3d00 100%)' },
+};
+const PROFILE_COLOR_OPTS: Array<{ id: 'black' | 'gold' | 'metallic' | 'bronze'; label: string }> = [
+  { id: 'black',    label: 'Чрн'  },
+  { id: 'gold',     label: 'Злт'  },
+  { id: 'metallic', label: 'Мтл'  },
+  { id: 'bronze',   label: 'Брнз' },
+];
+
+// Meter input that keeps its own text while typing — a controlled type="number"
+// bound to parseFloat eats the leading «0» of values like «0,5» mid-typing
+const MeterInput = ({ valueMm, onChangeMm, placeholder }: {
+  valueMm: number; onChangeMm: (mm: number) => void; placeholder?: string;
+}) => {
+  const [text, setText] = useState(valueMm > 0 ? String(Math.round(valueMm / 10)) : '');
+  useEffect(() => {
+    // Sync from the prop whenever it disagrees with what the current text means —
+    // covers external resets/surface switches without clobbering in-progress typing
+    const parsed = parseFloat(text.replace(',', '.'));
+    const textMm = Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed * 10) : 0;
+    if (valueMm !== textMm) {
+      setText(valueMm > 0 ? String(Math.round(valueMm / 10)) : '');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [valueMm]);
+  return (
+    <input type="text" inputMode="numeric" placeholder={placeholder}
+      value={text}
+      onChange={(e) => {
+        const t = e.target.value;
+        setText(t);
+        const v = parseFloat(t.replace(',', '.'));
+        const mm = Number.isFinite(v) && v > 0 ? Math.round(v * 10) : 0;
+        onChangeMm(mm);
+      }}
+      className="w-full mt-0.5 px-2 py-1.5 text-[11px] font-bold border border-gray-200 rounded-lg focus:outline-none focus:border-[#7ec662]" />
+  );
+};
+
+const CornerTypeCheckboxes = ({ nJunctions, cornerTypes, setCornerTypes, wrapJunctions, setWrapJunctions }: {
+  nJunctions: number;
+  cornerTypes: ('external' | 'internal')[];
+  setCornerTypes: React.Dispatch<React.SetStateAction<('external' | 'internal')[]>>;
+  wrapJunctions: boolean[];
+  setWrapJunctions: React.Dispatch<React.SetStateAction<boolean[]>>;
+}) => (
+  <div className="space-y-2.5">
+    {Array.from({ length: nJunctions }, (_, j) => (
+      <div key={j}>
+        <p className="text-[8px] text-gray-400 mb-1 font-bold">Угол между стенами {j + 1} и {j + 2}:</p>
+        <div className="flex gap-3">
+          {([['external', '↗ Наружный'], ['internal', '↙ Внутренний']] as const).map(([val, label]) => (
+            <label key={val} className="flex items-center gap-1.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={cornerTypes[j] === val}
+                onChange={() => setCornerTypes(prev => { const next = [...prev]; next[j] = val; return next; })}
+                className="w-3.5 h-3.5 rounded border-gray-300 accent-black"
+              />
+              <span className={`text-[9px] font-bold ${cornerTypes[j] === val ? 'text-black' : 'text-gray-400'}`}>{label}</span>
+            </label>
+          ))}
+        </div>
+        {cornerTypes[j] === 'external' && (
+          <label className="flex items-center gap-1.5 cursor-pointer select-none mt-1.5 pl-0.5">
+            <input
+              type="checkbox"
+              checked={wrapJunctions[j] ?? false}
+              onChange={() => setWrapJunctions(prev => { const next = [...prev]; next[j] = !next[j]; return next; })}
+              className="w-3.5 h-3.5 rounded border-gray-300 accent-[#7ec662]"
+            />
+            <span className={`text-[9px] font-bold ${wrapJunctions[j] ? 'text-[#5a9c3e]' : 'text-gray-400'}`}>⤵ Загиб одной панели (без профиля)</span>
+          </label>
+        )}
+      </div>
+    ))}
+  </div>
+);
+
 const BambooStudio = () => {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
-  const [step, setStep] = useState<'upload' | 'mark' | 'edit'>('upload');
+  const [step, setStep] = useState<'zone' | 'upload' | 'mark' | 'edit'>('zone');
+  const [wallZone, setWallZone] = useState<string | null>(null);
+  const [windowType, setWindowType] = useState<'standard' | 'panoramic' | null>(null);
+  // Standard window: dimensions (mm) + corner joining preference (профиль / загиб)
+  const [winSlopeDepthMm, setWinSlopeDepthMm] = useState(0);
+  const [winWidthMm, setWinWidthMm] = useState(0);
+  const [winHeightMm, setWinHeightMm] = useState(0);
+  const [winJoint, setWinJoint] = useState<'profile' | 'bend'>('profile');
+  // TV zone: cutout for the TV panel
+  const [tvType, setTvType] = useState<'builtin' | 'surface' | null>(null);
+  const [tvCutoutWidthMm, setTvCutoutWidthMm] = useState(0);
+  const [tvCutoutHeightMm, setTvCutoutHeightMm] = useState(0);
+  const [tvCutoutDepthMm, setTvCutoutDepthMm] = useState(0);
+  const [tvCutoutJoint, setTvCutoutJoint] = useState<'bend' | 'profile'>('profile');
+  const [tvCutoutJointColor, setTvCutoutJointColor] = useState<'black' | 'gold' | 'metallic' | 'bronze'>('black');
+  const [tvCutoutInputMode, setTvCutoutInputMode] = useState<'size' | 'inches'>('size');
+  const [tvCutoutPresetInches, setTvCutoutPresetInches] = useState<50 | 55 | 65 | null>(null);
+  const [tvBoxDepthMm, setTvBoxDepthMm] = useState(0);
+  const [tvBoxJoint, setTvBoxJoint] = useState<'profile' | 'bend'>('profile');
+  const [tvBoxJointColor, setTvBoxJointColor] = useState<'black' | 'gold' | 'metallic' | 'bronze'>('black');
+
+  const TV_INCH_PRESETS: Record<50 | 55 | 65, { wMm: number; hMm: number }> = {
+    50: { wMm: 1130, hMm: 660 },
+    55: { wMm: 1250, hMm: 730 },
+    65: { wMm: 1470, hMm: 850 },
+  };
+  // TV zone: surface type — strips around the main face
+  const [tvSurfaceSideDepthMm, setTvSurfaceSideDepthMm] = useState(0);
+  const [tvSurfaceTopBottomDepthMm, setTvSurfaceTopBottomDepthMm] = useState(0);
+  const [tvSurfaceJoint, setTvSurfaceJoint] = useState<'bend' | 'profile'>('profile');
+  const [tvSurfaceJointColor, setTvSurfaceJointColor] = useState<'black' | 'gold' | 'metallic' | 'bronze'>('black');
+  // TV zone: main wall behind the TV box + LED backlight
+  const [tvMainWallWidthMm, setTvMainWallWidthMm] = useState(0);
+  const [tvMainWallHeightMm, setTvMainWallHeightMm] = useState(0);
+  const [tvBacklightEnabled, setTvBacklightEnabled] = useState(false);
+  // Per-edge backlight: [top, right, bottom, left] — indices match quad edge order
+  const [tvBacklightEdges, setTvBacklightEdges] = useState<[boolean,boolean,boolean,boolean]>([true,true,true,true]);
+  const [tvZoneView, setTvZoneView] = useState<'wall' | 'box'>('wall');
+  // Door zone
+  const [doorType, setDoorType] = useState<'standard' | 'with-transom' | null>(null);
+  const [doorWidthMm, setDoorWidthMm] = useState(0);
+  const [doorHeightMm, setDoorHeightMm] = useState(0);
+  const [doorRevealDepthMm, setDoorRevealDepthMm] = useState(0);
+  const [doorTransomHeightMm, setDoorTransomHeightMm] = useState(0);
+  const [doorJoint, setDoorJoint] = useState<'profile' | 'bend'>('profile');
+  const [doorShowDoor, setDoorShowDoor] = useState(true);
+  const [doorRevealSizes, setDoorRevealSizes] = useState<Record<DoorRevealZone, DoorRevealSize>>({
+    left: { ...EMPTY_DOOR_REVEAL },
+    right: { ...EMPTY_DOOR_REVEAL },
+    top: { ...EMPTY_DOOR_REVEAL },
+  });
+  const [doorSelectedReveal, setDoorSelectedReveal] = useState<DoorRevealZone>('left');
+  const [doorOpeningPoints, setDoorOpeningPoints] = useState<Point[]>([]);
+  const [doorMarkMode, setDoorMarkMode] = useState<'wall' | 'opening'>('wall');
   const [points, setPoints] = useState<Point[]>([]);
+  const [showManagerPanel, setShowManagerPanel] = useState(false);
+  // 'user' = entry via © single-click (regular staff); 'admin' = triple-click © (administrator)
+  const [managerPanelMode, setManagerPanelMode] = useState<'user' | 'admin'>('user');
+  const copyrightClickCount = useRef(0);
+  const copyrightClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const {
+    panelOverrides, moldingOverrides, seriesNameOverrides, moldingNameOverrides,
+    customSeries, customMoldings, seriesDefinitions,
+    hiddenSeriesIds, hiddenMoldingIds, hiddenExtrasIds,
+    panelOverridesRef, moldingOverridesRef,
+    setPanelPrice, setMoldingPrice, setSeriesName, setMoldingName,
+    addCustomSeries, deleteCustomSeries, updateCustomSeries,
+    addCustomMolding, deleteCustomMolding, updateCustomMolding,
+    hideDefaultSeries, hideDefaultMolding, hideDefaultExtra,
+    resetPrices, extrasOverrides, setExtrasPrice,
+    customExtras, addCustomExtra, deleteCustomExtra, updateCustomExtra,
+    reloadSettings, dbSaveStatus,
+  } = useManagerPrices();
   const [panelCount, setPanelCount] = useState(5);
   // dividerPositions: array of N-1 values in (0,1), sorted ascending
   const [dividerPositions, setDividerPositions] = useState<number[]>(makeEqualDividers(5));
@@ -266,16 +637,55 @@ const BambooStudio = () => {
   const [isDrawing, setIsDrawing] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [isDraggingDivider, setIsDraggingDivider] = useState(false);
-  const [moldingStyle, setMoldingStyle] = useState<'none' | 'gold' | 'black' | 'metallic' | 'brass'>('none');
+  const [moldingStyle, setMoldingStyle] = useState<MoldingStyle>('black');
   const [moldingWidth, setMoldingWidth] = useState(1);
-  const [hMoldingStyle, setHMoldingStyle] = useState<'none' | 'gold' | 'black' | 'metallic' | 'brass'>('none');
-  const [hMoldingCount, setHMoldingCount] = useState(1);
+  const [hMoldingStyle, setHMoldingStyle] = useState<MoldingStyle>('black');
+  const [edgeProfileSides, setEdgeProfileSides] = useState({ top: false, bottom: false, left: false, right: false });
+  const [edgeProfileColor, setEdgeProfileColor] = useState<'black' | 'metallic' | 'bronze' | 'gold'>('black');
+  const edgeProfileColorRef = useRef<'black' | 'metallic' | 'bronze' | 'gold'>('black');
+  const [hMoldingCount, setHMoldingCount] = useState(0);
   const [hMoldingWidth, setHMoldingWidth] = useState(1);
-  const [hMoldingPositions, setHMoldingPositions] = useState<number[]>([0.5]);
+  const [hMoldingPositions, setHMoldingPositions] = useState<number[]>([]);
+  const [vProfileStyle, setVProfileStyle] = useState<MoldingStyle>('black');
+  const [vProfileWidth, setVProfileWidth] = useState(2);
   const [openSeries, setOpenSeries] = useState<Set<string>>(() => new Set(['metall-25']));
   const [footerCatalogOpen, setFooterCatalogOpen] = useState(false);
   const [lightMode, setLightMode] = useState<'off' | 'morning' | 'evening'>('off');
   const lightModeRef = useRef<'off' | 'morning' | 'evening'>('off');
+  // Cylinder highlight position for round columns: 0 = left edge, 0.5 = center, 1 = right edge
+  const [cylHighlightPos, setCylHighlightPos] = useState(0.5);
+  const cylHighlightPosRef = useRef(0.5);
+  // Corner type per junction (junction 0 = walls 1–2, junction 1 = walls 2–3)
+  const [cornerTypes, setCornerTypes] = useState<('external' | 'internal')[]>(['external', 'external']);
+  const cornerTypesRef = useRef<('external' | 'internal')[]>(['external', 'external']);
+  // Wrap (загиб): on an external corner one panel bends around the corner — no profile joint
+  const [wrapJunctions, setWrapJunctions] = useState<boolean[]>([false, false]);
+  const wrapJunctionsRef = useRef<boolean[]>([false, false]);
+  // Real wall dimensions (mm) of the ACTIVE surface; 0 = not specified
+  const [wallWidthMm, setWallWidthMm] = useState(0);
+  const [wallHeightMm, setWallHeightMm] = useState(0);
+  const [jointProfilePosition, setJointProfilePosition] = useState<('bottom' | 'top')[]>(['bottom']);
+  const wallWidthMmRef = useRef(0);
+  const wallHeightMmRef = useRef(0);
+  const jointProfilePositionRef = useRef<('bottom' | 'top')[]>(['bottom']);
+  const wallZoneRef = useRef<string | null>(null);
+  const doorTypeRef = useRef<'standard' | 'with-transom' | null>(null);
+  const doorShowDoorRef = useRef(true);
+  const doorOpeningPointsRef = useRef<Point[]>([]);
+  const doorMarkModeRef = useRef<'wall' | 'opening'>('wall');
+  const columnShapeRef = useRef<ColumnShape>('rect');
+  // Column (колонна) parameters
+  const [columnShape, setColumnShape] = useState<ColumnShape>('rect');
+  const [columnSides, setColumnSides] = useState<number[]>([0, 0, 0, 0]); // mm
+  const [columnHeightMm, setColumnHeightMm] = useState(0);
+  // Panels chosen for the column's INVISIBLE faces (ids; offered from panels already used on the visualization)
+  const [hiddenFaceMats, setHiddenFaceMats] = useState<string[]>([]);
+  const [savedPng, setSavedPng] = useState<string | null>(null);
+  const [activeSurface, setActiveSurface] = useState(0);
+  const activeSurfaceRef = useRef(0);
+  const surfacesRef = useRef<SurfaceConfig[]>([defaultSurfaceConfig()]);
+  // Prices from DB molding products (category='molding'), keyed by style id
+  const moldingDbPricesRef = useRef<Record<string, number>>({});
 
   const toggleSeries = (id: string) => setOpenSeries(prev => {
     const next = new Set(prev);
@@ -289,7 +699,7 @@ const BambooStudio = () => {
 
   // Refs for stable drawFullScene
   const imageRef = useRef<HTMLImageElement | null>(null);
-  const stepRef = useRef<'upload' | 'mark' | 'edit'>('upload');
+  const stepRef = useRef<'zone' | 'upload' | 'mark' | 'edit'>('zone');
   const pointsRef = useRef<Point[]>([]);
   const panelCountRef = useRef(5);
   const dividerPositionsRef = useRef<number[]>(makeEqualDividers(5));
@@ -298,41 +708,209 @@ const BambooStudio = () => {
   const isErasingRef = useRef(false);
   const draggingDividerIndexRef = useRef<number | null>(null);
   const forExportRef = useRef(false);
-  const moldingStyleRef = useRef<'none' | 'gold' | 'black' | 'metallic' | 'brass'>('none');
+  const moldingStyleRef = useRef<MoldingStyle>('black');
   const moldingWidthRef = useRef(1);
-  const hMoldingStyleRef = useRef<'none' | 'gold' | 'black' | 'metallic' | 'brass'>('none');
+  const hMoldingStyleRef = useRef<MoldingStyle>('black');
+  const edgeProfileSidesRef = useRef({ top: false, bottom: false, left: false, right: false });
   const hMoldingCountRef = useRef(1);
   const hMoldingWidthRef = useRef(1);
-  const hMoldingPositionsRef = useRef<number[]>([0.5]);
+  const hMoldingPositionsRef = useRef<number[]>([]);
+  const vProfileStyleRef = useRef<MoldingStyle>('black');
+  const vProfileWidthRef = useRef(2);
   const draggingHMoldingIndexRef = useRef<number | null>(null);
+  // Original positions of auto-seams that have been adopted into hMoldingPositions.
+  // drawHSeam skips these so the original red line does not reappear after drag.
+  const adoptedSeamOriginalsRef = useRef<Set<number>>(new Set());
+  // Current positions of adopted seams (updated as they are dragged).
+  // Used to remove all adopted seams (including moved ones) when jpp changes.
+  const adoptedSeamCurrentRef = useRef<Set<number>>(new Set());
+  // Paired companion seams: maps primary hMolding position key → companion magnitude
+  // (singleRowH / wallH). The companion is always drawn at primary ± magnitude.
+  // The companion is virtual — it is not stored in hMoldingPositions.
+  const hMoldingCompanionMapRef = useRef<Map<string, number>>(new Map());
+  // TV surface zone refs (used in drawFullScene)
+  const tvTypeRef = useRef<'builtin' | 'surface' | null>(null);
+  const tvBacklightEnabledRef = useRef(false);
+  const tvBacklightEdgesRef = useRef<[boolean,boolean,boolean,boolean]>([true,true,true,true]);
+  const [panelOrientation, setPanelOrientation] = useState<'vertical' | 'horizontal' | 'lengthwise'>('vertical');
+  const panelOrientationRef = useRef<'vertical' | 'horizontal' | 'lengthwise'>('vertical');
+  const [dividerStyleOverrides, setDividerStyleOverrides] = useState<Record<number, MoldingStyle>>({});
+  const dividerStyleOverridesRef = useRef<Record<number, MoldingStyle>>({});
+  const [selectedDividerIdx, setSelectedDividerIdx] = useState<number | null>(null);
+  const selectedDividerIdxRef = useRef<number | null>(null);
+  const [hMoldingStyleOverrides, setHMoldingStyleOverrides] = useState<Record<number, MoldingStyle>>({});
+  const hMoldingStyleOverridesRef = useRef<Record<number, MoldingStyle>>({});
+  const [selectedHMoldingIdx, setSelectedHMoldingIdx] = useState<number | null>(null);
+  const selectedHMoldingIdxRef = useRef<number | null>(null);
   // Mask stored as strokes — never gets reset by canvas operations
   const maskStrokesRef = useRef<Array<{ x: number; y: number; r: number }>>([]);
   const maskUndoStackRef = useRef<number[]>([]); // stores stroke-array length before each erase drag
   const textureCacheRef = useRef<Record<string, HTMLImageElement>>({}); // preloaded panel textures
+  // DB product photos override: article → base64 dataURL (loaded from /api/products on mount)
+  const [dbPhotoMap, setDbPhotoMap] = useState<Record<string, string>>({});
+  // Dynamic catalog built from /api/products — drives the right-panel material selector
+  const [catalogSeries, setCatalogSeries] = useState<PanelSeries[]>(PANEL_SERIES as PanelSeries[]);
+  // Flat panel list derived from catalogSeries, kept in a ref so callbacks don't need a dep
+  const catalogPanelsRef = useRef<Panel[]>(BAMBOO_PANELS);
 
   type HistorySnapshot = {
+    surfaceIndex: number;
     sectorMaterials: Record<number, Panel>;
     dividerPositions: number[];
     panelCount: number;
+    cornerTypes: ('external' | 'internal')[];
+    wrapJunctions: boolean[];
+    wallWidthMm: number;
+    wallHeightMm: number;
+    moldingStyle: MoldingStyle;
+    moldingWidth: number;
+    hMoldingStyle: MoldingStyle;
+    hMoldingCount: number;
+    hMoldingWidth: number;
+    hMoldingPositions: number[];
+    panelOrientation: 'vertical' | 'horizontal' | 'lengthwise';
+    edgeProfileSides: { top: boolean; bottom: boolean; left: boolean; right: boolean };
+    edgeProfileColor: 'black' | 'metallic' | 'bronze' | 'gold';
+    jointProfilePosition: ('bottom' | 'top')[];
+    dividerStyleOverrides: Record<number, MoldingStyle>;
+    hMoldingStyleOverrides: Record<number, MoldingStyle>;
+    vProfileStyle: MoldingStyle;
+    vProfileWidth: number;
   };
   const historyRef = useRef<HistorySnapshot[]>([]);
+  const redoRef   = useRef<HistorySnapshot[]>([]);
+  // Mirror lengths for button enabled/disabled state
+  const [historyLen, setHistoryLen] = useState(0);
+  const [redoLen,    setRedoLen]    = useState(0);
 
   const pushHistory = useCallback(() => {
+    // Any new action clears the redo stack
+    redoRef.current = [];
+    setRedoLen(0);
     historyRef.current.push({
+      surfaceIndex: activeSurfaceRef.current,
       sectorMaterials: { ...sectorMaterialsRef.current },
       dividerPositions: [...dividerPositionsRef.current],
       panelCount: panelCountRef.current,
+      cornerTypes: [...cornerTypesRef.current],
+      wrapJunctions: [...wrapJunctionsRef.current],
+      wallWidthMm: wallWidthMmRef.current,
+      wallHeightMm: wallHeightMmRef.current,
+      moldingStyle: moldingStyleRef.current,
+      moldingWidth: moldingWidthRef.current,
+      hMoldingStyle: hMoldingStyleRef.current,
+      hMoldingCount: hMoldingCountRef.current,
+      hMoldingWidth: hMoldingWidthRef.current,
+      hMoldingPositions: [...hMoldingPositionsRef.current],
+      panelOrientation: panelOrientationRef.current,
+      edgeProfileSides: { ...edgeProfileSidesRef.current },
+      edgeProfileColor: edgeProfileColorRef.current,
+      jointProfilePosition: [...jointProfilePositionRef.current],
+      dividerStyleOverrides: { ...dividerStyleOverridesRef.current },
+      hMoldingStyleOverrides: { ...hMoldingStyleOverridesRef.current },
+      vProfileStyle: vProfileStyleRef.current,
+      vProfileWidth: vProfileWidthRef.current,
     });
     if (historyRef.current.length > 50) historyRef.current.shift();
+    setHistoryLen(historyRef.current.length);
+  }, []);
+
+  // Capture current live state as a snapshot (used by both undo and redo)
+  const captureSnapshot = useCallback((): HistorySnapshot => ({
+    surfaceIndex: activeSurfaceRef.current,
+    sectorMaterials: { ...sectorMaterialsRef.current },
+    dividerPositions: [...dividerPositionsRef.current],
+    panelCount: panelCountRef.current,
+    cornerTypes: [...cornerTypesRef.current],
+    wrapJunctions: [...wrapJunctionsRef.current],
+    wallWidthMm: wallWidthMmRef.current,
+    wallHeightMm: wallHeightMmRef.current,
+    moldingStyle: moldingStyleRef.current,
+    moldingWidth: moldingWidthRef.current,
+    hMoldingStyle: hMoldingStyleRef.current,
+    hMoldingCount: hMoldingCountRef.current,
+    hMoldingWidth: hMoldingWidthRef.current,
+    hMoldingPositions: [...hMoldingPositionsRef.current],
+    panelOrientation: panelOrientationRef.current,
+    edgeProfileSides: { ...edgeProfileSidesRef.current },
+    edgeProfileColor: edgeProfileColorRef.current,
+    jointProfilePosition: [...jointProfilePositionRef.current],
+    dividerStyleOverrides: { ...dividerStyleOverridesRef.current },
+    hMoldingStyleOverrides: { ...hMoldingStyleOverridesRef.current },
+    vProfileStyle: vProfileStyleRef.current,
+    vProfileWidth: vProfileWidthRef.current,
+  }), []);
+
+  // Restore a snapshot to live state
+  const applySnapshot = useCallback((prev: HistorySnapshot) => {
+    setCornerTypes(prev.cornerTypes);
+    setWrapJunctions(prev.wrapJunctions);
+    setEdgeProfileSides(prev.edgeProfileSides);
+    setEdgeProfileColor(prev.edgeProfileColor ?? 'black');
+    if (prev.surfaceIndex === activeSurfaceRef.current) {
+      setSectorMaterials(prev.sectorMaterials);
+      setDividerPositions(prev.dividerPositions);
+      setPanelCount(prev.panelCount);
+      setWallWidthMm(prev.wallWidthMm);
+      setWallHeightMm(prev.wallHeightMm);
+      setMoldingStyle(prev.moldingStyle);
+      setMoldingWidth(prev.moldingWidth);
+      setHMoldingStyle(prev.hMoldingStyle);
+      setHMoldingCount(prev.hMoldingCount);
+      setHMoldingWidth(prev.hMoldingWidth);
+      setHMoldingPositions(prev.hMoldingPositions);
+      setPanelOrientation(prev.panelOrientation);
+      setJointProfilePosition(prev.jointProfilePosition ?? ['bottom']);
+      setDividerStyleOverrides(prev.dividerStyleOverrides ?? {});
+      setHMoldingStyleOverrides(prev.hMoldingStyleOverrides ?? {});
+      setVProfileStyle(prev.vProfileStyle ?? 'black');
+      setVProfileWidth(prev.vProfileWidth ?? 2);
+    } else {
+      const cfg = surfacesRef.current[prev.surfaceIndex] ?? defaultSurfaceConfig();
+      surfacesRef.current[prev.surfaceIndex] = {
+        ...cfg,
+        sectorMaterials: prev.sectorMaterials,
+        dividerPositions: prev.dividerPositions,
+        panelCount: prev.panelCount,
+        wallWidthMm: prev.wallWidthMm,
+        wallHeightMm: prev.wallHeightMm,
+        moldingStyle: prev.moldingStyle,
+        moldingWidth: prev.moldingWidth,
+        hMoldingStyle: prev.hMoldingStyle,
+        hMoldingCount: prev.hMoldingCount,
+        hMoldingWidth: prev.hMoldingWidth,
+        hMoldingPositions: prev.hMoldingPositions,
+        panelOrientation: prev.panelOrientation,
+        jointProfilePosition: prev.jointProfilePosition ?? ['bottom'],
+        dividerStyleOverrides: prev.dividerStyleOverrides ?? {},
+        hMoldingStyleOverrides: prev.hMoldingStyleOverrides ?? {},
+        vProfileStyle: prev.vProfileStyle ?? 'black',
+        vProfileWidth: prev.vProfileWidth ?? 2,
+      };
+      setPoints(pv => [...pv]);
+    }
   }, []);
 
   const undo = useCallback(() => {
     if (historyRef.current.length === 0) return;
+    // Save current state to redo stack before restoring
+    redoRef.current.push(captureSnapshot());
+    setRedoLen(redoRef.current.length);
     const prev = historyRef.current.pop()!;
-    setSectorMaterials(prev.sectorMaterials);
-    setDividerPositions(prev.dividerPositions);
-    setPanelCount(prev.panelCount);
-  }, []);
+    setHistoryLen(historyRef.current.length);
+    applySnapshot(prev);
+  }, [captureSnapshot, applySnapshot]);
+
+  const redo = useCallback(() => {
+    if (redoRef.current.length === 0) return;
+    // Save current state to undo stack before restoring
+    historyRef.current.push(captureSnapshot());
+    if (historyRef.current.length > 50) historyRef.current.shift();
+    setHistoryLen(historyRef.current.length);
+    const next = redoRef.current.pop()!;
+    setRedoLen(redoRef.current.length);
+    applySnapshot(next);
+  }, [captureSnapshot, applySnapshot]);
 
   useEffect(() => { imageRef.current = image; }, [image]);
   useEffect(() => { stepRef.current = step; }, [step]);
@@ -348,19 +926,137 @@ const BambooStudio = () => {
   useEffect(() => { hMoldingCountRef.current = hMoldingCount; }, [hMoldingCount]);
   useEffect(() => { hMoldingWidthRef.current = hMoldingWidth; }, [hMoldingWidth]);
   useEffect(() => { hMoldingPositionsRef.current = hMoldingPositions; }, [hMoldingPositions]);
+  useEffect(() => { panelOrientationRef.current = panelOrientation; }, [panelOrientation]);
+  useEffect(() => { edgeProfileSidesRef.current = edgeProfileSides; }, [edgeProfileSides]);
+  useEffect(() => { edgeProfileColorRef.current = edgeProfileColor; }, [edgeProfileColor]);
   useEffect(() => { lightModeRef.current = lightMode; }, [lightMode]);
+  useEffect(() => { cylHighlightPosRef.current = cylHighlightPos; }, [cylHighlightPos]);
+  // Auto-shift cylinder highlight when the light mode changes:
+  // morning light comes from the right (bright at right edge), evening — from the left
+  useEffect(() => {
+    setCylHighlightPos(lightMode === 'morning' ? 0.68 : lightMode === 'evening' ? 0.32 : 0.5);
+  }, [lightMode]);
+  useEffect(() => { cornerTypesRef.current = cornerTypes; }, [cornerTypes]);
+  useEffect(() => { wrapJunctionsRef.current = wrapJunctions; }, [wrapJunctions]);
+  useEffect(() => { wallWidthMmRef.current = wallWidthMm; }, [wallWidthMm]);
+  useEffect(() => { wallHeightMmRef.current = wallHeightMm; }, [wallHeightMm]);
+  useEffect(() => { activeSurfaceRef.current = activeSurface; }, [activeSurface]);
+  useEffect(() => { wallZoneRef.current = wallZone; }, [wallZone]);
+  useEffect(() => { doorTypeRef.current = doorType; }, [doorType]);
+  useEffect(() => { doorShowDoorRef.current = doorShowDoor; }, [doorShowDoor]);
+  useEffect(() => { doorOpeningPointsRef.current = doorOpeningPoints; }, [doorOpeningPoints]);
+  useEffect(() => { doorMarkModeRef.current = doorMarkMode; }, [doorMarkMode]);
+  useEffect(() => { columnShapeRef.current = columnShape; }, [columnShape]);
+  // Persist current edits into the active surface's config
+  useEffect(() => {
+    surfacesRef.current[activeSurface] = {
+      panelCount, dividerPositions, sectorMaterials,
+      moldingStyle, moldingWidth,
+      hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions,
+      wallWidthMm, wallHeightMm,
+      panelOrientation,
+      jointProfilePosition,
+      dividerStyleOverrides,
+      hMoldingStyleOverrides,
+      vProfileStyle,
+      vProfileWidth,
+    };
+  }, [activeSurface, panelCount, dividerPositions, sectorMaterials, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, wallWidthMm, wallHeightMm, panelOrientation, jointProfilePosition, dividerStyleOverrides, hMoldingStyleOverrides, vProfileStyle, vProfileWidth]);
+  useEffect(() => { jointProfilePositionRef.current = jointProfilePosition; }, [jointProfilePosition]);
+  useEffect(() => { dividerStyleOverridesRef.current = dividerStyleOverrides; }, [dividerStyleOverrides]);
+  useEffect(() => { selectedDividerIdxRef.current = selectedDividerIdx; }, [selectedDividerIdx]);
+  useEffect(() => { hMoldingStyleOverridesRef.current = hMoldingStyleOverrides; }, [hMoldingStyleOverrides]);
+  useEffect(() => { selectedHMoldingIdxRef.current = selectedHMoldingIdx; }, [selectedHMoldingIdx]);
+  useEffect(() => { vProfileStyleRef.current = vProfileStyle; }, [vProfileStyle]);
+  useEffect(() => { vProfileWidthRef.current = vProfileWidth; }, [vProfileWidth]);
+  useEffect(() => { tvTypeRef.current = tvType; }, [tvType]);
+  useEffect(() => { tvBacklightEnabledRef.current = tvBacklightEnabled; }, [tvBacklightEnabled]);
+  useEffect(() => { tvBacklightEdgesRef.current = tvBacklightEdges; }, [tvBacklightEdges]);
 
-  // Ctrl+Z global undo
+  // Ctrl+Z global undo / Ctrl+Y global redo
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
         undo();
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        redo();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [undo]);
+  }, [undo, redo]);
+
+  // Switch active editing surface: snapshot current edits, load target config
+  const switchSurface = useCallback((idx: number) => {
+    if (idx === activeSurfaceRef.current) return;
+    surfacesRef.current[activeSurfaceRef.current] = {
+      panelCount: panelCountRef.current,
+      dividerPositions: [...dividerPositionsRef.current],
+      sectorMaterials: { ...sectorMaterialsRef.current },
+      moldingStyle: moldingStyleRef.current,
+      moldingWidth: moldingWidthRef.current,
+      hMoldingStyle: hMoldingStyleRef.current,
+      hMoldingCount: hMoldingCountRef.current,
+      hMoldingWidth: hMoldingWidthRef.current,
+      hMoldingPositions: [...hMoldingPositionsRef.current],
+      wallWidthMm: wallWidthMmRef.current,
+      wallHeightMm: wallHeightMmRef.current,
+      panelOrientation: panelOrientationRef.current,
+      jointProfilePosition: [...jointProfilePositionRef.current],
+      dividerStyleOverrides: { ...dividerStyleOverridesRef.current },
+      hMoldingStyleOverrides: { ...hMoldingStyleOverridesRef.current },
+      vProfileStyle: vProfileStyleRef.current,
+      vProfileWidth: vProfileWidthRef.current,
+    };
+    // For wall-niche: if the target surface was never configured, inherit the
+    // current wall's config as a starting point so panels/materials carry over.
+    const isFirstVisit = surfacesRef.current[idx] == null;
+    const inheritedCfg: SurfaceConfig = isFirstVisit && wallZoneRef.current === 'wall-niche'
+      ? {
+          panelCount: panelCountRef.current,
+          dividerPositions: [...dividerPositionsRef.current],
+          sectorMaterials: { ...sectorMaterialsRef.current },
+          moldingStyle: moldingStyleRef.current,
+          moldingWidth: moldingWidthRef.current,
+          hMoldingStyle: hMoldingStyleRef.current,
+          hMoldingCount: hMoldingCountRef.current,
+          hMoldingWidth: hMoldingWidthRef.current,
+          hMoldingPositions: [],
+          wallWidthMm: 0,
+          wallHeightMm: 0,
+          panelOrientation: panelOrientationRef.current,
+          jointProfilePosition: [...jointProfilePositionRef.current],
+          dividerStyleOverrides: { ...dividerStyleOverridesRef.current },
+          hMoldingStyleOverrides: { ...hMoldingStyleOverridesRef.current },
+          vProfileStyle: 'black',
+          vProfileWidth: 2,
+        }
+      : (surfacesRef.current[idx] ?? defaultSurfaceConfig());
+    const cfg = inheritedCfg;
+    surfacesRef.current[idx] = cfg;
+    activeSurfaceRef.current = idx;
+    setActiveSurface(idx);
+    setPanelCount(cfg.panelCount);
+    setDividerPositions(cfg.dividerPositions);
+    setSectorMaterials(cfg.sectorMaterials);
+    setMoldingStyle(cfg.moldingStyle);
+    setMoldingWidth(cfg.moldingWidth);
+    setHMoldingStyle(cfg.hMoldingStyle);
+    setHMoldingCount(cfg.hMoldingCount);
+    setHMoldingWidth(cfg.hMoldingWidth);
+    setHMoldingPositions(cfg.hMoldingPositions);
+    setWallWidthMm(cfg.wallWidthMm);
+    setWallHeightMm(cfg.wallHeightMm);
+    setPanelOrientation(cfg.panelOrientation ?? 'vertical');
+    setJointProfilePosition(cfg.jointProfilePosition ?? ['bottom']);
+    setDividerStyleOverrides(cfg.dividerStyleOverrides ?? {});
+    setHMoldingStyleOverrides(cfg.hMoldingStyleOverrides ?? {});
+    setVProfileStyle(cfg.vProfileStyle ?? 'black');
+    setVProfileWidth(cfg.vProfileWidth ?? 2);
+    setActiveSector(null);
+  }, []);
 
   // Returns the start/end ratio for each sector based on divider positions
   const getSectorBounds = (dividers: number[], count: number) => {
@@ -395,25 +1091,102 @@ const BambooStudio = () => {
     ctx.drawImage(img, 0, 0, width, height);
 
     if (curStep === 'mark') {
-      ctx.fillStyle = '#007aff';
-      pts.forEach(p => {
+      // Each wall (group of 4 points) is drawn as its OWN independent contour —
+      // points of different walls are never connected to each other
+      const QUAD_COLORS = ['#007aff', '#7ec662', '#ff9500'];
+      const nGroups = Math.ceil(pts.length / 4);
+      for (let g = 0; g < nGroups; g++) {
+        const gp = pts.slice(g * 4, g * 4 + 4);
+        const color = QUAD_COLORS[g] ?? '#007aff';
+        const complete = gp.length === 4;
+
+        // Contour of this wall only
+        if (gp.length >= 2) {
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 2;
+          ctx.setLineDash(complete ? [] : [6, 4]);
+          ctx.beginPath();
+          ctx.moveTo(gp[0].x, gp[0].y);
+          gp.forEach(p => ctx.lineTo(p.x, p.y));
+          if (complete) ctx.closePath();
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+
+        // Points of this wall
+        ctx.fillStyle = color;
+        gp.forEach((p, i) => {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+          ctx.fill();
+          // Point number inside
+          ctx.fillStyle = 'white';
+          ctx.font = 'bold 8px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(String(i + 1), p.x, p.y);
+          ctx.fillStyle = color;
+        });
+
+        // Wall label near the first point of a completed wall
+        if (complete) {
+          const cxm = (gp[0].x + gp[1].x + gp[2].x + gp[3].x) / 4;
+          const cym = (gp[0].y + gp[1].y + gp[2].y + gp[3].y) / 4;
+          ctx.save();
+          ctx.fillStyle = color;
+          ctx.font = 'bold 13px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.globalAlpha = 0.85;
+          ctx.fillText(`Стена ${g + 1}`, cxm, cym);
+          ctx.restore();
+        }
+      }
+      if (wallZoneRef.current === 'door' && pts.length >= 4) {
+        const wall = pts.slice(0, 4);
+        ctx.save();
+        ctx.fillStyle = 'rgba(126,198,98,0.14)';
+        ctx.strokeStyle = '#7ec662';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([12, 6]);
         ctx.beginPath();
-        ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
-        ctx.fill();
-      });
-      if (pts.length === 4) {
-        ctx.strokeStyle = '#007aff';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(pts[0].x, pts[0].y);
-        pts.forEach(p => ctx.lineTo(p.x, p.y));
+        ctx.moveTo(wall[0].x, wall[0].y);
+        wall.slice(1).forEach(p => ctx.lineTo(p.x, p.y));
         ctx.closePath();
+        ctx.fill();
         ctx.stroke();
+        ctx.restore();
+      }
+      if (wallZoneRef.current === 'door' && doorOpeningPointsRef.current.length > 0) {
+        const opening = doorOpeningPointsRef.current;
+        ctx.save();
+        ctx.fillStyle = 'rgba(239,68,68,0.12)';
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 3;
+        ctx.setLineDash(opening.length === 4 ? [10, 5] : [5, 4]);
+        ctx.beginPath();
+        ctx.moveTo(opening[0].x, opening[0].y);
+        opening.slice(1).forEach(p => ctx.lineTo(p.x, p.y));
+        if (opening.length === 4) ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        opening.forEach((p, i) => {
+          ctx.fillStyle = '#ef4444';
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 9px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(String(i + 1), p.x, p.y);
+        });
+        ctx.restore();
       }
       return;
     }
 
-    if (curStep === 'edit' && pts.length === 4) {
+    if (curStep === 'edit' && pts.length >= 4) {
       const tempCanvas = document.createElement('canvas');
       tempCanvas.width = width;
       tempCanvas.height = height;
@@ -426,17 +1199,145 @@ const BambooStudio = () => {
       woodCanvas.height = height;
       const wCtx = woodCanvas.getContext('2d')!;
 
-      const bounds = getSectorBounds(curDividers, curPanelCount);
+      // ── Shared helper: stroke a profile line with gradient for a given molding style ──
+      // Available to both renderQuad (inner joints) and the column corner pass below.
+      // Parse a combined molding style ('black_gap', 'bronze_light', etc.) into color + modifier.
+      // Legacy 'gap' → metallic color + gap modifier; 'light' → black color + light modifier.
+      const parseMoldStyle = (style: string): { color: string; modifier: 'normal' | 'gap' | 'light' } => {
+        if (style.endsWith('_gap'))   return { color: style.slice(0, -4), modifier: 'gap' };
+        if (style.endsWith('_light')) return { color: style.slice(0, -6), modifier: 'light' };
+        if (style === 'gap')   return { color: 'metallic', modifier: 'gap' };
+        if (style === 'light') return { color: 'black',    modifier: 'light' };
+        return { color: style, modifier: 'normal' };
+      };
 
-      for (let i = 0; i < curPanelCount; i++) {
+      const drawMoldLine = (
+        x1: number, y1: number, x2: number, y2: number,
+        style: Exclude<MoldingStyle, 'none'>, lw: number,
+      ) => {
+        const ddx = x2 - x1, ddy = y2 - y1, ll = Math.sqrt(ddx * ddx + ddy * ddy);
+        if (ll < 1) return;
+        const ppx = -ddy / ll, ppy = ddx / ll;
+        const mmx = (x1 + x2) / 2, mmy = (y1 + y2) / 2;
+
+        const { color, modifier } = parseMoldStyle(style);
+
+        // Build a color gradient perpendicular to the line, centered at (cx, cy)
+        const buildGrad = (cx: number, cy: number, hw: number) => {
+          const g = tCtx.createLinearGradient(cx + ppx * hw, cy + ppy * hw, cx - ppx * hw, cy - ppy * hw);
+          switch (color) {
+            case 'gold':
+              g.addColorStop(0, '#5a3d00'); g.addColorStop(0.15, '#b8860b'); g.addColorStop(0.35, '#ffd700');
+              g.addColorStop(0.5, '#fff8c0'); g.addColorStop(0.65, '#ffd700'); g.addColorStop(0.85, '#b8860b'); g.addColorStop(1, '#5a3d00');
+              break;
+            case 'black':
+              g.addColorStop(0, '#000000'); g.addColorStop(0.2, '#0c0c0c'); g.addColorStop(0.45, '#181818');
+              g.addColorStop(0.5, '#1e1e1e'); g.addColorStop(0.55, '#181818'); g.addColorStop(0.8, '#0c0c0c'); g.addColorStop(1, '#000000');
+              break;
+            case 'bronze':
+              g.addColorStop(0, '#1a0a00'); g.addColorStop(0.15, '#5a2e0a'); g.addColorStop(0.35, '#a0602a');
+              g.addColorStop(0.5, '#c8844a'); g.addColorStop(0.65, '#a0602a'); g.addColorStop(0.85, '#5a2e0a'); g.addColorStop(1, '#1a0a00');
+              break;
+            default: // metallic (and any unknown)
+              g.addColorStop(0, '#4a4a4a'); g.addColorStop(0.2, '#9a9a9a'); g.addColorStop(0.45, '#e8e8e8');
+              g.addColorStop(0.5, '#ffffff'); g.addColorStop(0.55, '#e8e8e8'); g.addColorStop(0.8, '#9a9a9a'); g.addColorStop(1, '#4a4a4a');
+          }
+          return g;
+        };
+
+        tCtx.save();
+        tCtx.lineCap = 'butt';
+        tCtx.setLineDash([]);
+
+        if (modifier === 'gap') {
+          // Two parallel thin stripes of the base color — gap between them
+          const stripeW = Math.max(lw * 0.38, 1.5);
+          const offset  = lw * 0.38;
+          for (const sign of [1, -1]) {
+            const cx = mmx + ppx * offset * sign, cy = mmy + ppy * offset * sign;
+            tCtx.strokeStyle = buildGrad(cx, cy, stripeW / 2);
+            tCtx.lineWidth = stripeW;
+            tCtx.beginPath();
+            tCtx.moveTo(x1 + ppx * offset * sign, y1 + ppy * offset * sign);
+            tCtx.lineTo(x2 + ppx * offset * sign, y2 + ppy * offset * sign);
+            tCtx.stroke();
+          }
+        } else if (modifier === 'light') {
+          // Two parallel stripes (slightly wider than gap) + glowing white strip between them
+          const stripeW = Math.max(lw * 0.4, 1.5);
+          const offset  = lw * 0.45;
+          for (const sign of [1, -1]) {
+            const cx = mmx + ppx * offset * sign, cy = mmy + ppy * offset * sign;
+            tCtx.strokeStyle = buildGrad(cx, cy, stripeW / 2);
+            tCtx.lineWidth = stripeW;
+            tCtx.beginPath();
+            tCtx.moveTo(x1 + ppx * offset * sign, y1 + ppy * offset * sign);
+            tCtx.lineTo(x2 + ppx * offset * sign, y2 + ppy * offset * sign);
+            tCtx.stroke();
+          }
+          // (no white centre strip — removed)
+        } else {
+          // Normal single stripe
+          tCtx.strokeStyle = buildGrad(mmx, mmy, lw / 2);
+          tCtx.lineWidth = lw;
+          tCtx.beginPath(); tCtx.moveTo(x1, y1); tCtx.lineTo(x2, y2); tCtx.stroke();
+        }
+
+        tCtx.restore();
+      };
+
+      // Helper: render one 4-point quad with panels, dividers, and moldings
+      const renderQuad = (qp: Point[], cfg: SurfaceConfig, isActive: boolean, overrideFirstMaterial?: Panel, _noSectorRot = false): void => {
+        // 'lengthwise': rotate canvas +90° CW around quad centroid, counter-rotate qp,
+        // then recurse as 'horizontal' with _noSectorRot=true (no per-sector rotation).
+        // → horizontal rows on screen, texture/grain identical to vertical but rotated 90°.
+        if (cfg.panelOrientation === 'lengthwise' && !_noSectorRot) {
+          const fullCx = (qp[0].x + qp[1].x + qp[2].x + qp[3].x) / 4;
+          const fullCy = (qp[0].y + qp[1].y + qp[2].y + qp[3].y) / 4;
+          [tCtx, wCtx].forEach(ctx => {
+            ctx.save();
+            ctx.translate(fullCx, fullCy);
+            ctx.rotate(Math.PI / 2);
+            ctx.translate(-fullCx, -fullCy);
+          });
+          // Counter-rotate qp: new_x = cx + (p.y − cy), new_y = cy − (p.x − cx)
+          const rotQp: Point[] = qp.map(p => ({
+            x: fullCx + (p.y - fullCy),
+            y: fullCy - (p.x - fullCx),
+          }));
+          renderQuad(rotQp, { ...cfg, panelOrientation: 'horizontal' }, isActive, overrideFirstMaterial, true);
+          [tCtx, wCtx].forEach(ctx => ctx.restore());
+          return;
+        }
+        const bounds = getSectorBounds(cfg.dividerPositions, cfg.panelCount);
+        // isHoriz: horizontal division WITH per-sector context rotation (original 'horizontal' mode)
+        const isHoriz = cfg.panelOrientation === 'horizontal' && !_noSectorRot;
+        // dividesHoriz: true for both isHoriz and _noSectorRot (globally-rotated 'lengthwise' pass)
+        const dividesHoriz = cfg.panelOrientation === 'horizontal';
+        // Pre-compute full quad min coords for pattern anchoring when _noSectorRot,
+        // so all sectors share the same canvas-space origin → seamless tiling.
+        const fullQRotMinX = _noSectorRot ? Math.min(qp[0].x, qp[1].x, qp[2].x, qp[3].x) : 0;
+        const fullQRotMinY = _noSectorRot ? Math.min(qp[0].y, qp[1].y, qp[2].y, qp[3].y) : 0;
+
+      for (let i = 0; i < cfg.panelCount; i++) {
         const { start: rStart, end: rEnd } = bounds[i];
 
-        const p1 = { x: pts[0].x + (pts[1].x - pts[0].x) * rStart, y: pts[0].y + (pts[1].y - pts[0].y) * rStart };
-        const p2 = { x: pts[0].x + (pts[1].x - pts[0].x) * rEnd, y: pts[0].y + (pts[1].y - pts[0].y) * rEnd };
-        const p3 = { x: pts[3].x + (pts[2].x - pts[3].x) * rEnd, y: pts[3].y + (pts[2].y - pts[3].y) * rEnd };
-        const p4 = { x: pts[3].x + (pts[2].x - pts[3].x) * rStart, y: pts[3].y + (pts[2].y - pts[3].y) * rStart };
+        // Vertical: divide along top (qp[0]→qp[1]) and bottom (qp[3]→qp[2]) edges
+        // Horizontal/Lengthwise: divide along left (qp[0]→qp[3]) and right (qp[1]→qp[2]) edges
+        const p1 = dividesHoriz
+          ? { x: qp[0].x + (qp[3].x - qp[0].x) * rStart, y: qp[0].y + (qp[3].y - qp[0].y) * rStart }
+          : { x: qp[0].x + (qp[1].x - qp[0].x) * rStart, y: qp[0].y + (qp[1].y - qp[0].y) * rStart };
+        const p2 = dividesHoriz
+          ? { x: qp[1].x + (qp[2].x - qp[1].x) * rStart, y: qp[1].y + (qp[2].y - qp[1].y) * rStart }
+          : { x: qp[0].x + (qp[1].x - qp[0].x) * rEnd,   y: qp[0].y + (qp[1].y - qp[0].y) * rEnd };
+        const p3 = dividesHoriz
+          ? { x: qp[1].x + (qp[2].x - qp[1].x) * rEnd,   y: qp[1].y + (qp[2].y - qp[1].y) * rEnd }
+          : { x: qp[3].x + (qp[2].x - qp[3].x) * rEnd,   y: qp[3].y + (qp[2].y - qp[3].y) * rEnd };
+        const p4 = dividesHoriz
+          ? { x: qp[0].x + (qp[3].x - qp[0].x) * rEnd,   y: qp[0].y + (qp[3].y - qp[0].y) * rEnd }
+          : { x: qp[3].x + (qp[2].x - qp[3].x) * rStart, y: qp[3].y + (qp[2].y - qp[3].y) * rStart };
 
-        const material = curMaterials[i] || BAMBOO_PANELS[0];
+        const material = (i === 0 && overrideFirstMaterial) ? overrideFirstMaterial : (cfg.sectorMaterials[i] || BAMBOO_PANELS[0]);
 
         // Draw panel with texture if available, else solid color
         const minX = Math.min(p1.x, p2.x, p3.x, p4.x);
@@ -452,81 +1353,100 @@ const BambooStudio = () => {
         tCtx.closePath();
         tCtx.clip();
 
+        const panelW = maxX - minX;
+        const panelH = maxY - minY;
+        const cx = (minX + maxX) / 2;
+        const cy = (minY + maxY) / 2;
+        // Rotate drawing context +90° around panel center for horizontal orientation
+        // so texture grain and slat gaps appear rotated in screen space.
+        if (isHoriz) {
+          tCtx.translate(cx, cy);
+          tCtx.rotate(Math.PI / 2);
+          tCtx.translate(-cx, -cy);
+        }
+        // Draw coordinates in (possibly rotated) context space
+        const dX = isHoriz ? cx - panelH / 2 : minX;
+        const dY = isHoriz ? cy - panelW / 2 : minY;
+        const dW = isHoriz ? panelH : panelW;
+        const dH = isHoriz ? panelW : panelH;
+
         const cachedTex = textureCacheRef.current[material.id];
         if (cachedTex) {
-          const panelW = maxX - minX;
-          const panelH = maxY - minY;
           if (material.textureStretch) {
+            // Source-rect slicing for seamless unified sheet:
+            // • isHoriz or _noSectorRot (globally-rotated 'В длину'): slice texture width per row
+            //   (rStart..rEnd of tex.width → consecutive horizontal strips in screen space)
+            // • vertical: full texture stretched per column (unchanged)
+            const texSrcX = (isHoriz || _noSectorRot) ? rStart * cachedTex.width : 0;
+            const texSrcW = (isHoriz || _noSectorRot) ? (rEnd - rStart) * cachedTex.width : cachedTex.width;
+            const texSrcY = 0;
+            const texSrcH = cachedTex.height;
+            const drawTex = (ctx: CanvasRenderingContext2D) => {
+              ctx.drawImage(cachedTex, texSrcX, texSrcY, texSrcW, texSrcH, dX, dY, dW, dH);
+            };
             if (material.slatOverlay) {
-              // Slat panels: stretch texture to fill the entire panel (no tiling)
-              tCtx.drawImage(cachedTex, minX, minY, panelW, panelH);
-              // Also draw to woodCanvas for extra opacity boost
+              drawTex(tCtx);
               wCtx.save();
               wCtx.beginPath();
               wCtx.moveTo(p1.x, p1.y); wCtx.lineTo(p2.x, p2.y);
               wCtx.lineTo(p3.x, p3.y); wCtx.lineTo(p4.x, p4.y);
               wCtx.closePath(); wCtx.clip();
-              wCtx.drawImage(cachedTex, minX, minY, panelW, panelH);
+              if (isHoriz) { wCtx.translate(cx, cy); wCtx.rotate(Math.PI / 2); wCtx.translate(-cx, -cy); }
+              drawTex(wCtx);
               wCtx.restore();
             } else {
-              // Wood panels: tile at 80% panel size so grain appears 20% smaller
-              const WOOD_SCALE = 0.8;
-              const tileW = Math.max(1, Math.ceil(panelW * WOOD_SCALE));
-              const tileH = Math.max(1, Math.ceil(panelH * WOOD_SCALE));
-              const tileCanvas = document.createElement('canvas');
-              tileCanvas.width = tileW; tileCanvas.height = tileH;
-              const tileCtx = tileCanvas.getContext('2d')!;
-              tileCtx.drawImage(cachedTex, 0, 0, tileW, tileH);
-              const woodPattern = tCtx.createPattern(tileCanvas, 'repeat');
-              if (woodPattern) {
-                woodPattern.setTransform(new DOMMatrix().translate(minX, minY));
-                tCtx.fillStyle = woodPattern;
-                tCtx.fillRect(minX - 1, minY - 1, panelW + 2, panelH + 2);
-              }
-              // Also draw to woodCanvas for extra opacity boost
+              drawTex(tCtx);
               wCtx.save();
               wCtx.beginPath();
               wCtx.moveTo(p1.x, p1.y); wCtx.lineTo(p2.x, p2.y);
               wCtx.lineTo(p3.x, p3.y); wCtx.lineTo(p4.x, p4.y);
               wCtx.closePath(); wCtx.clip();
-              const woodPattern2 = wCtx.createPattern(tileCanvas, 'repeat');
-              if (woodPattern2) {
-                woodPattern2.setTransform(new DOMMatrix().translate(minX, minY));
-                wCtx.fillStyle = woodPattern2;
-                wCtx.fillRect(minX - 1, minY - 1, panelW + 2, panelH + 2);
-              }
+              if (isHoriz) { wCtx.translate(cx, cy); wCtx.rotate(Math.PI / 2); wCtx.translate(-cx, -cy); }
+              drawTex(wCtx);
               wCtx.restore();
             }
           } else {
-            const ts = material.textureScale ?? 1;
-            // If textureScale set: shrink tile to 1/ts (realistic repeat), else auto-fit
-            const scale = ts > 1
-              ? 1 / ts
-              : Math.max(1, panelH / (cachedTex.height * 3));
+            // Tiled/repeat pattern. Scale base covers full row height.
+            const horizMode = isHoriz || _noSectorRot;
+            const baseScale = horizMode
+              ? dW / cachedTex.width
+              : dH / cachedTex.height;
+            const tsX = material.textureScaleX;
+            const tsY = material.textureScaleY;
+            const drawScaleX = horizMode
+              ? (tsY != null && tsY > 0 ? 1 / tsY : baseScale)
+              : (tsX != null && tsX > 0 ? 1 / tsX : baseScale);
+            const drawScaleY = horizMode
+              ? (tsX != null && tsX > 0 ? 1 / tsX : baseScale)
+              : (tsY != null && tsY > 0 ? 1 / tsY : baseScale);
             const pattern = tCtx.createPattern(cachedTex, 'repeat');
             if (pattern) {
               const m = new DOMMatrix();
-              m.scaleSelf(scale, scale);
-              m.translateSelf(minX / scale, minY / scale);
+              m.scaleSelf(drawScaleX, drawScaleY);
+              // For _noSectorRot: anchor at full quad rotated-canvas min coords so
+              // tiles align seamlessly across all sectors (same canvas-space origin).
+              const anchorX = _noSectorRot ? fullQRotMinX : dX;
+              const anchorY = _noSectorRot ? fullQRotMinY : dY;
+              m.translateSelf(anchorX / drawScaleX, anchorY / drawScaleY);
               pattern.setTransform(m);
               tCtx.fillStyle = pattern;
             } else {
               tCtx.fillStyle = material.color;
             }
-            tCtx.fillRect(minX - 1, minY - 1, panelW + 2, panelH + 2);
+            tCtx.fillRect(dX - 1, dY - 1, dW + 2, dH + 2);
           }
         } else {
           tCtx.fillStyle = material.color;
           tCtx.fillRect(0, 0, width, height);
         }
 
-        // Slat (рейки) gap overlay — fine vertical dark stripes simulating gaps between slats
+        // Slat (рейки) gap overlay — fine dark stripes simulating gaps between slats
         if (material.slatOverlay) {
           const SLAT_W = 4;
           const GAP_W = 1;
           const PERIOD = SLAT_W + GAP_W;
-          const startX = Math.floor(minX / PERIOD) * PERIOD;
-          for (let sx = startX; sx < maxX + PERIOD; sx += PERIOD) {
+          const startX = Math.floor(dX / PERIOD) * PERIOD;
+          for (let sx = startX; sx < dX + dW + PERIOD; sx += PERIOD) {
             const gx = sx + SLAT_W;
             const gapGrad = tCtx.createLinearGradient(gx - 0.5, 0, gx + GAP_W + 0.5, 0);
             gapGrad.addColorStop(0,   'rgba(0,0,0,0.00)');
@@ -535,7 +1455,7 @@ const BambooStudio = () => {
             gapGrad.addColorStop(0.7, 'rgba(0,0,0,0.65)');
             gapGrad.addColorStop(1,   'rgba(0,0,0,0.00)');
             tCtx.fillStyle = gapGrad;
-            tCtx.fillRect(gx - 0.5, minY - 1, GAP_W + 1, maxY - minY + 2);
+            tCtx.fillRect(gx - 0.5, dY - 1, GAP_W + 1, dH + 2);
           }
         }
 
@@ -544,11 +1464,11 @@ const BambooStudio = () => {
         if (curLight !== 'off') {
           let gx0: number, gy0: number, gx1: number, gy1: number, brightColor: string, fadeColor: string;
           if (curLight === 'morning') {
-            gx0 = maxX; gy0 = minY; gx1 = minX; gy1 = maxY;
+            gx0 = dX + dW; gy0 = dY; gx1 = dX; gy1 = dY + dH;
             brightColor = 'rgba(200,225,255,0.30)';
             fadeColor   = 'rgba(0,10,50,0.07)';
           } else {
-            gx0 = minX; gy0 = minY; gx1 = maxX; gy1 = maxY;
+            gx0 = dX; gy0 = dY; gx1 = dX + dW; gy1 = dY + dH;
             brightColor = 'rgba(255,195,100,0.32)';
             fadeColor   = 'rgba(60,15,0,0.08)';
           }
@@ -556,7 +1476,7 @@ const BambooStudio = () => {
           lightGrad.addColorStop(0, brightColor);
           lightGrad.addColorStop(1, fadeColor);
           tCtx.fillStyle = lightGrad;
-          tCtx.fillRect(minX - 1, minY - 1, maxX - minX + 2, maxY - minY + 2);
+          tCtx.fillRect(dX - 1, dY - 1, dW + 2, dH + 2);
         }
         tCtx.restore();
 
@@ -568,225 +1488,607 @@ const BambooStudio = () => {
         tCtx.lineTo(p4.x, p4.y);
         tCtx.closePath();
 
-        if (curActiveSector === i && !curIsErasing) {
-          tCtx.strokeStyle = 'white';
-          tCtx.lineWidth = 3;
+        if (isActive && curActiveSector === i && !curIsErasing) {
+          tCtx.strokeStyle = 'rgba(255,255,255,0.5)';
+          tCtx.lineWidth = 1.5;
           tCtx.stroke();
         }
 
-        tCtx.strokeStyle = 'rgba(0,0,0,0.12)';
-        tCtx.lineWidth = 1;
+        // Faint border in the panel's own color at ~10% opacity
+        const hex6 = material.color.replace('#', '');
+        const br = parseInt(hex6.slice(0, 2), 16);
+        const bg = parseInt(hex6.slice(2, 4), 16);
+        const bb = parseInt(hex6.slice(4, 6), 16);
+        tCtx.strokeStyle = `rgba(${br},${bg},${bb},0.10)`;
+        tCtx.lineWidth = 0.75;
         tCtx.stroke();
       }
 
       // Draw draggable dividers as visible handles (hidden during export)
-      if (!curIsErasing && !forExportRef.current) {
-        curDividers.forEach((ratio) => {
-          // Point on top edge
-          const topX = pts[0].x + (pts[1].x - pts[0].x) * ratio;
-          const topY = pts[0].y + (pts[1].y - pts[0].y) * ratio;
-          // Point on bottom edge
-          const botX = pts[3].x + (pts[2].x - pts[3].x) * ratio;
-          const botY = pts[3].y + (pts[2].y - pts[3].y) * ratio;
+      if (isActive && !curIsErasing && !forExportRef.current) {
+        cfg.dividerPositions.forEach((ratio) => {
+          // Endpoints depend on orientation:
+          // Vertical → top-edge to bottom-edge; Horizontal → left-edge to right-edge
+          const aX = isHoriz ? qp[0].x + (qp[3].x - qp[0].x) * ratio : qp[0].x + (qp[1].x - qp[0].x) * ratio;
+          const aY = isHoriz ? qp[0].y + (qp[3].y - qp[0].y) * ratio : qp[0].y + (qp[1].y - qp[0].y) * ratio;
+          const bX = isHoriz ? qp[1].x + (qp[2].x - qp[1].x) * ratio : qp[3].x + (qp[2].x - qp[3].x) * ratio;
+          const bY = isHoriz ? qp[1].y + (qp[2].y - qp[1].y) * ratio : qp[3].y + (qp[2].y - qp[3].y) * ratio;
 
           tCtx.save();
-          tCtx.strokeStyle = 'rgba(255,255,255,0.6)';
-          tCtx.lineWidth = 2;
-          tCtx.setLineDash([6, 4]);
+          const isSelDiv = (dIdx: number) => selectedDividerIdxRef.current === dIdx;
+          tCtx.strokeStyle = 'rgba(255,255,255,0.45)';
+          tCtx.lineWidth = 1.5;
+          tCtx.setLineDash([]);
           tCtx.beginPath();
-          tCtx.moveTo(topX, topY);
-          tCtx.lineTo(botX, botY);
+          tCtx.moveTo(aX, aY);
+          tCtx.lineTo(bX, bY);
           tCtx.stroke();
           tCtx.restore();
 
           // Handle circle at midpoint
-          const midX = (topX + botX) / 2;
-          const midY = (topY + botY) / 2;
+          const midX = (aX + bX) / 2;
+          const midY = (aY + bY) / 2;
+          const dIdx = cfg.dividerPositions.indexOf(ratio);
+          const selDiv = isSelDiv(dIdx);
           tCtx.save();
-          tCtx.fillStyle = 'white';
-          tCtx.strokeStyle = 'rgba(0,0,0,0.3)';
+          tCtx.fillStyle = selDiv ? '#1d4ed8' : 'white';
+          tCtx.strokeStyle = selDiv ? '#1e40af' : 'rgba(0,0,0,0.25)';
           tCtx.lineWidth = 1.5;
           tCtx.beginPath();
           tCtx.arc(midX, midY, 8, 0, Math.PI * 2);
           tCtx.fill();
           tCtx.stroke();
-          // Arrow hints
-          tCtx.fillStyle = '#555';
+          tCtx.fillStyle = selDiv ? 'white' : '#555';
           tCtx.font = 'bold 10px sans-serif';
           tCtx.textAlign = 'center';
           tCtx.textBaseline = 'middle';
-          tCtx.fillText('⇔', midX, midY);
+          tCtx.fillText(dividesHoriz ? '⇕' : '⇔', midX, midY);
           tCtx.restore();
+
         });
       }
 
       // Draw moldings on tempCanvas BEFORE mask so eraser can erase through them
-      const curMoldingStyle = moldingStyleRef.current;
-      const curMoldingWidth = moldingWidthRef.current;
-      if (curMoldingStyle !== 'none' && curDividers.length > 0) {
-        curDividers.forEach((ratio) => {
-          const topX = pts[0].x + (pts[1].x - pts[0].x) * ratio;
-          const topY = pts[0].y + (pts[1].y - pts[0].y) * ratio;
-          const botX = pts[3].x + (pts[2].x - pts[3].x) * ratio;
-          const botY = pts[3].y + (pts[2].y - pts[3].y) * ratio;
+      const curMoldingStyle = cfg.moldingStyle;
+      const curMoldingWidth = cfg.moldingWidth;
 
-          const dx = botX - topX;
-          const dy = botY - topY;
-          const len = Math.sqrt(dx * dx + dy * dy);
-          const px = -dy / len;
-          const py = dx / len;
-          const hw = curMoldingWidth / 2;
-          const midX = (topX + botX) / 2;
-          const midY = (topY + botY) / 2;
-
-          const grad = tCtx.createLinearGradient(
-            midX + px * hw, midY + py * hw,
-            midX - px * hw, midY - py * hw
-          );
-
-          if (curMoldingStyle === 'gold') {
-            grad.addColorStop(0,    '#5a3d00');
-            grad.addColorStop(0.15, '#b8860b');
-            grad.addColorStop(0.35, '#ffd700');
-            grad.addColorStop(0.5,  '#fff8c0');
-            grad.addColorStop(0.65, '#ffd700');
-            grad.addColorStop(0.85, '#b8860b');
-            grad.addColorStop(1,    '#5a3d00');
-          } else if (curMoldingStyle === 'black') {
-            grad.addColorStop(0,    '#0a0a0a');
-            grad.addColorStop(0.25, '#1c1c1c');
-            grad.addColorStop(0.5,  '#383838');
-            grad.addColorStop(0.75, '#1c1c1c');
-            grad.addColorStop(1,    '#0a0a0a');
-          } else if (curMoldingStyle === 'metallic') {
-            grad.addColorStop(0,    '#4a4a4a');
-            grad.addColorStop(0.2,  '#9a9a9a');
-            grad.addColorStop(0.45, '#e8e8e8');
-            grad.addColorStop(0.5,  '#ffffff');
-            grad.addColorStop(0.55, '#e8e8e8');
-            grad.addColorStop(0.8,  '#9a9a9a');
-            grad.addColorStop(1,    '#4a4a4a');
-          } else if (curMoldingStyle === 'brass') {
-            grad.addColorStop(0,    '#2c1f00');
-            grad.addColorStop(0.15, '#7a5918');
-            grad.addColorStop(0.35, '#c49a27');
-            grad.addColorStop(0.5,  '#e8c95a');
-            grad.addColorStop(0.65, '#c49a27');
-            grad.addColorStop(0.85, '#7a5918');
-            grad.addColorStop(1,    '#2c1f00');
-          }
-
-          tCtx.save();
-          tCtx.strokeStyle = grad;
-          tCtx.lineWidth = curMoldingWidth;
-          tCtx.lineCap = 'butt';
-          tCtx.beginPath();
-          tCtx.moveTo(topX, topY);
-          tCtx.lineTo(botX, botY);
-          tCtx.stroke();
-          tCtx.restore();
+      // User-set vertical profile joints at divider positions (per-divider style override)
+      if (cfg.dividerPositions.length > 0) {
+        cfg.dividerPositions.forEach((ratio, dIdx) => {
+          const dStyle = cfg.dividerStyleOverrides?.[dIdx] ?? curMoldingStyle;
+          if (dStyle === 'none') return;
+          // Profiles are always VERTICAL lines (top→bottom) regardless of panel orientation.
+          const aX = qp[0].x + (qp[1].x - qp[0].x) * ratio;
+          const aY = qp[0].y + (qp[1].y - qp[0].y) * ratio;
+          const bX = qp[3].x + (qp[2].x - qp[3].x) * ratio;
+          const bY = qp[3].y + (qp[2].y - qp[3].y) * ratio;
+          drawMoldLine(aX, aY, bX, bY, dStyle as Exclude<MoldingStyle,'none'>, curMoldingWidth);
         });
       }
 
-      // Draw horizontal moldings on tempCanvas BEFORE mask (also eraseable)
-      const curHMoldingStyle = hMoldingStyleRef.current;
-      const curHMoldingWidth = hMoldingWidthRef.current;
-      const curHPositions = hMoldingPositionsRef.current;
-      if (curHMoldingStyle !== 'none' && curHPositions.length > 0) {
-        curHPositions.forEach((r) => {
-          // Left edge: lerp between pts[0] (top-left) and pts[3] (bottom-left)
-          const lx = pts[0].x + (pts[3].x - pts[0].x) * r;
-          const ly = pts[0].y + (pts[3].y - pts[0].y) * r;
-          // Right edge: lerp between pts[1] (top-right) and pts[2] (bottom-right)
-          const rx = pts[1].x + (pts[2].x - pts[1].x) * r;
-          const ry = pts[1].y + (pts[2].y - pts[1].y) * r;
 
-          const dx = rx - lx;
-          const dy = ry - ly;
-          const len = Math.sqrt(dx * dx + dy * dy);
-          // Perpendicular unit vector (for gradient across molding thickness)
-          const px = -dy / len;
-          const py = dx / len;
-          const hw = curHMoldingWidth / 2;
+      // Auto-mandatory vertical joints: physical panel boundaries within sectors wider than one panel.
+      // Vertical panels: one column = panel width (default 1220 mm, or custom from product).
+      // Horizontal TV panels: one column = panel height (default 2800 mm, or custom from product).
+      {
+        const isHorizTvV = wallZoneRef.current === 'tv' && cfg.panelOrientation === 'horizontal';
+        const autoVStyle: Exclude<MoldingStyle, 'none'> =
+          curMoldingStyle !== 'none' ? curMoldingStyle as Exclude<MoldingStyle, 'none'> : 'black';
+        const autoVWidth = curMoldingStyle !== 'none' ? curMoldingWidth : 2;
+        if (cfg.wallWidthMm > 0) {
+          const secBounds = getSectorBounds(cfg.dividerPositions, cfg.panelCount);
+          secBounds.forEach(({ start: sR, end: eR }, secIdx) => {
+            const mat = cfg.sectorMaterials[secIdx];
+            const colStepV = isHorizTvV
+              ? (mat?.panelHeightMm ?? PANEL_H_MM)
+              : (mat?.panelWidthMm ?? PANEL_W_MM);
+            const sectorMm = cfg.wallWidthMm * (eR - sR);
+            if (sectorMm <= colStepV) return;
+            const nJoints = Math.floor(sectorMm / colStepV);
+            for (let j = 1; j <= nJoints; j++) {
+              const ratio = sR + (j * colStepV) / cfg.wallWidthMm;
+              if (ratio >= eR - 0.001) continue;
+              // Skip if a user divider already sits within 0.5% of this position
+              if (cfg.dividerPositions.some(d => Math.abs(d - ratio) < 0.005)) continue;
+              const topX = qp[0].x + (qp[1].x - qp[0].x) * ratio;
+              const topY = qp[0].y + (qp[1].y - qp[0].y) * ratio;
+              const botX = qp[3].x + (qp[2].x - qp[3].x) * ratio;
+              const botY = qp[3].y + (qp[2].y - qp[3].y) * ratio;
+              drawMoldLine(topX, topY, botX, botY, autoVStyle, autoVWidth);
+            }
+          });
+        }
+      }
+
+      // Draw horizontal moldings on tempCanvas BEFORE mask (also eraseable)
+      const curHMoldingStyle = cfg.hMoldingStyle;
+      const curHMoldingWidth = cfg.hMoldingWidth;
+      const curHPositions = cfg.hMoldingPositions;
+      if (curHPositions.length > 0) {
+        curHPositions.forEach((r, hIdx) => {
+          const hStyle = cfg.hMoldingStyleOverrides?.[hIdx] ?? curHMoldingStyle;
+          // Left edge: lerp between qp[0] (top-left) and qp[3] (bottom-left)
+          const lx = qp[0].x + (qp[3].x - qp[0].x) * r;
+          const ly = qp[0].y + (qp[3].y - qp[0].y) * r;
+          // Right edge: lerp between qp[1] (top-right) and qp[2] (bottom-right)
+          const rx = qp[1].x + (qp[2].x - qp[1].x) * r;
+          const ry = qp[1].y + (qp[2].y - qp[1].y) * r;
           const midX = (lx + rx) / 2;
           const midY = (ly + ry) / 2;
 
-          const hGrad = tCtx.createLinearGradient(
-            midX + px * hw, midY + py * hw,
-            midX - px * hw, midY - py * hw
-          );
-
-          if (curHMoldingStyle === 'gold') {
-            hGrad.addColorStop(0,    '#5a3d00');
-            hGrad.addColorStop(0.15, '#b8860b');
-            hGrad.addColorStop(0.35, '#ffd700');
-            hGrad.addColorStop(0.5,  '#fff8c0');
-            hGrad.addColorStop(0.65, '#ffd700');
-            hGrad.addColorStop(0.85, '#b8860b');
-            hGrad.addColorStop(1,    '#5a3d00');
-          } else if (curHMoldingStyle === 'black') {
-            hGrad.addColorStop(0,    '#0a0a0a');
-            hGrad.addColorStop(0.25, '#1c1c1c');
-            hGrad.addColorStop(0.5,  '#383838');
-            hGrad.addColorStop(0.75, '#1c1c1c');
-            hGrad.addColorStop(1,    '#0a0a0a');
-          } else if (curHMoldingStyle === 'metallic') {
-            hGrad.addColorStop(0,    '#4a4a4a');
-            hGrad.addColorStop(0.2,  '#9a9a9a');
-            hGrad.addColorStop(0.45, '#e8e8e8');
-            hGrad.addColorStop(0.5,  '#ffffff');
-            hGrad.addColorStop(0.55, '#e8e8e8');
-            hGrad.addColorStop(0.8,  '#9a9a9a');
-            hGrad.addColorStop(1,    '#4a4a4a');
-          } else if (curHMoldingStyle === 'brass') {
-            hGrad.addColorStop(0,    '#2c1f00');
-            hGrad.addColorStop(0.15, '#7a5918');
-            hGrad.addColorStop(0.35, '#c49a27');
-            hGrad.addColorStop(0.5,  '#e8c95a');
-            hGrad.addColorStop(0.65, '#c49a27');
-            hGrad.addColorStop(0.85, '#7a5918');
-            hGrad.addColorStop(1,    '#2c1f00');
+          if (hStyle !== 'none') {
+            drawMoldLine(lx, ly, rx, ry, hStyle as Exclude<MoldingStyle,'none'>, curHMoldingWidth);
           }
 
-          tCtx.save();
-          tCtx.strokeStyle = hGrad;
-          tCtx.lineWidth = curHMoldingWidth;
-          tCtx.lineCap = 'butt';
-          tCtx.beginPath();
-          tCtx.moveTo(lx, ly);
-          tCtx.lineTo(rx, ry);
-          tCtx.stroke();
-          tCtx.restore();
+          // Draw virtual companion seam — always 2800 mm (singleRowH) away from this primary.
+          // Companion is derived, never stored in hMoldingPositions.
+          if (isActive) {
+            const cMag = hMoldingCompanionMapRef.current.get(r.toFixed(6));
+            if (cMag !== undefined) {
+              for (const cr of [r + cMag, r - cMag]) {
+                if (cr <= 0 || cr >= 1) continue;
+                const clx = qp[0].x + (qp[3].x - qp[0].x) * cr;
+                const cly = qp[0].y + (qp[3].y - qp[0].y) * cr;
+                const crx2 = qp[1].x + (qp[2].x - qp[1].x) * cr;
+                const cry2 = qp[1].y + (qp[2].y - qp[1].y) * cr;
+                const cmX = (clx + crx2) / 2, cmY = (cly + cry2) / 2;
+                // Profile line (same style as primary)
+                if (hStyle !== 'none') {
+                  drawMoldLine(clx, cly, crx2, cry2, hStyle as Exclude<MoldingStyle,'none'>, curHMoldingWidth);
+                }
+                // Drag handle (edit mode only)
+                if (!curIsErasing && !forExportRef.current) {
+                  tCtx.save();
+                  tCtx.strokeStyle = 'rgba(255,255,255,0.45)'; tCtx.lineWidth = 1; tCtx.setLineDash([4, 4]);
+                  tCtx.beginPath(); tCtx.moveTo(clx, cly); tCtx.lineTo(crx2, cry2); tCtx.stroke();
+                  tCtx.restore();
+                  tCtx.save();
+                  tCtx.fillStyle = 'rgba(255,255,255,0.85)';
+                  tCtx.strokeStyle = 'rgba(0,0,0,0.20)'; tCtx.lineWidth = 1.5; tCtx.setLineDash([]);
+                  tCtx.beginPath(); tCtx.arc(cmX, cmY, 8, 0, Math.PI * 2); tCtx.fill(); tCtx.stroke();
+                  tCtx.fillStyle = '#555'; tCtx.font = 'bold 10px sans-serif';
+                  tCtx.textAlign = 'center'; tCtx.textBaseline = 'middle';
+                  tCtx.fillText('↕', cmX, cmY);
+                  tCtx.restore();
+                }
+              }
+            }
+          }
 
-          // Draw drag handle (visible when not erasing and not exporting)
+          // Draw drag handle — always visible (on every surface, not just active),
+          // hidden only during eraser mode and export.
           if (!curIsErasing && !forExportRef.current) {
+            // Subtle guide line so the handle makes sense visually
             tCtx.save();
-            tCtx.strokeStyle = 'rgba(255,255,255,0.6)';
-            tCtx.lineWidth = 2;
-            tCtx.setLineDash([6, 4]);
+            tCtx.strokeStyle = isActive ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.20)';
+            tCtx.lineWidth = 1;
+            tCtx.setLineDash([4, 4]);
             tCtx.beginPath();
             tCtx.moveTo(lx, ly);
             tCtx.lineTo(rx, ry);
             tCtx.stroke();
             tCtx.restore();
 
+            const selH = isActive && selectedHMoldingIdxRef.current === hIdx;
+            const handleR = isActive ? 8 : 5;
             tCtx.save();
-            tCtx.fillStyle = 'white';
-            tCtx.strokeStyle = 'rgba(0,0,0,0.3)';
+            tCtx.fillStyle = selH ? '#1d4ed8' : isActive ? 'white' : 'rgba(255,255,255,0.55)';
+            tCtx.strokeStyle = selH ? '#1e40af' : 'rgba(0,0,0,0.20)';
             tCtx.lineWidth = 1.5;
             tCtx.setLineDash([]);
             tCtx.beginPath();
-            tCtx.arc(midX, midY, 8, 0, Math.PI * 2);
+            tCtx.arc(midX, midY, handleR, 0, Math.PI * 2);
             tCtx.fill();
             tCtx.stroke();
-            tCtx.fillStyle = '#555';
-            tCtx.font = 'bold 10px sans-serif';
+            if (isActive) {
+              tCtx.fillStyle = selH ? 'white' : '#555';
+              tCtx.font = 'bold 10px sans-serif';
+              tCtx.textAlign = 'center';
+              tCtx.textBaseline = 'middle';
+              tCtx.fillText('↕', midX, midY);
+            }
+            tCtx.restore();
+          }
+        });
+      }
+
+      // Auto-mandatory horizontal row joints: when wall is taller than one panel row.
+      // Vertical panels: row height = panel height (default 2800 mm, or custom from product).
+      // Horizontal TV panels: row height = panel width (default 1220 mm, or custom from product).
+      {
+        const isHorizTvH = wallZoneRef.current === 'tv' && cfg.panelOrientation === 'horizontal';
+        const primaryMatH = cfg.sectorMaterials[0];
+        const singleRowH = isHorizTvH
+          ? (primaryMatH?.panelWidthMm ?? PANEL_W_MM)
+          : (primaryMatH?.panelHeightMm ?? PANEL_H_MM);
+        const autoHStyle: Exclude<MoldingStyle, 'none'> =
+          curHMoldingStyle !== 'none' ? curHMoldingStyle as Exclude<MoldingStyle, 'none'> :
+          curMoldingStyle !== 'none' ? curMoldingStyle as Exclude<MoldingStyle, 'none'> : 'black';
+        const autoHWidth = curHMoldingStyle !== 'none' ? curHMoldingWidth :
+          curMoldingStyle !== 'none' ? curMoldingWidth : 2;
+        const jpp = cfg.jointProfilePosition ?? ['bottom'];
+        const hasTop    = jpp.includes('top');
+        const hasBottom = jpp.includes('bottom');
+
+        // Skip horizontal seam entirely if ALL sector materials join without profile.
+        const allNoProfile = cfg.panelCount > 0 &&
+          Array.from({ length: cfg.panelCount }, (_, i) => cfg.sectorMaterials[i])
+            .every(m => m?.noMetallicProfile === true);
+
+        // Draw one horizontal seam at ratio r (0–1 of quad height).
+        // Skips positions already covered by a user hMolding that is actually visible (style ≠ 'none').
+        const drawHSeam = (r: number) => {
+          if (r <= 0 || r >= 1) return;
+          // Skip seams already claimed by an hMolding (either close-by or explicitly adopted).
+          if (adoptedSeamOriginalsRef.current.has(r)) return;
+          if (curHPositions.some((p, idx) => {
+            const hStyle = cfg.hMoldingStyleOverrides?.[idx] ?? curHMoldingStyle;
+            return Math.abs(p - r) < 0.005 && hStyle !== 'none';
+          })) return;
+          const lx = qp[0].x + (qp[3].x - qp[0].x) * r;
+          const ly = qp[0].y + (qp[3].y - qp[0].y) * r;
+          const rx = qp[1].x + (qp[2].x - qp[1].x) * r;
+          const ry = qp[1].y + (qp[2].y - qp[1].y) * r;
+          const midX = (lx + rx) / 2;
+          const midY = (ly + ry) / 2;
+          // Forced row-join: draw using active hMolding style (or molding style fallback).
+          drawMoldLine(lx, ly, rx, ry, autoHStyle, autoHWidth);
+          // Drag handle — visible only on active surface, not during erase/export.
+          if (isActive && !curIsErasing && !forExportRef.current) {
+            tCtx.save();
+            tCtx.fillStyle = '#ef4444';
+            tCtx.strokeStyle = 'rgba(255,255,255,0.9)';
+            tCtx.lineWidth = 1.5;
+            tCtx.setLineDash([]);
+            tCtx.beginPath();
+            tCtx.arc(midX, midY, 7, 0, Math.PI * 2);
+            tCtx.fill();
+            tCtx.stroke();
+            tCtx.fillStyle = 'white';
+            tCtx.font = 'bold 9px sans-serif';
             tCtx.textAlign = 'center';
             tCtx.textBaseline = 'middle';
             tCtx.fillText('↕', midX, midY);
             tCtx.restore();
           }
-        });
+        };
+
+        if (!allNoProfile && cfg.wallHeightMm > singleRowH) {
+          const rowCount = Math.ceil(cfg.wallHeightMm / singleRowH);
+          // cutH = height of the partial panel at the extension end
+          const cutH = cfg.wallHeightMm - (rowCount - 1) * singleRowH;
+          // "bottom" seam: full panels stacked from top, cut piece at bottom
+          //   → seam is one full panel height from the bottom = (rowCount-1)*singleRowH from top
+          const bottomSeamRatio = (rowCount - 1) * singleRowH / cfg.wallHeightMm;
+          // "top" seam: symmetric — same distance from top as "bottom" is from the bottom
+          //   → seam is cutH from top
+          const topSeamRatio = cutH / cfg.wallHeightMm;
+
+          if (hasTop && hasBottom) {
+            // Both: split cut equally — half from top, half from bottom
+            const halfCut = cutH / 2;
+            drawHSeam(halfCut / cfg.wallHeightMm);
+            drawHSeam((cfg.wallHeightMm - halfCut) / cfg.wallHeightMm);
+          } else {
+            if (hasTop)    drawHSeam(topSeamRatio);
+            if (hasBottom) drawHSeam(bottomSeamRatio);
+          }
+
+          // Middle seams: interior full-panel row boundaries, always drawn
+          for (let ri = 1; ri <= rowCount - 2; ri++) {
+            drawHSeam((ri * singleRowH) / cfg.wallHeightMm);
+          }
+        }
+      }
+      }; // end renderQuad
+
+      // Render each marked quad with its own per-surface config
+      const nQuads = Math.min(3, Math.floor(pts.length / 4));
+      // Invariant: active surface index must point at an existing quad
+      const curActiveSurf = Math.min(activeSurfaceRef.current, nQuads - 1);
+      const liveCfg: SurfaceConfig = {
+        panelCount: curPanelCount,
+        dividerPositions: curDividers,
+        sectorMaterials: curMaterials,
+        moldingStyle: moldingStyleRef.current,
+        moldingWidth: moldingWidthRef.current,
+        hMoldingStyle: hMoldingStyleRef.current,
+        hMoldingCount: hMoldingCountRef.current,
+        hMoldingWidth: hMoldingWidthRef.current,
+        hMoldingPositions: hMoldingPositionsRef.current,
+        wallWidthMm: wallWidthMmRef.current,
+        wallHeightMm: wallHeightMmRef.current,
+        panelOrientation: panelOrientationRef.current,
+        jointProfilePosition: jointProfilePositionRef.current,
+        dividerStyleOverrides: dividerStyleOverridesRef.current,
+        hMoldingStyleOverrides: hMoldingStyleOverridesRef.current,
+      };
+      const quadCfgs: SurfaceConfig[] = [];
+      for (let q = 0; q < nQuads; q++) {
+        const base = q === curActiveSurf ? liveCfg : (surfacesRef.current[q] ?? defaultSurfaceConfig());
+        // wall-niche: panels are always vertical (no UI toggle exposed for this zone)
+        quadCfgs.push(wallZoneRef.current === 'wall-niche' ? { ...base, panelOrientation: 'vertical' } : base);
+      }
+      // Door zone: draw a grey silhouette for the door opening BEFORE panel quads
+      // so panels always render on top. Opening = area between inner edges of side strips.
+      for (let q = 0; q < nQuads; q++) {
+        // Wrap continuation: first sector of this wall reuses the LAST panel of the previous wall
+        let overrideMat: Panel | undefined;
+        if (q > 0 && (wrapJunctionsRef.current[q - 1] ?? false)
+            && (cornerTypesRef.current[q - 1] ?? 'external') === 'external') {
+          const prevCfg = quadCfgs[q - 1];
+          overrideMat = prevCfg.sectorMaterials[prevCfg.panelCount - 1] || BAMBOO_PANELS[0];
+        }
+        renderQuad(pts.slice(q * 4, q * 4 + 4), quadCfgs[q], q === curActiveSurf, overrideMat);
+      }
+      // Simplified cylindrical shading for round/oval columns:
+      // dark edges + light center overlay makes the flat marked plane read as a cylinder
+      if (wallZoneRef.current === 'column' && columnShapeRef.current === 'round') {
+        for (let q = 0; q < nQuads; q++) {
+          const qp = pts.slice(q * 4, q * 4 + 4);
+          if (qp.length < 4) continue;
+          // Gradient runs from mid-left edge (p0–p3) to mid-right edge (p1–p2)
+          const lx = (qp[0].x + qp[3].x) / 2, ly = (qp[0].y + qp[3].y) / 2;
+          const rx = (qp[1].x + qp[2].x) / 2, ry = (qp[1].y + qp[2].y) / 2;
+          const cylGrad = tCtx.createLinearGradient(lx, ly, rx, ry);
+          // Highlight peak position (0 = left edge, 1 = right edge); remap the
+          // symmetric stop pattern so its center lands at `hc`
+          const hc = Math.min(0.9, Math.max(0.1, cylHighlightPosRef.current));
+          const remap = (t: number) => t < 0.5 ? t * (hc / 0.5) : hc + (t - 0.5) * ((1 - hc) / 0.5);
+          ([
+            [0,    'rgba(0,0,0,0.50)'],
+            [0.10, 'rgba(0,0,0,0.28)'],
+            [0.26, 'rgba(0,0,0,0.06)'],
+            [0.38, 'rgba(255,255,255,0.16)'],
+            [0.50, 'rgba(255,255,255,0.24)'],
+            [0.62, 'rgba(255,255,255,0.16)'],
+            [0.74, 'rgba(0,0,0,0.06)'],
+            [0.90, 'rgba(0,0,0,0.28)'],
+            [1,    'rgba(0,0,0,0.50)'],
+          ] as [number, string][]).forEach(([t, c]) => cylGrad.addColorStop(remap(t), c));
+          tCtx.save();
+          tCtx.beginPath();
+          tCtx.moveTo(qp[0].x, qp[0].y);
+          tCtx.lineTo(qp[1].x, qp[1].y);
+          tCtx.lineTo(qp[2].x, qp[2].y);
+          tCtx.lineTo(qp[3].x, qp[3].y);
+          tCtx.closePath();
+          tCtx.fillStyle = cylGrad;
+          tCtx.fill();
+          tCtx.restore();
+        }
+      }
+
+      // Corner edge visual between adjacent quads (right edge of previous quad)
+      // Skip for TV builtin — Стена/Короб quads are not physical adjacent corners
+      for (let q = 1; q < nQuads; q++) {
+        if (wallZoneRef.current === 'tv') continue; // Стена/Короб quads are not physical adjacent corners
+        const e1 = pts[(q - 1) * 4 + 1], e2 = pts[(q - 1) * 4 + 2];
+        const cTopX = e1.x, cTopY = e1.y;
+        const cBotX = e2.x, cBotY = e2.y;
+        const cDx = cBotX - cTopX, cDy = cBotY - cTopY;
+        const cLen = Math.sqrt(cDx * cDx + cDy * cDy) || 1;
+        const cpx = -cDy / cLen, cpy = cDx / cLen;
+        const cMidX = (cTopX + cBotX) / 2, cMidY = (cTopY + cBotY) / 2;
+        const cGrad = tCtx.createLinearGradient(
+          cMidX + cpx * 6, cMidY + cpy * 6,
+          cMidX - cpx * 6, cMidY - cpy * 6
+        );
+        const jExternal = (cornerTypesRef.current[q - 1] ?? 'external') === 'external';
+        const jWrap = jExternal && (wrapJunctionsRef.current[q - 1] ?? false);
+        // Wrap (загиб): texture simply continues around the corner — no seam/highlight drawn
+        if (jWrap) continue;
+        if (jExternal) {
+          cGrad.addColorStop(0,   'rgba(0,0,0,0.40)');
+          cGrad.addColorStop(0.4, 'rgba(0,0,0,0.10)');
+          cGrad.addColorStop(0.5, 'rgba(0,0,0,0.0)');
+          cGrad.addColorStop(0.6, 'rgba(0,0,0,0.10)');
+          cGrad.addColorStop(1,   'rgba(0,0,0,0.40)');
+        } else {
+          cGrad.addColorStop(0,    'rgba(0,0,0,0.0)');
+          cGrad.addColorStop(0.35, 'rgba(0,0,0,0.55)');
+          cGrad.addColorStop(0.5,  'rgba(0,0,0,0.72)');
+          cGrad.addColorStop(0.65, 'rgba(0,0,0,0.55)');
+          cGrad.addColorStop(1,    'rgba(0,0,0,0.0)');
+        }
+        tCtx.save();
+        tCtx.strokeStyle = cGrad;
+        tCtx.lineWidth = 12;
+        tCtx.lineCap = 'butt';
+        tCtx.beginPath();
+        tCtx.moveTo(cTopX, cTopY);
+        tCtx.lineTo(cBotX, cBotY);
+        tCtx.stroke();
+        tCtx.restore();
+      }
+
+
+      // Column corner moldings: draw profile at each junction between visible faces
+      // and at the outer edges of the first/last face (where hidden faces connect).
+      if (wallZoneRef.current === 'column' && nQuads > 0) {
+        const isRound = columnShapeRef.current === 'round';
+        // Helper: pick molding style from two adjacent configs (prefer non-none)
+        const pickStyle = (a: SurfaceConfig, b?: SurfaceConfig): Exclude<MoldingStyle, 'none'> | null => {
+          const s = a.moldingStyle !== 'none' ? a.moldingStyle : (b && b.moldingStyle !== 'none') ? b.moldingStyle : null;
+          return s ? s as Exclude<MoldingStyle, 'none'> : null;
+        };
+        const pickWidth = (a: SurfaceConfig, b?: SurfaceConfig) =>
+          a.moldingStyle !== 'none' ? a.moldingWidth : b?.moldingStyle !== 'none' ? b!.moldingWidth : 4;
+
+        // Junction edges between visible faces
+        if (!isRound) {
+          for (let j = 0; j < nQuads - 1; j++) {
+            const jExternal = (cornerTypesRef.current[j] ?? 'external') === 'external';
+            const jWrap = jExternal && (wrapJunctionsRef.current[j] ?? false);
+            if (jWrap) continue;                 // загиб — no seam profile
+            const style = pickStyle(quadCfgs[j], quadCfgs[j + 1]);
+            if (!style) continue;
+            const lw = pickWidth(quadCfgs[j], quadCfgs[j + 1]);
+            const e1 = pts[(j) * 4 + 1], e2 = pts[(j) * 4 + 2];
+            drawMoldLine(e1.x, e1.y, e2.x, e2.y, style, lw);
+          }
+        }
+
+        // Outer left edge of face 0 (border with hidden face, if no wrap on that side)
+        {
+          const wrapLeft0 = nQuads > 1 &&
+            (wrapJunctionsRef.current[0] ?? false) &&
+            (cornerTypesRef.current[0] ?? 'external') === 'external' &&
+            false; // face 0 left side is never a right-side wrap of anything
+          const style = pickStyle(quadCfgs[0]);
+          if (style && !isRound) {
+            const lw = pickWidth(quadCfgs[0]);
+            const t = pts[0], b = pts[3];
+            drawMoldLine(t.x, t.y, b.x, b.y, style, lw);
+          }
+        }
+        // Outer right edge of last face
+        {
+          const lastQ = nQuads - 1;
+          const wrapRight = nQuads > 1 &&
+            (wrapJunctionsRef.current[lastQ - 1] ?? false) &&
+            (cornerTypesRef.current[lastQ - 1] ?? 'external') === 'external';
+          const style = pickStyle(quadCfgs[lastQ]);
+          if (style && !wrapRight && !isRound) {
+            const lw = pickWidth(quadCfgs[lastQ]);
+            const t = pts[lastQ * 4 + 1], b = pts[lastQ * 4 + 2];
+            drawMoldLine(t.x, t.y, b.x, b.y, style, lw);
+          }
+        }
+      }
+      // Edge profiles: draw tortsevoy profile on selected sides of the active quad
+      {
+        const ep = edgeProfileSidesRef.current;
+        const hasEdge = ep.top || ep.bottom || ep.left || ep.right;
+        if (hasEdge) {
+          const aq = pts.slice(curActiveSurf * 4, curActiveSurf * 4 + 4);
+          if (aq.length === 4) {
+            // qp[0]=top-left, qp[1]=top-right, qp[2]=bottom-right, qp[3]=bottom-left
+            const edgeSideDefs: Array<[boolean, typeof aq[0], typeof aq[0]]> = [
+              [ep.top,    aq[0], aq[1]],
+              [ep.right,  aq[1], aq[2]],
+              [ep.bottom, aq[3], aq[2]],
+              [ep.left,   aq[0], aq[3]],
+            ];
+            edgeSideDefs.forEach(([active, p1, p2]) => {
+              if (!active) return;
+              drawMoldLine(p1.x, p1.y, p2.x, p2.y, edgeProfileColorRef.current as Exclude<MoldingStyle, 'none'>, 2);
+            });
+          }
+        }
+      }
+
+      // Vertical decorative profile at the junction edge between the main wall and each side wall.
+      // Drawn at the RIGHT edge of the PREVIOUS quad (top-right → bottom-right), which runs
+      // vertically along the main wall surface where it meets the niche side wall.
+      if (wallZoneRef.current === 'wall-niche') {
+        for (let qi = 1; qi < nQuads; qi++) {
+          const sc = surfacesRef.current[qi];
+          if (!sc) continue;
+          const vstyle = (sc.vProfileStyle ?? 'black') as MoldingStyle;
+          const vwidth = sc.vProfileWidth ?? 2;
+          if (vstyle === 'none') continue;
+          // Junction edge: right side of the previous quad (top-right → bottom-right).
+          // This always runs vertically along the main wall at the niche corner.
+          const vp1 = pts[(qi - 1) * 4 + 1]; // top-right of previous quad
+          const vp2 = pts[(qi - 1) * 4 + 2]; // bottom-right of previous quad
+          if (!vp1 || !vp2) continue;
+          drawMoldLine(vp1.x, vp1.y, vp2.x, vp2.y, vstyle as Exclude<MoldingStyle, 'none'>, vwidth);
+        }
+      }
+
+      // Active surface outline (only with multiple surfaces, hidden on export)
+      if (nQuads > 1 && !forExportRef.current && !curIsErasing) {
+        const aq = pts.slice(curActiveSurf * 4, curActiveSurf * 4 + 4);
+        if (aq.length === 4) {
+          tCtx.save();
+          tCtx.strokeStyle = '#7ec662';
+          tCtx.lineWidth = 3;
+          tCtx.setLineDash([10, 6]);
+          tCtx.beginPath();
+          tCtx.moveTo(aq[0].x, aq[0].y);
+          aq.forEach(pp => tCtx.lineTo(pp.x, pp.y));
+          tCtx.closePath();
+          tCtx.stroke();
+          tCtx.restore();
+        }
+      }
+
+      // TV: LED backlight — soft 4000K warm-white light radiating OUTWARD from selected box edges.
+      // Surface-mounted: quad 0 is the box face. Built-in: quad 1 (Короб) is the box face.
+      // Per-edge: tvBacklightEdgesRef.current[0..3] = [top, right, bottom, left].
+      let tvGlowFacePts: Point[] | null = null;
+      if (wallZoneRef.current === 'tv' && tvBacklightEnabledRef.current) {
+        if (pts.length >= 8) tvGlowFacePts = pts.slice(4, 8); // quad 1 = Короб face for both types
+      }
+      if (tvGlowFacePts) {
+        const facePts = tvGlowFacePts;
+        const activeEdges = tvBacklightEdgesRef.current;
+        const W = tCtx.canvas.width, H = tCtx.canvas.height;
+        const centX = facePts.reduce((s, p) => s + p.x, 0) / 4;
+        const centY = facePts.reduce((s, p) => s + p.y, 0) / 4;
+
+        const glowC = document.createElement('canvas');
+        glowC.width = W; glowC.height = H;
+        const gCtx = glowC.getContext('2d')!;
+
+        // For each ENABLED edge: draw a gradient strip extending outward.
+        const drawEdgeGlow = (glowSize: number, a0: string, a1: string, a2: string) => {
+          for (let i = 0; i < 4; i++) {
+            if (!activeEdges[i]) continue;
+            const a = facePts[i], b = facePts[(i + 1) % 4];
+            const edgeDx = b.x - a.x, edgeDy = b.y - a.y;
+            const edgeLen = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy) || 1;
+            let nx = -edgeDy / edgeLen, ny = edgeDx / edgeLen;
+            const midX = (a.x + b.x) / 2, midY = (a.y + b.y) / 2;
+            if ((midX + nx - centX) * nx + (midY + ny - centY) * ny < 0) { nx = -nx; ny = -ny; }
+            const grad = gCtx.createLinearGradient(midX, midY, midX + nx * glowSize, midY + ny * glowSize);
+            grad.addColorStop(0,    a0);
+            grad.addColorStop(0.35, a1);
+            grad.addColorStop(1,    a2);
+            gCtx.beginPath();
+            gCtx.moveTo(a.x,               a.y);
+            gCtx.lineTo(b.x,               b.y);
+            gCtx.lineTo(b.x + nx * glowSize, b.y + ny * glowSize);
+            gCtx.lineTo(a.x + nx * glowSize, a.y + ny * glowSize);
+            gCtx.closePath();
+            gCtx.fillStyle = grad;
+            gCtx.fill();
+          }
+        };
+        // 4000K: softer warm-white (more yellow-white, less orange than 3000K)
+        drawEdgeGlow(80,  'rgba(255, 212, 155, 0.25)', 'rgba(255, 180, 105, 0.11)', 'rgba(220, 145, 55, 0)');
+        drawEdgeGlow(38,  'rgba(255, 225, 175, 0.35)', 'rgba(255, 200, 130, 0.16)', 'rgba(240, 165, 70, 0)');
+        drawEdgeGlow(11,  'rgba(255, 248, 215, 0.45)', 'rgba(255, 232, 180, 0.25)', 'rgba(255, 212, 135, 0)');
+
+        // Corner radial patches — only where at least one adjacent edge is enabled
+        for (let i = 0; i < 4; i++) {
+          const prevEdge = (i + 3) % 4;
+          if (!activeEdges[prevEdge] && !activeEdges[i]) continue;
+          const c = facePts[i];
+          const rg = gCtx.createRadialGradient(c.x, c.y, 0, c.x, c.y, 70);
+          rg.addColorStop(0,    'rgba(255, 228, 170, 0.35)');
+          rg.addColorStop(0.3,  'rgba(255, 200, 125, 0.18)');
+          rg.addColorStop(1,    'rgba(220, 158, 58, 0)');
+          gCtx.beginPath();
+          gCtx.arc(c.x, c.y, 70, 0, Math.PI * 2);
+          gCtx.fillStyle = rg;
+          gCtx.fill();
+        }
+
+        // Punch out the box interior — glow only on the surrounding wall
+        gCtx.save();
+        gCtx.globalCompositeOperation = 'destination-out';
+        gCtx.beginPath();
+        gCtx.moveTo(facePts[0].x, facePts[0].y);
+        facePts.forEach(p => gCtx.lineTo(p.x, p.y));
+        gCtx.closePath();
+        gCtx.fillStyle = 'rgba(0,0,0,1)';
+        gCtx.fill();
+        gCtx.restore();
+
+        // Composite glow layer onto main scene
+        tCtx.drawImage(glowC, 0, 0);
       }
 
       // Apply eraser mask — replay strokes from memory (never lost on canvas reset)
@@ -804,6 +2106,17 @@ const BambooStudio = () => {
         tCtx.globalCompositeOperation = 'destination-out';
         tCtx.drawImage(tempMask, 0, 0);
         tCtx.globalCompositeOperation = 'source-over';
+      }
+      const doorOpening = doorOpeningPointsRef.current;
+      if (wallZoneRef.current === 'door' && doorOpening.length === 4) {
+        tCtx.save();
+        tCtx.globalCompositeOperation = 'destination-out';
+        tCtx.beginPath();
+        tCtx.moveTo(doorOpening[0].x, doorOpening[0].y);
+        doorOpening.slice(1).forEach(p => tCtx.lineTo(p.x, p.y));
+        tCtx.closePath();
+        tCtx.fill();
+        tCtx.restore();
       }
 
       ctx.save();
@@ -823,12 +2136,57 @@ const BambooStudio = () => {
       ctx.globalCompositeOperation = 'multiply';
       ctx.drawImage(img, 0, 0, width, height);
       ctx.restore();
+
+      // Semi-transparent ALL WALL watermark — only on exported images (PNG / КП)
+      if (forExportRef.current) {
+        ctx.save();
+        const fontSize = Math.max(24, Math.round(width / 18));
+        ctx.font = `bold ${fontSize}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        // Diagonal tiled watermark
+        ctx.translate(width / 2, height / 2);
+        ctx.rotate(-Math.PI / 7);
+        const stepX = fontSize * 8;
+        const stepY = fontSize * 4;
+        const diag = Math.sqrt(width * width + height * height);
+        for (let wy = -diag / 2; wy <= diag / 2; wy += stepY) {
+          const rowOffset = (Math.round(wy / stepY) % 2) * (stepX / 2);
+          for (let wx = -diag / 2; wx <= diag / 2; wx += stepX) {
+            ctx.fillStyle = 'rgba(255,255,255,0.13)';
+            ctx.fillText('ALL WALL', wx + rowOffset, wy + 1);
+            ctx.fillStyle = 'rgba(0,0,0,0.07)';
+            ctx.fillText('ALL WALL', wx + rowOffset, wy - 1);
+          }
+        }
+        ctx.restore();
+        // Brand mark in the bottom-right corner
+        ctx.save();
+        const cornerSize = Math.max(14, Math.round(width / 55));
+        ctx.font = `bold ${cornerSize}px sans-serif`;
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'bottom';
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.fillText('ALL WALL · allwall.ru', width - 14, height - 11);
+        ctx.fillStyle = 'rgba(255,255,255,0.75)';
+        ctx.fillText('ALL WALL · allwall.ru', width - 15, height - 12);
+        ctx.restore();
+      }
     }
   }, []);
 
-  // Preload all panel texture images into cache; re-draw when each loads
+  // Preload panel texture images into cache; re-runs when the catalog changes
   useEffect(() => {
-    BAMBOO_PANELS.forEach(panel => {
+    const panels = catalogSeries.flatMap(s => s.panels);
+    catalogPanelsRef.current = panels;
+    // Keep series lookups in sync so joint rules and КП pricing work for
+    // products from manager-created series too.
+    _PANEL_SERIES_MAP.clear();
+    catalogSeries.forEach(s => s.panels.forEach(p => {
+      _PANEL_SERIES_MAP.set(p.id, s.id);
+      PANEL_TO_SERIES[p.id] = s.id;
+    }));
+    panels.forEach(panel => {
       if (!panel.texture || textureCacheRef.current[panel.id]) return;
       const img = new Image();
       img.crossOrigin = 'anonymous';
@@ -838,25 +2196,90 @@ const BambooStudio = () => {
       };
       img.src = panel.texture;
     });
-  }, [drawFullScene]);
+  }, [catalogSeries, drawFullScene]);
+
+  // Fetch full product catalog when series definitions change. Registering
+  // definitions first lets custom series resolve to their stable id and price.
+  useEffect(() => {
+    seriesDefinitions.forEach((series, index) => {
+      SERIES_ID_MAP.set(series.name, series.id);
+      SERIES_ORDER_MAP.set(series.id, DEFAULT_SERIES_PRICES.length + index);
+      SERIES_PRICES[series.id] = series.price;
+    });
+
+    fetch('/api/products')
+      .then(r => r.ok ? r.json() : [])
+      .then((products: ApiProduct[]) => {
+        // Build photo override map for texture cache
+        const map: Record<string, string> = {};
+        products.forEach(p => { if (p.photoUrl) map[p.article] = p.photoUrl; });
+        setDbPhotoMap(map);
+        // Build dynamic catalog (falls back to hardcoded if DB is empty)
+        const built = buildCatalogSeries(products);
+        if (built.length > 0) setCatalogSeries(built);
+        // Build molding price map from DB molding products (category='molding')
+        const dbMoldingPrices: Record<string, number> = {};
+        for (const p of products) {
+          if (p.category !== 'molding' || !p.series || !p.cost || p.cost <= 0) continue;
+          const match = DEFAULT_MOLDING_PRICES.find(m => m.name === p.series);
+          if (match && (!dbMoldingPrices[match.id] || p.cost < dbMoldingPrices[match.id])) {
+            dbMoldingPrices[match.id] = p.cost;
+          }
+        }
+        moldingDbPricesRef.current = dbMoldingPrices;
+      })
+      .catch(() => { /* non-critical */ });
+  }, [seriesDefinitions]);
+
+  // When DB photo map changes, inject images into texture cache for matching panels
+  useEffect(() => {
+    Object.entries(dbPhotoMap).forEach(([article, dataUrl]) => {
+      const img = new Image();
+      img.onload = () => {
+        textureCacheRef.current[article] = img;
+        drawFullScene();
+      };
+      img.src = dataUrl;
+    });
+  }, [dbPhotoMap, drawFullScene]);
 
   // Find which divider (index) is near a given canvas point, or -1 if none
   const findNearDivider = useCallback((cx: number, cy: number): number => {
     const pts = pointsRef.current;
     const dividers = dividerPositionsRef.current;
     if (pts.length < 4) return -1;
+    const isHoriz = panelOrientationRef.current === 'horizontal' || panelOrientationRef.current === 'lengthwise';
 
     for (let d = 0; d < dividers.length; d++) {
       const ratio = dividers[d];
-      const topX = pts[0].x + (pts[1].x - pts[0].x) * ratio;
-      const topY = pts[0].y + (pts[1].y - pts[0].y) * ratio;
-      const botX = pts[3].x + (pts[2].x - pts[3].x) * ratio;
-      const botY = pts[3].y + (pts[2].y - pts[3].y) * ratio;
-      const midX = (topX + botX) / 2;
-      const midY = (topY + botY) / 2;
+      let midX: number, midY: number;
 
-      const dist = Math.sqrt((cx - midX) ** 2 + (cy - midY) ** 2);
-      if (dist <= DIVIDER_HIT_RADIUS * 2) return d;
+      // Only the active surface's quad has draggable dividers
+      const asIdx = activeSurfaceRef.current;
+      const aq = pts.slice(asIdx * 4, asIdx * 4 + 4);
+      const quadPts = [aq.length === 4 ? aq : pts.slice(0, 4)];
+      let minDistFound = Infinity;
+      for (const qp of quadPts) {
+        let aX: number, aY: number, bX: number, bY: number;
+        if (isHoriz) {
+          // Horizontal divider: line from left edge to right edge at vertical ratio
+          aX = qp[0].x + (qp[3].x - qp[0].x) * ratio;
+          aY = qp[0].y + (qp[3].y - qp[0].y) * ratio;
+          bX = qp[1].x + (qp[2].x - qp[1].x) * ratio;
+          bY = qp[1].y + (qp[2].y - qp[1].y) * ratio;
+        } else {
+          // Vertical divider: line from top edge to bottom edge at horizontal ratio
+          aX = qp[0].x + (qp[1].x - qp[0].x) * ratio;
+          aY = qp[0].y + (qp[1].y - qp[0].y) * ratio;
+          bX = qp[3].x + (qp[2].x - qp[3].x) * ratio;
+          bY = qp[3].y + (qp[2].y - qp[3].y) * ratio;
+        }
+        midX = (aX + bX) / 2;
+        midY = (aY + bY) / 2;
+        const dQ = Math.sqrt((cx - midX) ** 2 + (cy - midY) ** 2);
+        if (dQ < minDistFound) minDistFound = dQ;
+      }
+      if (minDistFound <= DIVIDER_HIT_RADIUS * 2) return d;
     }
     return -1;
   }, []);
@@ -866,12 +2289,13 @@ const BambooStudio = () => {
     const pts = pointsRef.current;
     if (pts.length < 4) return 0;
 
-    // Project point onto the top edge interpolation
-    const totalLen = Math.sqrt((pts[1].x - pts[0].x) ** 2 + (pts[1].y - pts[0].y) ** 2);
-    if (totalLen === 0) return 0;
-    const dx = pts[1].x - pts[0].x;
-    const dy = pts[1].y - pts[0].y;
-    const t = ((cx - pts[0].x) * dx + (cy - pts[0].y) * dy) / (totalLen * totalLen);
+    const asIdx = activeSurfaceRef.current;
+    const q = pts.length >= asIdx * 4 + 4 ? pts.slice(asIdx * 4, asIdx * 4 + 4) : pts.slice(0, 4);
+    const dx = q[1].x - q[0].x;
+    const dy = q[1].y - q[0].y;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq === 0) return 0;
+    const t = ((cx - q[0].x) * dx + (cy - q[0].y) * dy) / lenSq;
     return Math.max(0, Math.min(1, t));
   }, []);
 
@@ -879,11 +2303,13 @@ const BambooStudio = () => {
   const canvasYToWallRatio = useCallback((cx: number, cy: number): number => {
     const pts = pointsRef.current;
     if (pts.length < 4) return 0;
-    // Project onto the center vertical axis of the wall
-    const topX = (pts[0].x + pts[1].x) / 2;
-    const topY = (pts[0].y + pts[1].y) / 2;
-    const botX = (pts[2].x + pts[3].x) / 2;
-    const botY = (pts[2].y + pts[3].y) / 2;
+    // Project onto the center vertical axis of the ACTIVE surface quad
+    const asIdx = activeSurfaceRef.current;
+    const q = pts.length >= asIdx * 4 + 4 ? pts.slice(asIdx * 4, asIdx * 4 + 4) : pts.slice(0, 4);
+    const topX = (q[0].x + q[1].x) / 2;
+    const topY = (q[0].y + q[1].y) / 2;
+    const botX = (q[2].x + q[3].x) / 2;
+    const botY = (q[2].y + q[3].y) / 2;
     const dx = botX - topX;
     const dy = botY - topY;
     const lenSq = dx * dx + dy * dy;
@@ -895,20 +2321,85 @@ const BambooStudio = () => {
   // Find which horizontal molding handle is near a canvas point, or -1
   const findNearHMolding = useCallback((cx: number, cy: number): number => {
     const pts = pointsRef.current;
-    if (pts.length !== 4) return -1;
+    if (pts.length < 4) return -1;
+    const asIdx = activeSurfaceRef.current;
+    const q = pts.length >= asIdx * 4 + 4 ? pts.slice(asIdx * 4, asIdx * 4 + 4) : pts.slice(0, 4);
     const positions = hMoldingPositionsRef.current;
+    // Distance from point (cx,cy) to line segment (lx,ly)-(rx,ry)
+    const distToSeg = (lx: number, ly: number, rx: number, ry: number) => {
+      const dx = rx - lx, dy = ry - ly;
+      const lenSq = dx * dx + dy * dy;
+      if (lenSq === 0) return Math.sqrt((cx - lx) ** 2 + (cy - ly) ** 2);
+      const t = Math.max(0, Math.min(1, ((cx - lx) * dx + (cy - ly) * dy) / lenSq));
+      return Math.sqrt((cx - (lx + t * dx)) ** 2 + (cy - (ly + t * dy)) ** 2);
+    };
     for (let i = 0; i < positions.length; i++) {
       const r = positions[i];
-      const lx = pts[0].x + (pts[3].x - pts[0].x) * r;
-      const ly = pts[0].y + (pts[3].y - pts[0].y) * r;
-      const rx = pts[1].x + (pts[2].x - pts[1].x) * r;
-      const ry = pts[1].y + (pts[2].y - pts[1].y) * r;
+      const lx = q[0].x + (q[3].x - q[0].x) * r;
+      const ly = q[0].y + (q[3].y - q[0].y) * r;
+      const rx = q[1].x + (q[2].x - q[1].x) * r;
+      const ry = q[1].y + (q[2].y - q[1].y) * r;
       const midX = (lx + rx) / 2;
       const midY = (ly + ry) / 2;
+      // Hit the drag handle (14px radius) OR anywhere along the visible line (8px)
       if (Math.sqrt((cx - midX) ** 2 + (cy - midY) ** 2) <= 14) return i;
+      if (distToSeg(lx, ly, rx, ry) <= 8) return i;
+    }
+    // Also hit-test virtual companion lines — clicking a companion drags the primary.
+    for (let i = 0; i < positions.length; i++) {
+      const r = positions[i];
+      const cMag = hMoldingCompanionMapRef.current.get(r.toFixed(6));
+      if (cMag === undefined) continue;
+      for (const cr of [r + cMag, r - cMag]) {
+        if (cr <= 0 || cr >= 1) continue;
+        const clx = q[0].x + (q[3].x - q[0].x) * cr;
+        const cly = q[0].y + (q[3].y - q[0].y) * cr;
+        const crx2 = q[1].x + (q[2].x - q[1].x) * cr;
+        const cry2 = q[1].y + (q[2].y - q[1].y) * cr;
+        const cmX = (clx + crx2) / 2, cmY = (cly + cry2) / 2;
+        if (Math.sqrt((cx - cmX) ** 2 + (cy - cmY) ** 2) <= 14) return i;
+        if (distToSeg(clx, cly, crx2, cry2) <= 8) return i;
+      }
     }
     return -1;
   }, []);
+
+  // Return the panel row-height (mm) for the active surface: custom per-material or standard 2800.
+  const getActiveSingleRowH = useCallback((): number => {
+    const isHorizTv = wallZoneRef.current === 'tv' && (panelOrientationRef.current === 'horizontal' || panelOrientationRef.current === 'lengthwise');
+    const mat = sectorMaterialsRef.current[0];
+    return isHorizTv
+      ? (mat?.panelWidthMm ?? PANEL_W_MM)
+      : (mat?.panelHeightMm ?? PANEL_H_MM);
+  }, []);
+
+  // Find which red auto-seam line handle is near a canvas point.
+  // Returns the seam ratio (0–1) or -1 if none within hit radius.
+  const findNearAutoSeam = useCallback((cx: number, cy: number): number => {
+    const pts = pointsRef.current;
+    if (pts.length < 4) return -1;
+    const wallH = wallHeightMmRef.current;
+    if (wallH <= 0) return -1;
+    const singleRowH = getActiveSingleRowH();
+    const jpp = jointProfilePositionRef.current ?? ['bottom'];
+    const seamPositions = computeAutoSeamPositions(wallH, singleRowH, jpp);
+    if (seamPositions.length === 0) return -1;
+    const asIdx = activeSurfaceRef.current;
+    const q = pts.length >= asIdx * 4 + 4 ? pts.slice(asIdx * 4, asIdx * 4 + 4) : pts.slice(0, 4);
+    const hPositions = hMoldingPositionsRef.current;
+    for (const seamR of seamPositions) {
+      // Skip seams already covered by a user hMolding
+      if (hPositions.some(p => Math.abs(p - seamR) < 0.005)) continue;
+      const lx = q[0].x + (q[3].x - q[0].x) * seamR;
+      const ly = q[0].y + (q[3].y - q[0].y) * seamR;
+      const rx = q[1].x + (q[2].x - q[1].x) * seamR;
+      const ry = q[1].y + (q[2].y - q[1].y) * seamR;
+      const midX = (lx + rx) / 2;
+      const midY = (ly + ry) / 2;
+      if (Math.sqrt((cx - midX) ** 2 + (cy - midY) ** 2) <= 14) return seamR;
+    }
+    return -1;
+  }, [getActiveSingleRowH]);
 
   // Initialize canvas only when image changes
   useEffect(() => {
@@ -932,7 +2423,7 @@ const BambooStudio = () => {
   useEffect(() => {
     if (!image) return;
     drawFullScene();
-  }, [points, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, lightMode, drawFullScene, image]);
+  }, [points, doorOpeningPoints, doorMarkMode, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, lightMode, cylHighlightPos, activeSurface, cornerTypes, wrapJunctions, wallZone, columnShape, drawFullScene, image, panelOrientation, edgeProfileSides, edgeProfileColor, jointProfilePosition, vProfileStyle, vProfileWidth, tvBacklightEnabled, tvBacklightEdges]);
 
   const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = mainCanvasRef.current;
@@ -964,7 +2455,47 @@ const BambooStudio = () => {
     const { x, y } = getCanvasCoords(e);
     const hIdx = findNearHMolding(x, y);
     if (hIdx !== -1) {
+      pushHistory();
       draggingHMoldingIndexRef.current = hIdx;
+      setSelectedHMoldingIdx(hIdx);
+      setSelectedDividerIdx(null);
+      return;
+    }
+    // Clicking a red auto-seam handle: adopt it as a draggable hMolding.
+    const seamR = findNearAutoSeam(x, y);
+    if (seamR !== -1) {
+      pushHistory();
+
+      // Register paired companion: companion is always ±singleRowH away from this primary.
+      // When the primary is dragged, the companion is redrawn at primary ± magnitude.
+      const wallH = wallHeightMmRef.current;
+      const singleRowH = getActiveSingleRowH();
+      if (wallH > 0 && singleRowH > 0) {
+        const cMag = singleRowH / wallH;
+        hMoldingCompanionMapRef.current.set(seamR.toFixed(6), cMag);
+        // If the companion position is itself a visible red auto-seam, suppress it so it
+        // doesn't keep showing as a red line after the primary is adopted.
+        const jpp = jointProfilePositionRef.current ?? ['bottom'];
+        const allSeams = computeAutoSeamPositions(wallH, singleRowH, jpp);
+        for (const cr of [seamR + cMag, seamR - cMag]) {
+          if (cr > 0 && cr < 1 &&
+              allSeams.some(s => Math.abs(s - cr) < 0.003) &&
+              !hMoldingPositionsRef.current.some(p => Math.abs(p - cr) < 0.005)) {
+            adoptedSeamOriginalsRef.current.add(cr);
+          }
+        }
+      }
+
+      // Remember the original computed position so drawHSeam won't redraw it after drag.
+      adoptedSeamOriginalsRef.current.add(seamR);
+      adoptedSeamCurrentRef.current.add(seamR);
+      const newPositions = [...hMoldingPositionsRef.current, seamR].sort((a, b) => a - b);
+      const newIdx = newPositions.findIndex(p => Math.abs(p - seamR) < 0.001);
+      hMoldingPositionsRef.current = newPositions; // sync ref immediately for drag
+      setHMoldingPositions(newPositions);
+      draggingHMoldingIndexRef.current = newIdx;
+      setSelectedHMoldingIdx(newIdx);
+      setSelectedDividerIdx(null);
       return;
     }
     const divIdx = findNearDivider(x, y);
@@ -972,6 +2503,10 @@ const BambooStudio = () => {
       pushHistory();
       draggingDividerIndexRef.current = divIdx;
       setIsDraggingDivider(true);
+      setSelectedDividerIdx(divIdx);
+    } else {
+      setSelectedDividerIdx(null);
+      setSelectedHMoldingIdx(null);
     }
   };
 
@@ -988,27 +2523,97 @@ const BambooStudio = () => {
 
     const { x, y } = getCanvasCoords(e);
 
-    // Dragging a horizontal molding
+    // Dragging a horizontal molding (includes adopted auto-seam lines)
     if (!isErasing && draggingHMoldingIndexRef.current !== null) {
       const idx = draggingHMoldingIndexRef.current;
-      const newRatio = canvasYToWallRatio(x, y);
+      const rawRatio = canvasYToWallRatio(x, y);
+      const wallH = wallHeightMmRef.current;
+      const singleRowH = getActiveSingleRowH();
+
       setHMoldingPositions(prev => {
-        const updated = [...prev];
-        updated[idx] = newRatio;
-        return [...updated].sort((a, b) => a - b);
+        const oldPos = prev[idx];
+        const cMag = hMoldingCompanionMapRef.current.get(oldPos.toFixed(6));
+
+        // Paired seam: companion is virtual (not in hMoldingPositions).
+        // Relax section-size clamping — allow primary to roam the full wall so the
+        // companion can enter and leave the visible area (0–1) freely.
+        if (cMag !== undefined) {
+          const newRatio = Math.max(0.01, Math.min(0.99, rawRatio));
+          const updated = [...prev.filter((_, i) => i !== idx), newRatio].sort((a, b) => a - b);
+          const newDragIdx = updated.findIndex(p => Math.abs(p - newRatio) < 0.002);
+          if (newDragIdx !== -1) draggingHMoldingIndexRef.current = newDragIdx;
+          hMoldingCompanionMapRef.current.delete(oldPos.toFixed(6));
+          hMoldingCompanionMapRef.current.set(newRatio.toFixed(6), cMag);
+          if (adoptedSeamCurrentRef.current.has(oldPos)) {
+            adoptedSeamCurrentRef.current.delete(oldPos);
+            adoptedSeamCurrentRef.current.add(newRatio);
+          }
+          return updated;
+        }
+
+        // Non-paired seam: existing section-size clamping logic.
+        // Remove the dragged profile to find its neighbors cleanly.
+        const others = prev.filter((_, i) => i !== idx).sort((a, b) => a - b);
+
+        // Neighbor edges relative to where rawRatio falls in the "others" list.
+        let prevEdge = 0;
+        let nextEdge = 1;
+        for (const p of others) {
+          if (p <= rawRatio) prevEdge = p;
+          else { nextEdge = p; break; }
+        }
+
+        // Clamp: each adjacent section must stay ≤ singleRowH (e.g. 2800 mm).
+        // Gap above = (r − prevEdge) × wallH ≤ singleRowH  →  r ≤ prevEdge + threshold
+        // Gap below = (nextEdge − r) × wallH ≤ singleRowH  →  r ≥ nextEdge − threshold
+        let newRatio = rawRatio;
+        if (wallH > 0 && singleRowH > 0) {
+          const threshold = singleRowH / wallH;
+          const maxR = prevEdge + threshold; // hard stop downward
+          const minR = nextEdge - threshold; // hard stop upward
+          if (minR <= maxR) {
+            // Valid range exists — apply hard stops.
+            newRatio = Math.max(minR, Math.min(maxR, rawRatio));
+          }
+          // else conflict (span > 2 × singleRowH with no other profiles) → free move.
+        }
+        newRatio = Math.max(0.02, Math.min(0.98, newRatio));
+
+        const updated = [...others, newRatio].sort((a, b) => a - b);
+        const newDragIdx = updated.findIndex(p => Math.abs(p - newRatio) < 0.001);
+        if (newDragIdx !== -1) draggingHMoldingIndexRef.current = newDragIdx;
+        // Track current position of adopted seams as they move.
+        if (adoptedSeamCurrentRef.current.has(oldPos)) {
+          adoptedSeamCurrentRef.current.delete(oldPos);
+          adoptedSeamCurrentRef.current.add(newRatio);
+        }
+        return updated;
       });
       return;
     }
 
-    // Dragging a vertical divider
+    // Dragging a divider (vertical or horizontal depending on orientation)
     if (!isErasing && draggingDividerIndexRef.current !== null) {
       const idx = draggingDividerIndexRef.current;
-      const newRatio = canvasXToWallRatio(x, y);
+      const newRatio = (panelOrientationRef.current === 'horizontal' || panelOrientationRef.current === 'lengthwise')
+        ? canvasYToWallRatio(x, y)
+        : canvasXToWallRatio(x, y);
       setDividerPositions(prev => {
         const updated = [...prev];
-        const minLeft = idx === 0 ? MIN_PANEL_RATIO : updated[idx - 1] + MIN_PANEL_RATIO;
-        const maxRight = idx === updated.length - 1 ? 1 - MIN_PANEL_RATIO : updated[idx + 1] - MIN_PANEL_RATIO;
-        updated[idx] = Math.max(minLeft, Math.min(maxRight, newRatio));
+        const leftEdge = idx === 0 ? 0 : updated[idx - 1];
+        const rightEdge = idx === updated.length - 1 ? 1 : updated[idx + 1];
+        let minLeft = leftEdge + MIN_PANEL_RATIO;
+        let maxRight = rightEdge - MIN_PANEL_RATIO;
+        // If real wall width is set, a sector cannot be wider than one physical panel (1220 mm)
+        const wallW = wallWidthMmRef.current;
+        if (wallW > 0) {
+          const maxSectorRatio = PANEL_W_MM / wallW;
+          maxRight = Math.min(maxRight, leftEdge + maxSectorRatio);   // left sector limit
+          minLeft = Math.max(minLeft, rightEdge - maxSectorRatio);    // right sector limit
+        }
+        if (minLeft <= maxRight) {
+          updated[idx] = Math.max(minLeft, Math.min(maxRight, newRatio));
+        }
         return updated;
       });
       return;
@@ -1029,7 +2634,7 @@ const BambooStudio = () => {
       if (findNearHMolding(x, y) !== -1) {
         mainCanvasRef.current.style.cursor = 'ns-resize';
       } else if (findNearDivider(x, y) !== -1) {
-        mainCanvasRef.current.style.cursor = 'ew-resize';
+        mainCanvasRef.current.style.cursor = (panelOrientationRef.current === 'horizontal' || panelOrientationRef.current === 'lengthwise') ? 'ns-resize' : 'ew-resize';
       } else {
         mainCanvasRef.current.style.cursor = 'pointer';
       }
@@ -1043,13 +2648,31 @@ const BambooStudio = () => {
     // Don't trigger sector selection if click was near a divider or h-molding handle
     if (step === 'edit' && (findNearDivider(x, y) !== -1 || findNearHMolding(x, y) !== -1)) return;
 
-    if (step === 'mark' && points.length < 4) {
+    if (step === 'mark' && wallZone === 'door') {
+      if (doorMarkMode === 'opening' && doorOpeningPoints.length < 4) {
+        setDoorOpeningPoints([...doorOpeningPoints, { x, y }]);
+      } else if (doorMarkMode === 'wall' && points.length < 4) {
+        setPoints([...points, { x, y }]);
+      }
+    } else if (step === 'mark' && points.length < (wallZone === 'wall-niche' ? 12 : wallZone === 'column' || wallZone === 'window' || wallZone === 'tv' ? 8 : 4)) {
       setPoints([...points, { x, y }]);
     } else if (step === 'edit') {
-      // Determine which sector was clicked using divider positions
       const pts = pointsRef.current;
       if (pts.length < 4) return;
-      const ratio = canvasXToWallRatio(x, y);
+      // Determine clicked surface (point-in-quad); switch active surface if needed
+      const nQuads = Math.min(3, Math.floor(pts.length / 4));
+      const inQuad = (q: Point[]) => {
+        let inside = false;
+        for (let i = 0, j = 3; i < 4; j = i++) {
+          if ((q[i].y > y) !== (q[j].y > y) && x < ((q[j].x - q[i].x) * (y - q[i].y)) / (q[j].y - q[i].y) + q[i].x) inside = !inside;
+        }
+        return inside;
+      };
+      // Surface switching is button-only — canvas clicks never change the active quad.
+      // Determine which sector was clicked using divider positions
+      const ratio = (panelOrientationRef.current === 'horizontal' || panelOrientationRef.current === 'lengthwise')
+        ? canvasYToWallRatio(x, y)
+        : canvasXToWallRatio(x, y);
       const bounds = getSectorBounds(dividerPositionsRef.current, panelCountRef.current);
       const idx = bounds.findIndex(b => ratio >= b.start && ratio <= b.end);
       if (idx !== -1) {
@@ -1084,6 +2707,1319 @@ const BambooStudio = () => {
     link.download = 'bamboo-studio-project.png';
     link.href = dataUrl;
     link.click();
+    setSavedPng(dataUrl);
+  };
+
+  // ── Logo triple-click → manager panel ─────────────────────────────────
+  // Alt+Shift+A keyboard shortcut → manager panel
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.altKey && e.shiftKey && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        setManagerPanelMode('admin');
+        setShowManagerPanel(true);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
+  // ── Commercial proposal (КП) PDF generation ──────────────────────────
+  const handleGenerateKP = async () => {
+    const nQuads = Math.min(3, Math.floor(pointsRef.current.length / 4));
+    if (nQuads === 0) return;
+
+    // Override-aware price helpers (respect manager panel adjustments)
+    const getPanelPrice = (panelId: string) => {
+      const seriesId = PANEL_TO_SERIES[panelId] ?? '';
+      return panelOverridesRef.current[seriesId] ?? SERIES_PRICES[seriesId] ?? 4900;
+    };
+    const getEffectiveMoldingPrice = (style: string): number =>
+      moldingOverridesRef.current[style] ?? moldingDbPricesRef.current[style] ?? MOLDING_INFO[style]?.price ?? 940;
+
+    // Always render a FRESH export image so the proposal visual matches current settings
+    let kpImage: string | null = null;
+    if (mainCanvasRef.current) {
+      forExportRef.current = true;
+      drawFullScene();
+      kpImage = mainCanvasRef.current.toDataURL('image/png');
+      forExportRef.current = false;
+      drawFullScene();
+    }
+
+    type KPItem = { article: string; name: string; qty: number; price: number };
+    const items: KPItem[] = [];
+    const addItem = (article: string, name: string, qty: number, price: number) => {
+      const ex = items.find(it => it.article === article && it.name === name);
+      if (ex) ex.qty += qty; else items.push({ article, name, qty, price });
+    };
+
+    const kpCfgs: SurfaceConfig[] = [];
+    for (let q = 0; q < nQuads; q++) {
+      kpCfgs.push(q === activeSurfaceRef.current
+        ? {
+            panelCount: panelCountRef.current,
+            dividerPositions: dividerPositionsRef.current,
+            sectorMaterials: sectorMaterialsRef.current,
+            moldingStyle: moldingStyleRef.current,
+            moldingWidth: moldingWidthRef.current,
+            hMoldingStyle: hMoldingStyleRef.current,
+            hMoldingCount: hMoldingCountRef.current,
+            hMoldingWidth: hMoldingWidthRef.current,
+            hMoldingPositions: hMoldingPositionsRef.current,
+            wallWidthMm: wallWidthMmRef.current,
+            wallHeightMm: wallHeightMmRef.current,
+            panelOrientation: panelOrientationRef.current,
+            jointProfilePosition: jointProfilePositionRef.current,
+          }
+        : (surfacesRef.current[q] ?? defaultSurfaceConfig()));
+    }
+    let projectPanelCount = 0;
+    const panelArticles = new Set<string>();
+    for (let q = 0; q < nQuads; q++) {
+      const cfg = kpCfgs[q];
+      const wrapLeft = q > 0 && (wrapJunctionsRef.current[q - 1] ?? false)
+        && (cornerTypesRef.current[q - 1] ?? 'external') === 'external';
+      const wrapRight = q < nQuads - 1 && (wrapJunctionsRef.current[q] ?? false)
+        && (cornerTypesRef.current[q] ?? 'external') === 'external';
+      for (let i = 0; i < cfg.panelCount; i++) {
+        // First sector after a wrap junction = continuation of the previous wall's bent panel
+        if (i === 0 && wrapLeft) continue;
+        const mat = cfg.sectorMaterials[i] || BAMBOO_PANELS[0];
+        const isBent = i === cfg.panelCount - 1 && wrapRight;
+        addItem(mat.article, `Панель «${matLabel(mat)}»${isBent ? ' (с загибом на угол)' : ''}`, 1, getPanelPrice(mat.id));
+        panelArticles.add(mat.article);
+        projectPanelCount++;
+      }
+    }
+    // ── Profiles counted in 3 m pieces, like panels: collect required RUN LENGTHS
+    // per style, then pack them into 3 m pieces with offcut reuse (packProfileRuns).
+    // Combined styles (e.g. 'black_gap') normalise to their KP billing key ('gap'),
+    // since the gap/light modifier drives the product type; colour is visual only.
+    const normMoldKpKey = (style: string): string => {
+      if (style.endsWith('_gap'))   return 'gap';
+      if (style.endsWith('_light')) return 'light';
+      return style;
+    };
+    // Separate vertical and horizontal profile runs so the KP shows them as distinct line items.
+    // Vertical: divider/joint profiles between/around panels; Horizontal: hMolding bars.
+    const profileRunsV: Record<string, number[]> = {};
+    const profileRunsH: Record<string, number[]> = {};
+    const addRuns = (style: Exclude<MoldingStyle, 'none'>, lengthMm: number, count: number) => {
+      if (count <= 0 || lengthMm <= 0) return;
+      const key = normMoldKpKey(style);
+      (profileRunsV[key] ??= []).push(...Array(count).fill(lengthMm));
+    };
+    const addRunsH = (style: Exclude<MoldingStyle, 'none'>, lengthMm: number, count: number) => {
+      if (count <= 0 || lengthMm <= 0) return;
+      const key = normMoldKpKey(style);
+      (profileRunsH[key] ??= []).push(...Array(count).fill(lengthMm));
+    };
+    // Column zone: needed early so profile joints can cover the FULL perimeter
+    const isColumn = wallZone === 'column';
+    // Standard window: panels come from the piece-cutting calc, profiles from the joint preference
+    const isWindowStd = wallZone === 'window' && windowType === 'standard';
+    const isWindowPan = wallZone === 'window' && windowType === 'panoramic';
+    const isWindowAny = isWindowStd || isWindowPan;
+    const windowCut = isWindowAny
+      ? (() => {
+          const pieces = windowStdPieces(
+            winSlopeDepthMm, winWidthMm, winHeightMm,
+            0,
+            0,
+          );
+          return pieces.length > 0 ? packWindowPieces(pieces) : null;
+        })()
+      : null;
+    const isTvSurface = wallZone === 'tv' && tvType === 'surface';
+    const tvSurfaceCut = isTvSurface
+      ? (() => {
+          const faceW = kpCfgs[1]?.wallWidthMm ?? 0;
+          const faceH = kpCfgs[1]?.wallHeightMm ?? 0;
+          if (faceW <= 0 || faceH <= 0) return null;
+          const pieces: import('./lib/panelCalc').WindowPiece[] = [];
+          pieces.push({ wMm: faceW, lMm: faceH });
+          if (tvSurfaceSideDepthMm > 0) {
+            pieces.push({ wMm: tvSurfaceSideDepthMm, lMm: faceH }); // левая
+            pieces.push({ wMm: tvSurfaceSideDepthMm, lMm: faceH }); // правая
+          }
+          if (tvSurfaceTopBottomDepthMm > 0) {
+            pieces.push({ wMm: faceW, lMm: tvSurfaceTopBottomDepthMm }); // верхняя
+            pieces.push({ wMm: faceW, lMm: tvSurfaceTopBottomDepthMm }); // нижняя
+          }
+          return pieces.length > 0 ? packWindowPieces(pieces) : null;
+        })()
+      : null;
+    // TV surface main wall: panels for the wall area (surface 0) around the TV box (surface 1)
+    const tvMainWallCalc = isTvSurface
+      ? (() => {
+          const mainW = kpCfgs[0]?.wallWidthMm ?? 0;
+          const mainH = kpCfgs[0]?.wallHeightMm ?? 0;
+          if (mainW <= 0 || mainH <= 0) return null;
+          const faceW = kpCfgs[1]?.wallWidthMm ?? 0;
+          const faceH = kpCfgs[1]?.wallHeightMm ?? 0;
+          const mainAreaMm2 = mainW * mainH;
+          const faceAreaMm2 = faceW > 0 && faceH > 0 ? faceW * faceH : 0;
+          const netAreaMm2 = Math.max(0, mainAreaMm2 - faceAreaMm2);
+          const pMat = kpCfgs[0]?.sectorMaterials[0] ?? BAMBOO_PANELS[0];
+          const pW = pMat.panelWidthMm ?? PANEL_W_MM;
+          const pH = pMat.panelHeightMm ?? PANEL_H_MM;
+          const panelsNeeded = pH > 0 && pW > 0 ? Math.ceil(netAreaMm2 / (pW * pH)) : 0;
+          return {
+            panelsNeeded,
+            mainAreaM2: mainAreaMm2 / 1e6,
+            faceAreaM2: faceAreaMm2 / 1e6,
+            netAreaM2: netAreaMm2 / 1e6,
+          };
+        })()
+      : null;
+    // Built-in TV: загибы inside the cutout — 2 sides + top + bottom
+    const isTvBuiltin = wallZone === 'tv' && tvType === 'builtin';
+    // TV backlight: profile length around perimeter of the box face.
+    // Surface-mounted: box face is quad 0. Built-in: box face (Короб) is quad 1.
+    const tvBacklightRuns = tvBacklightEnabled && (isTvSurface || isTvBuiltin)
+      ? (() => {
+          const faceCfg = kpCfgs[1]; // surface 1 = Короб face for both surface and builtin TV
+          const faceW = faceCfg?.wallWidthMm ?? 0;
+          const faceH = faceCfg?.wallHeightMm ?? 0;
+          if (faceW <= 0 || faceH <= 0) return 0;
+          // Edge 0=top(W), 1=right(H), 2=bottom(W), 3=left(H)
+          const edgeDims = [faceW, faceH, faceW, faceH];
+          const enabledLens = edgeDims.filter((_, i) => tvBacklightEdges[i]);
+          if (enabledLens.length === 0) return 0;
+          return packProfileRuns(enabledLens);
+        })()
+      : 0;
+    const tvBuiltinCut = isTvBuiltin && tvCutoutDepthMm > 0 && tvCutoutWidthMm > 0 && tvCutoutHeightMm > 0
+      ? (() => {
+          const pieces: import('./lib/panelCalc').WindowPiece[] = [];
+          // 2 боковых загиба: глубина × высота выреза
+          pieces.push({ wMm: tvCutoutDepthMm, lMm: tvCutoutHeightMm });
+          pieces.push({ wMm: tvCutoutDepthMm, lMm: tvCutoutHeightMm });
+          // верхний загиб: глубина × ширина выреза
+          pieces.push({ wMm: tvCutoutDepthMm, lMm: tvCutoutWidthMm });
+          // нижний загиб: глубина × ширина выреза
+          pieces.push({ wMm: tvCutoutDepthMm, lMm: tvCutoutWidthMm });
+          return packWindowPieces(pieces);
+        })()
+      : null;
+    // Built-in TV: outer visible faces of the box (grains around Стена 2 perimeter)
+    // Uses tvBoxDepthMm (box depth) × box face width/height from kpCfgs[1].
+    const tvBuiltinOuterCut = isTvBuiltin && tvBoxDepthMm > 0
+      ? (() => {
+          const boxCfg = kpCfgs[1];
+          const bW = boxCfg?.wallWidthMm ?? 0;
+          const bH = boxCfg?.wallHeightMm ?? 0;
+          if (bW <= 0 || bH <= 0) return null;
+          const pieces: import('./lib/panelCalc').WindowPiece[] = [];
+          pieces.push({ wMm: tvBoxDepthMm, lMm: bH }); // боковая левая
+          pieces.push({ wMm: tvBoxDepthMm, lMm: bH }); // боковая правая
+          pieces.push({ wMm: tvBoxDepthMm, lMm: bW }); // верхняя
+          pieces.push({ wMm: tvBoxDepthMm, lMm: bW }); // нижняя
+          return packWindowPieces(pieces);
+        })()
+      : null;
+    // Door zone: cuts for the reveals (2 side + 1 top)
+    const isDoor = wallZone === 'door';
+    const leftReveal = doorRevealSizes.left;
+    const rightReveal = doorRevealSizes.right;
+    const topReveal = doorRevealSizes.top;
+    const doorOpeningWidthMm = topReveal.widthMm;
+    const doorOpeningHeightMm = Math.round((leftReveal.heightMm + rightReveal.heightMm) / 2);
+    const doorOpeningAreaMm2 = doorOpeningWidthMm > 0 && doorOpeningHeightMm > 0
+      ? doorOpeningWidthMm * doorOpeningHeightMm
+      : 0;
+    const doorCut = isDoor && leftReveal.heightMm > 0 && leftReveal.depthMm > 0
+      && rightReveal.heightMm > 0 && rightReveal.depthMm > 0
+      && topReveal.widthMm > 0 && topReveal.depthMm > 0
+      ? (() => {
+          const pieces: import('./lib/panelCalc').WindowPiece[] = [];
+          pieces.push({ wMm: leftReveal.depthMm, lMm: leftReveal.heightMm }); // левый откос
+          pieces.push({ wMm: rightReveal.depthMm, lMm: rightReveal.heightMm }); // правый откос
+          pieces.push({ wMm: topReveal.depthMm, lMm: topReveal.widthMm }); // верхний откос
+          if (doorType === 'with-transom' && topReveal.heightMm > 0) {
+            pieces.push({ wMm: topReveal.widthMm, lMm: topReveal.heightMm }); // фальшфрамуга
+          }
+          return packWindowPieces(pieces);
+        })()
+      : null;
+    const doorCutCost = doorCut
+      ? doorCut.panels * getPanelPrice(kpCfgs[0]?.sectorMaterials[0]?.id ?? BAMBOO_PANELS[0].id)
+      : 0;
+    const colPerMm = isColumn ? columnPerimeterMm(columnShape, columnSides) : 0;
+    // Vertical joints already counted on the VISIBLE column faces (incl. corner profiles)
+    let columnVisibleJoints = 0;
+    for (let q = 0; q < nQuads; q++) {
+      const cfg = kpCfgs[q];
+      const wrapLeft = q > 0 && (wrapJunctionsRef.current[q - 1] ?? false)
+        && (cornerTypesRef.current[q - 1] ?? 'external') === 'external';
+      const wrapRight = q < nQuads - 1 && (wrapJunctionsRef.current[q] ?? false)
+        && (cornerTypesRef.current[q] ?? 'external') === 'external';
+      const hMm = cfg.wallHeightMm > 0 ? cfg.wallHeightMm : PANEL_H_MM;
+      const wMm = cfg.wallWidthMm > 0 ? cfg.wallWidthMm : cfg.panelCount * PANEL_W_MM;
+      // Standard window: profiles are driven by the corner-joint preference below,
+      // not by per-surface molding/joint rules
+      if (isWindowAny) continue;
+      // Profiles are always VERTICAL (top-to-bottom), so run length = hMm regardless
+      // of panel orientation. For horizontal TV panels one panel covers PANEL_H_MM (2800)
+      // of wall width, so mandatory-joint column count uses that step instead of PANEL_W_MM.
+      const isHorizTv = wallZone === 'tv' && (cfg.panelOrientation === 'horizontal' || cfg.panelOrientation === 'lengthwise');
+      if (cfg.moldingStyle !== 'none') {
+        if (cfg.moldingStyle === 'metallic') {
+          // Metallic: outer wall-edge profiles count normally; internal joints between
+          // two adjacent wood-family panels (wood/reiki) are skipped — no profile needed.
+          const outerEdges = (wrapLeft ? 0 : 1) + (wrapRight ? 0 : 1);
+          let internalCount = 0;
+          for (let j = 0; j < cfg.panelCount - 1; j++) {
+            const left = cfg.sectorMaterials[j] ?? BAMBOO_PANELS[0];
+            const right = cfg.sectorMaterials[j + 1] ?? BAMBOO_PANELS[0];
+            if (!noMetallicJoint(left, right)) internalCount++;
+          }
+          addRuns('metallic', hMm, outerEdges + internalCount);
+        } else {
+          // Non-metallic chosen style (gold, black): wood-family rule does not apply
+          const vQty = Math.max(0, cfg.panelCount + 1 - (wrapLeft ? 1 : 0) - (wrapRight ? 1 : 0));
+          addRuns(cfg.moldingStyle, hMm, vQty);
+        }
+        if (isColumn) {
+          // UNIQUE contour joints covered by this face's molding: internal seams
+          // + the OUTER edges bordering the hidden part (only first/last face).
+          // Junctions between adjacent visible faces are counted once, below.
+          columnVisibleJoints += Math.max(0, cfg.panelCount - 1);
+          if (q === 0 && !wrapLeft) columnVisibleJoints++;
+          if (q === nQuads - 1 && !wrapRight) columnVisibleJoints++;
+        }
+      } else {
+        // MANDATORY joints: wall wider than one panel ⇒ panels in a row MUST be
+        // joined with vertical profiles — except between adjacent wood-family panels
+        // or panels explicitly set to "joins without profile" (noMetallicProfile).
+        // Horizontal TV panels cover PANEL_H_MM (2800 mm) per column, not PANEL_W_MM.
+        const colStep = isHorizTv ? PANEL_H_MM : PANEL_W_MM;
+        const perRow = Math.ceil(wMm / colStep);
+        const totalJoints = Math.max(0, perRow - 1);
+        // Helper: map a wall-width ratio to the sector index it belongs to
+        const ratioToSector = (r: number): number => {
+          for (let s = 0; s < cfg.panelCount - 1; s++) {
+            if (r < (cfg.dividerPositions[s] ?? 1)) return s;
+          }
+          return cfg.panelCount - 1;
+        };
+        let metalJoints = 0;
+        for (let j = 0; j < totalJoints; j++) {
+          const leftRatio  = (j + 0.5) * colStep / wMm;
+          const rightRatio = (j + 1.5) * colStep / wMm;
+          const left  = cfg.sectorMaterials[ratioToSector(leftRatio)]  ?? BAMBOO_PANELS[0];
+          const right = cfg.sectorMaterials[ratioToSector(rightRatio)] ?? BAMBOO_PANELS[0];
+          if (!noMetallicJoint(left, right)) metalJoints++;
+        }
+        if (metalJoints > 0) addRuns('metallic', hMm, metalJoints);
+        if (isColumn) columnVisibleJoints += totalJoints; // column geometry uses all joints
+      }
+      if (cfg.hMoldingStyle !== 'none') addRunsH(cfg.hMoldingStyle as Exclude<MoldingStyle,'none'>, wMm, cfg.hMoldingPositions.length);
+
+      // Mandatory horizontal row-join profiles: when the wall/column face is taller than one panel
+      // (PANEL_H_MM = 2800 mm for vertical orientation, PANEL_W_MM = 1220 mm for horizontal TV),
+      // every additional row requires a horizontal profile across the full face width.
+      // Only computed when height is explicitly set — otherwise we assume a single row.
+      if (cfg.wallHeightMm > 0) {
+        const singleRowH = isHorizTv ? PANEL_W_MM : PANEL_H_MM;
+        const rowJoints = Math.max(0, Math.ceil(hMm / singleRowH) - 1);
+        if (rowJoints > 0) {
+          // Prefer the wall's chosen molding style; fall back to black
+          const rowJointStyle: Exclude<MoldingStyle, 'none'> =
+            cfg.moldingStyle !== 'none' ? cfg.moldingStyle as Exclude<MoldingStyle, 'none'> : 'black';
+          addRuns(rowJointStyle, wMm, rowJoints);
+        }
+      }
+    }
+    // Mandatory corner profiles: an external corner WITHOUT загиб always needs a
+    // vertical profile at the shared edge — even if the walls have no molding style.
+    // Exception: round/oval column (panel bends smoothly, no corner edges).
+    const isRoundColumn = wallZone === 'column' && columnShape === 'round';
+    if (!isRoundColumn && !isWindowAny) {
+      for (let j = 0; j < nQuads - 1; j++) {
+        const external = (cornerTypesRef.current[j] ?? 'external') === 'external';
+        const wrapped = external && (wrapJunctionsRef.current[j] ?? false);
+        if (!external || wrapped) continue;
+        // If either adjacent wall has vertical molding, its runs already cover this edge
+        if (kpCfgs[j]?.moldingStyle !== 'none' || kpCfgs[j + 1]?.moldingStyle !== 'none') continue;
+        const hMm = Math.max(
+          kpCfgs[j]?.wallHeightMm > 0 ? kpCfgs[j].wallHeightMm : PANEL_H_MM,
+          kpCfgs[j + 1]?.wallHeightMm > 0 ? kpCfgs[j + 1].wallHeightMm : PANEL_H_MM);
+        addRuns('metallic', hMm, 1);
+        if (isColumn) columnVisibleJoints++;
+      }
+    }
+    // Junctions between adjacent visible column faces covered by a MOLDING edge
+    // run (counted once, not per face — molding on either side covers the joint)
+    if (isColumn) {
+      for (let j = 0; j < nQuads - 1; j++) {
+        const external = (cornerTypesRef.current[j] ?? 'external') === 'external';
+        const wrapped = external && (wrapJunctionsRef.current[j] ?? false);
+        if (wrapped) continue;
+        if (kpCfgs[j]?.moldingStyle !== 'none' || kpCfgs[j + 1]?.moldingStyle !== 'none') columnVisibleJoints++;
+      }
+    }
+    // Hidden part of the column perimeter: panels there also join every 1.22 m.
+    // A closed contour of N panels has N vertical joints (загиб removes one);
+    // add the joints NOT yet counted on the visible faces — same style as the
+    // visible molding, otherwise metallic by default.
+    if (isColumn && colPerMm > 0) {
+      const perRowCol = Math.ceil(colPerMm / PANEL_W_MM);
+      const visibleWraps = wrapJunctionsRef.current
+        .slice(0, Math.max(0, nQuads - 1))
+        .filter((w, j) => w && (cornerTypesRef.current[j] ?? 'external') === 'external').length;
+      const hiddenJoints = columnHiddenJoints(perRowCol, columnVisibleJoints, visibleWraps);
+      const colH = columnHeightMm > 0 ? columnHeightMm : PANEL_H_MM;
+      const visStyle = kpCfgs.find(c => c.moldingStyle !== 'none')?.moldingStyle;
+      const colStyle: Exclude<MoldingStyle, 'none'> =
+        visStyle && visStyle !== 'none' ? visStyle as Exclude<MoldingStyle, 'none'> : 'black';
+      // Vertical joints on hidden faces
+      if (hiddenJoints > 0) {
+        addRuns(colStyle, colH, hiddenJoints);
+      }
+      // Horizontal row-join profiles on hidden faces when column is taller than one panel.
+      // Each hidden face needs (rowCount-1) horizontal profiles of PANEL_W_MM width.
+      if (columnHeightMm > PANEL_H_MM) {
+        const rowJoints = Math.max(0, Math.ceil(columnHeightMm / PANEL_H_MM) - 1);
+        if (rowJoints > 0) {
+          // Count visible faces to find hidden face count
+          let visFaces = 0;
+          for (let q = 0; q < nQuads; q++) {
+            const cfg = kpCfgs[q];
+            const wL = q > 0 && (wrapJunctionsRef.current[q - 1] ?? false)
+              && (cornerTypesRef.current[q - 1] ?? 'external') === 'external';
+            for (let sIdx = 0; sIdx < cfg.panelCount; sIdx++) {
+              if (sIdx === 0 && wL) continue;
+              visFaces++;
+            }
+          }
+          const hiddenFaceCount = Math.max(0, perRowCol - visFaces);
+          if (hiddenFaceCount > 0) {
+            addRuns(colStyle, PANEL_W_MM, hiddenFaceCount * rowJoints);
+          }
+        }
+      }
+    }
+    // Standard window with «через профиль»: outer slope corners get profiles —
+    // 2 vertical (window height) + 1 horizontal (window width). «Загиб» ⇒ none.
+    if (isWindowAny && winJoint === 'profile') {
+      const winStyle = kpCfgs.find(cfg => cfg.moldingStyle !== 'none')?.moldingStyle;
+      const style = winStyle && winStyle !== 'none' ? winStyle : 'black';
+      if (winHeightMm > 0) addRuns(style, winHeightMm, 2);
+      if (winWidthMm > 0) addRuns(style, winWidthMm, 1);
+    }
+    // Built-in TV: profiles at the cutout perimeter joints (along width×2 + height×2)
+    if (isTvBuiltin && tvCutoutJoint === 'profile' && tvCutoutWidthMm > 0 && tvCutoutHeightMm > 0) {
+      const visStyle = kpCfgs.find(cfg => cfg.moldingStyle !== 'none')?.moldingStyle;
+      const style = visStyle && visStyle !== 'none' ? visStyle : 'black';
+      addRuns(style, tvCutoutHeightMm, 2); // left + right vertical joints
+      addRuns(style, tvCutoutWidthMm, 2);  // top + bottom horizontal joints
+    }
+    // Built-in TV: profiles along box outer edge joints (grains of Стена 2)
+    if (isTvBuiltin && tvBoxJoint === 'profile' && tvBoxDepthMm > 0) {
+      const bW = kpCfgs[1]?.wallWidthMm ?? 0;
+      const bH = kpCfgs[1]?.wallHeightMm ?? 0;
+      const visStyle = kpCfgs.find(cfg => cfg.moldingStyle !== 'none')?.moldingStyle;
+      const style = visStyle && visStyle !== 'none' ? visStyle : 'black';
+      if (bH > 0) addRuns(style, bH, 2); // left + right vertical edge
+      if (bW > 0) addRuns(style, bW, 2); // top + bottom horizontal edge
+    }
+    // Surface TV: corner profiles joining front face to sides / top / bottom
+    if (isTvSurface && tvSurfaceJoint === 'profile') {
+      const faceW = kpCfgs[1]?.wallWidthMm ?? 0;
+      const faceH = kpCfgs[1]?.wallHeightMm ?? 0;
+      const visStyle = kpCfgs.find(cfg => cfg.moldingStyle !== 'none')?.moldingStyle;
+      const style = visStyle && visStyle !== 'none' ? visStyle : 'black';
+      if (faceH > 0) addRuns(style, faceH, 2); // 2 вертикальных: левый и правый угол
+      if (faceW > 0) addRuns(style, faceW, 2); // 2 горизонтальных: верхний и нижний угол
+    }
+    // Door zone: profiles at reveal corners (2 vertical + 1 horizontal) — only when joint=profile
+    if (isDoor && doorJoint === 'profile' && doorCut) {
+      const visStyle = kpCfgs.find(cfg => cfg.moldingStyle !== 'none')?.moldingStyle;
+      const style = visStyle && visStyle !== 'none' ? visStyle : 'black';
+      addRuns(style, leftReveal.heightMm, 1);
+      addRuns(style, rightReveal.heightMm, 1);
+      addRuns(style, topReveal.widthMm, 1);
+    }
+    // Door with-transom: the faux-frame panel meets the side wall panels via profile
+    // (always — regardless of how the reveals are joined).
+    // 2 vertical profiles, each as tall as the transom height.
+    if (isDoor && doorType === 'with-transom' && topReveal.heightMm > 0) {
+      const visStyle = kpCfgs.find(cfg => cfg.moldingStyle !== 'none')?.moldingStyle;
+      const style = visStyle && visStyle !== 'none' ? visStyle : 'black';
+      addRuns(style, topReveal.heightMm, 2); // left side + right side of transom panel
+    }
+    // Pack each style's runs into 3 m pieces (offcuts reused per direction).
+    // Vertical and horizontal are packed separately and shown as distinct KP rows so
+    // the user can see exactly what drives each count.
+    let profilePiecesTotal = 0;
+    const packAndAdd = (runs: Record<string, number[]>, suffix: string) => {
+      for (const style of Object.keys(runs) as Array<Exclude<MoldingStyle, 'none'>>) {
+        const pieces = packProfileRuns(runs[style]!);
+        profilePiecesTotal += pieces;
+        if (pieces > 0) {
+          const info = MOLDING_INFO[style];
+          const label = `${getEffectiveMoldingName(style, moldingNameOverrides)}${suffix} (3 м, раскрой оптимизирован)`;
+          addItem(info.article + '-3M', label, pieces, getEffectiveMoldingPrice(style));
+        }
+      }
+    };
+    packAndAdd(profileRunsV, ' верт.');
+    packAndAdd(profileRunsH, ' гориз.');
+    // Торцевой профиль: selected sides × wall dimension, packed into 3 m pieces
+    {
+      const ep = edgeProfileSidesRef.current;
+      const mainCfg = kpCfgs[0];
+      if (mainCfg) {
+        const edgeLengths: number[] = [];
+        if (ep.top    && mainCfg.wallWidthMm  > 0) edgeLengths.push(mainCfg.wallWidthMm);
+        if (ep.bottom && mainCfg.wallWidthMm  > 0) edgeLengths.push(mainCfg.wallWidthMm);
+        if (ep.left   && mainCfg.wallHeightMm > 0) edgeLengths.push(mainCfg.wallHeightMm);
+        if (ep.right  && mainCfg.wallHeightMm > 0) edgeLengths.push(mainCfg.wallHeightMm);
+        if (edgeLengths.length > 0) {
+          const edgePieces = packProfileRuns(edgeLengths);
+          const edgeColorKey = `edge_${edgeProfileColorRef.current}` as string;
+          const edgeKey = MOLDING_INFO[edgeColorKey] ? edgeColorKey : 'edge';
+          const edgeInfo = MOLDING_INFO[edgeKey];
+          addItem(edgeInfo.article + '-3M', `${getEffectiveMoldingName(edgeKey, moldingNameOverrides)} (3 м)`, edgePieces, getEffectiveMoldingPrice(edgeKey));
+        }
+      }
+    }
+
+    const total = items.reduce((sum, it) => sum + it.qty * it.price, 0);
+    const fmt = (n: number) => n.toLocaleString('ru-RU') + ' ₽';
+
+    // ── Column (колонна) calculation: panels by full perimeter ──
+    const columnCalc = (isColumn && colPerMm > 0) ? (() => {
+      const perRow = Math.ceil(colPerMm / PANEL_W_MM);
+      const opt = optimizedPanelCalc(perRow, columnHeightMm);
+      // Width-offcut reuse across rows: full panels per row + remainder strips
+      // of all rows packed into shared panels
+      const fullPerRow = Math.floor(colPerMm / PANEL_W_MM);
+      const remW = colPerMm - fullPerRow * PANEL_W_MM;
+      const sharedW = packWidthRemainders(Array(opt.fullRows).fill(remW));
+      const needed = Math.min(opt.needed, fullPerRow * opt.fullRows + opt.donorPanels + sharedW);
+      const areaM2 = columnHeightMm > 0 ? (colPerMm / 1000) * (columnHeightMm / 1000) : 0;
+      // Average price of panels used in the project (visible faces) → price for full perimeter
+      let projCost = 0, projCount = 0;
+      for (let q = 0; q < nQuads; q++) {
+        const cfg = kpCfgs[q];
+        const wrapL = q > 0 && (wrapJunctionsRef.current[q - 1] ?? false)
+          && (cornerTypesRef.current[q - 1] ?? 'external') === 'external';
+        for (let sIdx = 0; sIdx < cfg.panelCount; sIdx++) {
+          if (sIdx === 0 && wrapL) continue;
+          projCost += getPanelPrice((cfg.sectorMaterials[sIdx] ?? BAMBOO_PANELS[0]).id);
+          projCount++;
+        }
+      }
+      const avgPrice = projCount > 0 ? projCost / projCount : getPanelPrice(BAMBOO_PANELS[0].id);
+      // Invisible faces: if the client picked panels for them (checkboxes),
+      // price the hidden portion by those panels; otherwise by the visible average
+      // Only panels ACTUALLY used on the visualization count — a stale checkbox
+      // selection (panel later removed from visible faces) must not affect pricing
+      const usedNowIds = new Set<string>();
+      for (let q = 0; q < nQuads; q++) {
+        Object.values(kpCfgs[q].sectorMaterials).forEach(m => { if (m) usedNowIds.add(m.id); });
+      }
+      const hiddenSel = BAMBOO_PANELS.filter(p => hiddenFaceMats.includes(p.id) && usedNowIds.has(p.id));
+      const hiddenAvg = hiddenSel.length > 0
+        ? hiddenSel.reduce((s, p) => s + getPanelPrice(p.id), 0) / hiddenSel.length
+        : avgPrice;
+      // Strips per donor panel (for height overrun)
+      const spp = opt.remMm > 0 ? Math.max(1, Math.floor(PANEL_H_MM / opt.remMm)) : 0;
+
+      // Build face count per article: visible faces first, then fold in hidden faces.
+      // Result: one combined entry per article covering both sides.
+      const faceByArticle = new Map<string, number>();
+      for (let q = 0; q < nQuads; q++) {
+        const cfg = kpCfgs[q];
+        const wL = q > 0 && (wrapJunctionsRef.current[q - 1] ?? false)
+          && (cornerTypesRef.current[q - 1] ?? 'external') === 'external';
+        for (let sIdx = 0; sIdx < cfg.panelCount; sIdx++) {
+          if (sIdx === 0 && wL) continue;
+          const mat = cfg.sectorMaterials[sIdx] ?? BAMBOO_PANELS[0];
+          faceByArticle.set(mat.article, (faceByArticle.get(mat.article) ?? 0) + 1);
+        }
+      }
+
+      // Hidden faces
+      const hiddenFaces = Math.max(0, perRow - projCount);
+      const hiddenDonors = spp > 0 ? Math.ceil(hiddenFaces / spp) : 0;
+      const hiddenCount = hiddenFaces * opt.fullRows + hiddenDonors;
+
+      if (hiddenFaces > 0) {
+        if (hiddenSel.length > 0) {
+          // Client-selected: distribute hidden faces evenly among hiddenSel
+          const per = Math.floor(hiddenFaces / hiddenSel.length);
+          let extra = hiddenFaces - per * hiddenSel.length;
+          hiddenSel.forEach(p => {
+            const hf = per + (extra > 0 ? 1 : 0);
+            if (extra > 0) extra--;
+            if (hf > 0) faceByArticle.set(p.article, (faceByArticle.get(p.article) ?? 0) + hf);
+          });
+        } else {
+          // No selection: spread hidden faces proportionally among visible articles
+          const totalVis = [...faceByArticle.values()].reduce((s, v) => s + v, 0);
+          if (totalVis > 0) {
+            const ents = [...faceByArticle.entries()].map(([a, f]) => ({ a, add: f * hiddenFaces / totalVis, fl: 0 }));
+            ents.forEach(e => { e.fl = Math.floor(e.add); });
+            let remH = hiddenFaces - ents.reduce((s, e) => s + e.fl, 0);
+            ents.sort((a, b) => (b.add - b.fl) - (a.add - a.fl));
+            ents.forEach(e => { if (remH > 0) { e.fl++; remH--; } });
+            ents.forEach(({ a, fl }) => { if (fl > 0) faceByArticle.set(a, (faceByArticle.get(a) ?? 0) + fl); });
+          }
+        }
+      }
+
+      // qty = fullRows × combined face count + per-type donors
+      const qtyByArticle = new Map<string, number>();
+      faceByArticle.forEach((faceCount, article) => {
+        const donors = spp > 0 ? Math.ceil(faceCount / spp) : 0;
+        qtyByArticle.set(article, opt.fullRows * faceCount + donors);
+      });
+
+      const neededTotal = Math.max(needed, [...qtyByArticle.values()].reduce((s, v) => s + v, 0));
+      const calcCost = Math.round(projCost + hiddenCount * hiddenAvg);
+      // Corners wrapped by bent panels — profiles are NOT tied to the number of faces
+      const wrappedCorners = wrapJunctionsRef.current
+        .slice(0, Math.max(0, nQuads - 1))
+        .filter((w, j) => w && (cornerTypesRef.current[j] ?? 'external') === 'external').length;
+      return { perRow, opt, needed: neededTotal, areaM2, projCost, projCount, calcCost, wrappedCorners, hiddenFaces, hiddenCount, hiddenSel, hiddenNames: hiddenSel.map(p => p.name), qtyByArticle };
+    })() : null;
+
+    // Wall dimension calculations: if dimensions are set, the calculated
+    // (расчётная) panel cost takes priority over the project panel cost in Итого
+    const wallCalcs = (isColumn || isWindowAny || isTvSurface) ? [] : kpCfgs
+      .map((cfg, q) => ({ cfg, q }))
+      .filter(w => w.cfg.wallWidthMm > 0 && w.cfg.wallHeightMm > 0)
+      .map(({ cfg, q }) => {
+        // Horizontal TV panels: the long dimension (PANEL_H_MM = 2800) covers wall width,
+        // the short dimension (PANEL_W_MM = 1220) covers wall height — swap for calculations.
+        const isHorizTv = wallZone === 'tv' && (cfg.panelOrientation === 'horizontal' || cfg.panelOrientation === 'lengthwise');
+        // Индивидуальные размеры панели из карточки товара (или стандарт 1220×2800)
+        const primaryMat = cfg.sectorMaterials[0] ?? BAMBOO_PANELS[0];
+        const pW = primaryMat.panelWidthMm ?? PANEL_W_MM;
+        const pH = primaryMat.panelHeightMm ?? PANEL_H_MM;
+        const colW = isHorizTv ? pH : pW; // how much width one panel covers
+        const rowH = isHorizTv ? pW : pH; // how much height one panel covers
+        const cols = Math.ceil(cfg.wallWidthMm / colW);
+        const opt = optimizedPanelCalc(cols, cfg.wallHeightMm, rowH);
+        // Width-offcut reuse: this wall's own full panels; the narrow remainder
+        // strip of each row goes into the shared cross-wall packing below
+        const fullPerRow = Math.floor(cfg.wallWidthMm / colW);
+        const wallAreaMm2 = cfg.wallWidthMm * cfg.wallHeightMm;
+        const netDoorWallAreaMm2 = isDoor && q === 0
+          ? Math.max(0, wallAreaMm2 - Math.min(wallAreaMm2, doorOpeningAreaMm2))
+          : wallAreaMm2;
+        const hasMeasuredDoorOpening = isDoor && q === 0 && doorOpeningAreaMm2 > 0;
+        // A door wall is not a full rectangle: calculate the panel purchase from
+        // the wall area minus the measured opening, then add each reveal separately.
+        const remW = hasMeasuredDoorOpening ? 0 : cfg.wallWidthMm - fullPerRow * colW;
+        const ownPanels = hasMeasuredDoorOpening
+          ? Math.ceil(netDoorWallAreaMm2 / (pW * pH))
+          : fullPerRow * opt.fullRows + opt.donorPanels;
+        // Match the items aggregation: sector 0 after a wrapped junction is
+        // a continuation of the previous wall's panel, not billed separately
+        const wrapL = q > 0 && (wrapJunctionsRef.current[q - 1] ?? false)
+          && (cornerTypesRef.current[q - 1] ?? 'external') === 'external';
+        let projCost = 0;
+        for (let sIdx = 0; sIdx < cfg.panelCount; sIdx++) {
+          if (sIdx === 0 && wrapL) continue;
+          const mat = cfg.sectorMaterials[sIdx] ?? BAMBOO_PANELS[0];
+          projCost += getPanelPrice(mat.id);
+        }
+        const billedCount = cfg.panelCount - (wrapL ? 1 : 0);
+        const avgPrice = billedCount > 0 ? projCost / billedCount : getPanelPrice(BAMBOO_PANELS[0].id);
+        return { cfg, q, cols, opt, fullPerRow, remW, ownPanels, projCost, avgPrice, billedCount, colW, netDoorWallAreaMm2, hasMeasuredDoorOpening };
+      })
+      .map((w, _i, all) => {
+        // Cross-wall width packing: all walls' remainder strips share donor panels
+        // Use the first wall's panel column-width as the bin size (all TV surfaces
+        // share the same orientation within a zone)
+        const binW = all[0]?.colW ?? PANEL_W_MM;
+        const allPieces = all.flatMap(x => Array(x.opt.fullRows).fill(x.remW) as number[]);
+        const sharedPanels = packWidthRemainders(allPieces, binW);
+        const naive = all.reduce((s, x) => s + x.opt.needed, 0);
+        const optimizedTotal = all.reduce((s, x) => s + x.ownPanels, 0) + sharedPanels;
+        // Attribute shared panels to walls proportionally to their strip demand
+        const totalRem = all.reduce((s, x) => s + x.remW * x.opt.fullRows, 0);
+        const share = totalRem > 0 ? (w.remW * w.opt.fullRows) / totalRem : 0;
+        const needed = w.ownPanels + share * sharedPanels;
+        const calcCost = Math.round(needed * w.avgPrice);
+        return { ...w, needed, calcCost, sharedPanels, savedPanels: Math.max(0, naive - optimizedTotal) };
+      });
+    const sharedPanelsTotal = wallCalcs.length > 0 ? wallCalcs[0].sharedPanels : 0;
+    const savedPanelsTotal = wallCalcs.length > 0 ? wallCalcs[0].savedPanels : 0;
+    const totalCalcCost = wallCalcs.reduce((sum, w) => sum + w.calcCost, 0);
+    const totalProjCostDimWalls = wallCalcs.reduce((sum, w) => sum + w.projCost, 0);
+    // ── Table rows show CALCULATED quantities: rewrite panel item qtys ──
+    // (profiles are already calculated — 3 m pieces packed above)
+    // Largest-remainder scaling keeps the article mix proportional to the project
+    const scaleQtys = (its: KPItem[], target: number) => {
+      const cur = its.reduce((s, it) => s + it.qty, 0);
+      if (cur <= 0 || target === cur) return;
+      const scaled = its.map(it => (it.qty * target) / cur);
+      const floors = scaled.map(Math.floor);
+      let rem = target - floors.reduce((s, f) => s + f, 0);
+      scaled
+        .map((v, i) => ({ i, frac: v - Math.floor(v) }))
+        .sort((a, b) => b.frac - a.frac)
+        .forEach(({ i }) => { if (rem > 0) { floors[i]++; rem--; } });
+      its.forEach((it, i) => { it.qty = Math.max(0, floors[i]); });
+    };
+    let panelsTableTotal = projectPanelCount;
+    if (columnCalc) {
+      // Hidden-only articles (not on visible faces) must be in items before qty assignment
+      columnCalc.hiddenSel.forEach(p => {
+        if (!items.some(it => it.article === p.article)) {
+          // Add a stub row; qtyByArticle will set the real count below
+          addItem(p.article, `Панель «${matLabel(p)}»`, 0, getPanelPrice(p.id));
+          panelArticles.add(p.article);
+        }
+      });
+      // qtyByArticle already merges visible + hidden faces per article — apply to all panel rows
+      items.filter(it => panelArticles.has(it.article)).forEach(it => {
+        const q = columnCalc.qtyByArticle.get(it.article);
+        if (q !== undefined) it.qty = q;
+      });
+      panelsTableTotal = columnCalc.needed;
+    } else if (windowCut) {
+      // Standard window: the table lands on the cutting calc (offcuts reused);
+      // qty spread over the panels marked on откос/подоконник
+      panelsTableTotal = windowCut.panels;
+      const panelRows = items.filter(it => panelArticles.has(it.article));
+      if (panelRows.reduce((s, it) => s + it.qty, 0) <= 0 && panelsTableTotal > 0) {
+        // No panel rows on the visualization (edge case) — bill by the default panel
+        const mat = BAMBOO_PANELS[0];
+        addItem(mat.article, `Панель «${matLabel(mat)}»`, panelsTableTotal, getPanelPrice(mat.id));
+        panelArticles.add(mat.article);
+      } else {
+        scaleQtys(panelRows, panelsTableTotal);
+      }
+    } else if (tvSurfaceCut) {
+      // Surface-mounted TV: cut-based panel count (TV box) + main wall panels if set
+      panelsTableTotal = tvSurfaceCut.panels + (tvMainWallCalc?.panelsNeeded ?? 0);
+      const panelRows = items.filter(it => panelArticles.has(it.article));
+      if (panelRows.reduce((s, it) => s + it.qty, 0) <= 0 && panelsTableTotal > 0) {
+        const mat = BAMBOO_PANELS[0];
+        addItem(mat.article, `Панель «${matLabel(mat)}»`, panelsTableTotal, getPanelPrice(mat.id));
+        panelArticles.add(mat.article);
+      } else {
+        scaleQtys(panelRows, panelsTableTotal);
+      }
+    } else if (wallCalcs.length > 0) {
+      // Walls with dimensions: their project panels are replaced by the calculated
+      // count (own full panels + shared width-offcut panels); other walls keep project counts.
+      // ДОКРОЙ ТЕМ ЖЕ ВИДОМ: each wall's extra panels (height donors + width strips)
+      // are billed as the SAME article mix used on THAT wall — never as another wall's panel type.
+      const dimProj = wallCalcs.reduce((s, w) => s + w.billedCount, 0);
+      const calcDim = wallCalcs.reduce((s, w) => s + w.ownPanels, 0) + sharedPanelsTotal;
+      panelsTableTotal = Math.max(0, projectPanelCount - dimProj) + calcDim;
+      // Integer per-wall targets (largest remainder, sum = calcDim)
+      const wallFloat = wallCalcs.map(w => w.needed);
+      const wallQty = wallFloat.map(Math.floor);
+      let remW2 = calcDim - wallQty.reduce((s, f) => s + f, 0);
+      wallFloat.map((v, i) => ({ i, frac: v - Math.floor(v) }))
+        .sort((a, b) => b.frac - a.frac)
+        .forEach(({ i }) => { if (remW2 > 0) { wallQty[i]++; remW2--; } });
+      // Per-article targets: walls WITHOUT dimensions keep their project counts;
+      // each dimensioned wall distributes its target over its OWN sector articles
+      const articleTarget = new Map<string, number>();
+      const bump = (a: string, n: number) => articleTarget.set(a, (articleTarget.get(a) ?? 0) + n);
+      const dimQs = new Set(wallCalcs.map(w => w.q));
+      for (let q = 0; q < nQuads; q++) {
+        if (dimQs.has(q)) continue;
+        const cfg = kpCfgs[q];
+        const wrapL = q > 0 && (wrapJunctionsRef.current[q - 1] ?? false)
+          && (cornerTypesRef.current[q - 1] ?? 'external') === 'external';
+        for (let sIdx = 0; sIdx < cfg.panelCount; sIdx++) {
+          if (sIdx === 0 && wrapL) continue;
+          bump((cfg.sectorMaterials[sIdx] ?? BAMBOO_PANELS[0]).article, 1);
+        }
+      }
+      wallCalcs.forEach((w, wi) => {
+        const target = wallQty[wi];
+        if (target <= 0) return;
+        const wrapL = w.q > 0 && (wrapJunctionsRef.current[w.q - 1] ?? false)
+          && (cornerTypesRef.current[w.q - 1] ?? 'external') === 'external';
+        const cnt = new Map<string, number>();
+        for (let sIdx = 0; sIdx < w.cfg.panelCount; sIdx++) {
+          if (sIdx === 0 && wrapL) continue;
+          const mat = w.cfg.sectorMaterials[sIdx] ?? BAMBOO_PANELS[0];
+          cnt.set(mat.article, (cnt.get(mat.article) ?? 0) + 1);
+        }
+        if (cnt.size === 0) {
+          // Wall whose only sector was consumed by a wrap — bill by its sector-0 material
+          const mat = w.cfg.sectorMaterials[0] ?? BAMBOO_PANELS[0];
+          cnt.set(mat.article, 1);
+          addItem(mat.article, `Панель «${matLabel(mat)}»`, 0, getPanelPrice(mat.id));
+          panelArticles.add(mat.article);
+        }
+        // Largest-remainder split of the wall target across ITS articles.
+        // Guarantee minimum 1 for every article actually present on this wall:
+        // steal from the highest-count slot so minority panels (e.g. silver accent)
+        // never round to 0 when a neighbouring article dominates.
+        const entries = [...cnt.entries()];
+        const cntSum = entries.reduce((s, [, n]) => s + n, 0);
+        const sc = entries.map(([, n]) => (n * target) / cntSum);
+        const fl = sc.map(Math.floor);
+        let r = target - fl.reduce((s, f) => s + f, 0);
+        sc.map((v, i) => ({ i, frac: v - Math.floor(v) }))
+          .sort((a, b) => b.frac - a.frac)
+          .forEach(({ i }) => { if (r > 0) { fl[i]++; r--; } });
+        // Ensure no used article gets 0 — take from the highest slot if needed
+        entries.forEach(([, n], i) => {
+          if (n > 0 && fl[i] === 0) {
+            const maxI = fl.reduce((mi, v, j) => (v > fl[mi] ? j : mi), 0);
+            if (fl[maxI] > 1) { fl[maxI]--; fl[i] = 1; }
+          }
+        });
+        entries.forEach(([a], i) => bump(a, fl[i]));
+      });
+      // One article can span several rows (e.g. regular + «с загибом на угол»):
+      // split the article target across its rows proportionally to project qtys
+      const byArticle = new Map<string, KPItem[]>();
+      items.forEach(it => {
+        if (!panelArticles.has(it.article)) return;
+        (byArticle.get(it.article) ?? byArticle.set(it.article, []).get(it.article)!).push(it);
+      });
+      byArticle.forEach((rows, article) => {
+        const target = articleTarget.get(article) ?? 0;
+        if (rows.length === 1) { rows[0].qty = target; return; }
+        scaleQtys(rows, target);
+      });
+    }
+    // Built-in TV загибы: add on top of wallCalcs total as a separate labeled line
+    if (tvBuiltinCut) {
+      panelsTableTotal += tvBuiltinCut.panels;
+      const mat = kpCfgs[0]?.sectorMaterials[0] ?? BAMBOO_PANELS[0];
+      addItem(mat.article, `Панель «${matLabel(mat)}» (загибы внутри выреза ТВ)`, tvBuiltinCut.panels, getPanelPrice(mat.id));
+      panelArticles.add(mat.article);
+    }
+    // Built-in TV: outer faces of the box
+    if (tvBuiltinOuterCut) {
+      panelsTableTotal += tvBuiltinOuterCut.panels;
+      const mat = kpCfgs[0]?.sectorMaterials[0] ?? BAMBOO_PANELS[0];
+      addItem(mat.article, `Панель «${matLabel(mat)}» (наружние грани короба ТВ)`, tvBuiltinOuterCut.panels, getPanelPrice(mat.id));
+      panelArticles.add(mat.article);
+    }
+    // TV backlight: LED profile pieces
+    if (tvBacklightRuns > 0) {
+      const blInfo = MOLDING_INFO['light'];
+      addItem(blInfo.article + '-3M', `${blInfo.name} (3 м)`, tvBacklightRuns, getEffectiveMoldingPrice('light'));
+    }
+    // Door zone: add reveal panels on top of the wall panels
+    if (doorCut) {
+      panelsTableTotal += doorCut.panels;
+      const mat = kpCfgs[0]?.sectorMaterials[0] ?? BAMBOO_PANELS[0];
+      addItem(mat.article, `Панель «${matLabel(mat)}» (откосы дверного проёма)`, doorCut.panels, getPanelPrice(mat.id));
+      panelArticles.add(mat.article);
+    }
+    const panelsTableCost = items.filter(it => panelArticles.has(it.article))
+      .reduce((s, it) => s + it.qty * it.price, 0);
+    // Glue: 1 unit per INSTALLED panel (every visual sector, including wrap continuations).
+    // panelsTableTotal counts purchased/calculated panels (may skip wrap sectors).
+    // Use full visual sector count instead so glue = exactly one per installed panel.
+    const glueCount = (() => {
+      if (columnCalc) return columnCalc.needed;
+      if (windowCut)  return windowCut.panels;
+      if (tvSurfaceCut) return tvSurfaceCut.panels;
+      let n = 0;
+      for (let q = 0; q < nQuads; q++) n += kpCfgs[q].panelCount;
+      if (tvBuiltinCut)      n += tvBuiltinCut.panels;
+      if (tvBuiltinOuterCut) n += tvBuiltinOuterCut.panels;
+      if (doorCut)           n += doorCut.panels;
+      return n;
+    })();
+    if (glueCount > 0) {
+      const glueDef = DEFAULT_EXTRAS.find(e => e.id === 'glue');
+      const gluePrice = extrasOverrides['glue'] ?? glueDef?.defaultPrice ?? 0;
+      if (gluePrice > 0) addItem('AW-GLUE', 'Клей AllWall', glueCount, gluePrice);
+    }
+    // Final total = the table itself (calculated panel quantities + 3 m profile pieces + glue)
+    const finalTotal = items.reduce((sum, it) => sum + it.qty * it.price, 0);
+    void totalCalcCost; void totalProjCostDimWalls;
+
+    // ── Save КП as an order in the database ────────────────────────────────
+    const orderPrefix =
+      wallZone === 'column'    ? 'К'  :
+      wallZone === 'door'      ? 'ДП' :
+      wallZone === 'window'    ? 'ОП' :
+      wallZone === 'tv'        ? 'ТВ' :
+      (wallZone === 'wall-niche' || nQuads > 1) ? 'СВ' : 'С';
+    const orderZoneLabel =
+      wallZone === 'column'    ? 'Колонна'         :
+      wallZone === 'door'      ? 'Дверной проём'   :
+      wallZone === 'window'    ? 'Оконный проём'   :
+      wallZone === 'tv'        ? 'ТВ-зона'         :
+      (wallZone === 'wall-niche' || nQuads > 1) ? 'Стена с выступом' : 'Стена';
+    let orderNumber = '';
+    let savedOrderId: number | null = null;
+    try {
+      const orderResp = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prefix: orderPrefix,
+          zoneLabel: orderZoneLabel,
+          kpData: { items, total: finalTotal, beforePhotoUrl: image?.src ?? null, kpPhotoUrl: kpImage },
+        }),
+      });
+      if (orderResp.ok) {
+        const saved = await orderResp.json() as { id?: number; orderNumber?: string };
+        orderNumber = saved.orderNumber ?? '';
+        savedOrderId = saved.id ?? null;
+      }
+    } catch { /* non-critical — PDF still generated without order number */ }
+
+    // Render КП onto an A4 canvas (Cyrillic-safe), then embed into PDF
+    const W = 1240, H = 1754; // A4 @ 150dpi
+    const cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    const c = cv.getContext('2d')!;
+    // Canvas clips text silently. Give every PDF label a safe maximum width so
+    // long calculations are condensed instead of running beyond the A4 margins.
+    const rawFillText = c.fillText.bind(c);
+    c.fillText = (text: string, x: number, y: number, maxWidth?: number) => {
+      const availableWidth = maxWidth ?? (c.textAlign === 'right' ? x - 60 : W - x - 60);
+      rawFillText(text, x, y, Math.max(1, availableWidth));
+    };
+    c.fillStyle = 'white'; c.fillRect(0, 0, W, H);
+
+    // Header
+    c.fillStyle = '#111111'; c.fillRect(0, 0, W, 130);
+    c.fillStyle = 'white'; c.font = 'bold 44px sans-serif'; c.textBaseline = 'middle';
+    c.fillText('ALL WALL', 60, 65);
+    c.fillStyle = '#7ec662'; c.font = 'bold 22px sans-serif';
+    c.fillText('Коммерческое предложение', 300, 68);
+    c.fillStyle = '#bbbbbb'; c.font = '18px sans-serif'; c.textAlign = 'right';
+    c.fillText(new Date().toLocaleDateString('ru-RU'), W - 60, 50);
+    c.fillText('+7 495 151-09-46 · allwall.ru', W - 60, 82);
+    if (orderNumber) {
+      c.fillStyle = '#7ec662'; c.font = 'bold 16px sans-serif';
+      c.fillText(`№ ${orderNumber}`, W - 60, 112);
+    }
+    c.textAlign = 'left';
+
+    let y = 170;
+    // Visualization preview
+    if (kpImage) {
+      await new Promise<void>((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          const maxW = W - 120, maxH = 560;
+          const k = Math.min(maxW / img.width, maxH / img.height);
+          const iw = img.width * k, ih = img.height * k;
+          c.drawImage(img, (W - iw) / 2, y, iw, ih);
+          c.strokeStyle = '#e5e5e5'; c.lineWidth = 1;
+          c.strokeRect((W - iw) / 2, y, iw, ih);
+          y += ih + 50;
+          resolve();
+        };
+        img.onerror = () => resolve();
+        img.src = kpImage;
+      });
+    }
+
+    // Table header
+    const colX = [60, 260, 760, 880, 1010]; // article | name | qty | price | sum
+    c.fillStyle = '#111111'; c.fillRect(60, y, W - 120, 44);
+    c.fillStyle = 'white'; c.font = 'bold 17px sans-serif'; c.textBaseline = 'middle';
+    c.fillText('Артикул', colX[0] + 14, y + 22);
+    c.fillText('Наименование', colX[1], y + 22);
+    c.fillText('Кол-во', colX[2], y + 22);
+    c.fillText('Цена', colX[3], y + 22);
+    c.fillText('Сумма', colX[4], y + 22);
+    y += 44;
+
+    c.font = '17px sans-serif';
+    items.forEach((it, idx) => {
+      if (idx % 2 === 1) { c.fillStyle = '#f7f7f7'; c.fillRect(60, y, W - 120, 40); }
+      c.fillStyle = '#333333';
+      c.fillText(it.article, colX[0] + 14, y + 20);
+      c.fillText(it.name, colX[1], y + 20, colX[2] - colX[1] - 14);
+      c.fillText(`${it.qty} шт`, colX[2], y + 20);
+      c.fillText(fmt(it.price), colX[3], y + 20);
+      c.fillText(fmt(it.qty * it.price), colX[4], y + 20);
+      y += 40;
+    });
+
+
+    // Column block: shape, sizes, perimeter, area, panels, cost
+    if (columnCalc) {
+      y += 18;
+      c.fillStyle = '#111111'; c.font = 'bold 18px sans-serif';
+      c.fillText('Колонна — расчёт по периметру', 60, y + 10);
+      y += 34;
+      c.font = '16px sans-serif'; c.fillStyle = '#333333';
+        c.fillText(
+        `Форма: ${COLUMN_SHAPE_LABELS[columnShape]} · ${columnSizesText(columnShape, columnSides)}${columnHeightMm > 0 ? ` · высота ${Math.round(columnHeightMm / 10)} см` : ''}`,
+          60, y + 8, W - 120);
+      y += 28;
+      c.fillText(
+        `Периметр: ${(colPerMm / 10).toFixed(0)} см${columnCalc.areaM2 > 0 ? ` · площадь: ${columnCalc.areaM2.toFixed(2).replace('.', ',')} м²` : ''} · панелей: ${columnCalc.needed} (по периметру ${columnCalc.perRow}, вкл. заднюю грань)`,
+        60, y + 8, W - 120);
+      y += 28;
+      if (columnCalc.opt.donorPanels > 0) {
+        c.fillText(
+          `Высота больше 2,8 м — ${columnCalc.opt.fullRows} ${rowsWord(columnCalc.opt.fullRows)} по высоте, всего ${columnCalc.needed} ${panelsWord(columnCalc.needed)} (в расчёте КП учтено)`,
+          60, y + 8, W - 120);
+        y += 28;
+      }
+      if (columnCalc.wrappedCorners > 0) {
+        c.fillText(
+          `Загибы панелей на углах: ${columnCalc.wrappedCorners} — угловые профили в местах загиба не требуются`,
+          60, y + 8, W - 120);
+        y += 28;
+      }
+      if (columnCalc.hiddenCount > 0) {
+        c.fillStyle = '#333333'; c.font = '16px sans-serif';
+          c.fillText(
+          columnCalc.hiddenNames.length > 0
+            ? `Невидимые стороны: ${columnCalc.hiddenCount} ${panelsWord(columnCalc.hiddenCount)} — «${columnCalc.hiddenNames.join('», «')}» (выбрано клиентом)`
+            : `Невидимые стороны: ${columnCalc.hiddenCount} ${panelsWord(columnCalc.hiddenCount)} — по средней цене видимых панелей`,
+            60, y + 8, W - 120);
+        y += 28;
+      }
+    }
+
+    // Standard window block: slopes + sill, cutting, joint preference
+    if (windowCut) {
+      y += 18;
+      c.fillStyle = '#111111'; c.font = 'bold 18px sans-serif';
+      c.fillText('Оконный проём — откосы и подоконник', 60, y + 10);
+      y += 34;
+      c.font = '16px sans-serif'; c.fillStyle = '#333333';
+      c.fillText(
+        `${isWindowPan ? 'Панорамное окно' : 'Окно'}: ${Math.round(winWidthMm / 10)} × ${Math.round(winHeightMm / 10)} см · откос ${Math.round(winSlopeDepthMm / 10)} см${isWindowPan ? ' (подоконник отсутствует)' : ''}`,
+        60, y + 8, W - 120);
+      y += 28;
+      c.fillText(
+        `Деталей: ${windowCut.pieces.length}${winSlopeDepthMm > 0 ? ' — откосы: 2 вертикальных + 1 верхний' : ''} · панелей: ${windowCut.panels} (обрезки полос используются повторно)`,
+        60, y + 8, W - 120);
+      y += 28;
+      c.fillText(
+        winJoint === 'profile'
+          ? `Соединение на углах: через профиль — 2 вертикальных (${Math.round(winHeightMm / 10)} см) + 1 горизонтальный (${Math.round(winWidthMm / 10)} см), хлысты 3 м`
+          : 'Соединение на углах: загиб панели — профили не требуются',
+        60, y + 8, W - 120);
+      y += 28;
+    }
+
+    // Built-in TV: загибы inside the cutout
+    if (tvBuiltinCut) {
+      y += 18;
+      c.fillStyle = '#111111'; c.font = 'bold 18px sans-serif';
+      c.fillText('Встроенный ТВ — загибы внутри выреза', 60, y + 10);
+      y += 34;
+      c.font = '16px sans-serif'; c.fillStyle = '#333333';
+      const cW = Math.round(tvCutoutWidthMm / 10), cH = Math.round(tvCutoutHeightMm / 10), cD = Math.round(tvCutoutDepthMm / 10);
+      const cWm = cW / 100, cHm = cH / 100, cDm = cD / 100;
+      c.fillText(
+        `Вырез: ${cW} × ${cH} см · глубина ${cD} см`,
+        60, y + 8);
+      y += 28;
+      c.fillText(
+        `Боковые загибы (×2): ${cD} × ${cH} см · площадь: ${(2 * cDm * cHm).toFixed(2).replace('.', ',')} м²`,
+        60, y + 8);
+      y += 28;
+      c.fillText(
+        `Верхний загиб: ${cD} × ${cW} см · площадь: ${(cDm * cWm).toFixed(2).replace('.', ',')} м²`,
+        60, y + 8);
+      y += 28;
+      c.fillText(
+        `Нижний загиб: ${cD} × ${cW} см · площадь: ${(cDm * cWm).toFixed(2).replace('.', ',')} м²`,
+        60, y + 8);
+      y += 28;
+      c.fillText(
+        `Деталей: ${tvBuiltinCut.pieces.length} · дополнительно панелей: ${tvBuiltinCut.panels} (обрезки полос используются повторно)`,
+        60, y + 8);
+      y += 28;
+      if (tvCutoutJoint === 'profile') {
+        const cutPieces = packProfileRuns([tvCutoutHeightMm, tvCutoutHeightMm, tvCutoutWidthMm, tvCutoutWidthMm]);
+        const cWp = Math.round(tvCutoutWidthMm / 10), cHp = Math.round(tvCutoutHeightMm / 10);
+        c.fillText(
+          `Профили по периметру стыков: бок. 2×${cHp} см + гориз. 2×${cWp} см · хлыстов 3 м: ${cutPieces} (остатки используются повторно, если хватает на целый прогон)`,
+          60, y + 8);
+      } else {
+        c.fillText('Стыки: загиб панели — профили не требуются', 60, y + 8);
+      }
+      y += 30;
+      // Outer faces block
+      if (tvBuiltinOuterCut) {
+        c.fillStyle = '#111111'; c.font = 'bold 16px sans-serif';
+        c.fillText('Наружные грани короба ТВ (видимые торцы)', 60, y + 10);
+        y += 28;
+        c.font = '16px sans-serif'; c.fillStyle = '#333333';
+        const bWo = Math.round((kpCfgs[1]?.wallWidthMm ?? 0) / 10), bHo = Math.round((kpCfgs[1]?.wallHeightMm ?? 0) / 10), cDo = Math.round(tvBoxDepthMm / 10);
+        c.fillText(
+          `Бок. ×2: ${cDo} × ${bHo} см · верх/низ: ${cDo} × ${bWo} см`,
+          60, y + 8);
+        y += 28;
+        c.fillText(
+          `Деталей: ${tvBuiltinOuterCut.pieces.length} · панелей: ${tvBuiltinOuterCut.panels} (обрезки используются повторно)`,
+          60, y + 8);
+        y += 30;
+      }
+      if (isTvBuiltin && tvBacklightEnabled && tvBacklightRuns > 0) {
+        const edgeNames = ['Верх', 'Право', 'Низ', 'Лево'];
+        const onEdges = edgeNames.filter((_, i) => tvBacklightEdges[i]).join(', ');
+        c.fillText(`Подсветка (${onEdges}) · профиль с подсветкой 3 м: ${tvBacklightRuns} шт.`, 60, y + 8);
+        y += 28;
+      }
+    }
+
+    // Main wall block (Основная стена, TV surface zone only)
+    if (tvMainWallCalc) {
+      const mWcm = Math.round((kpCfgs[0]?.wallWidthMm ?? 0) / 10), mHcm = Math.round((kpCfgs[0]?.wallHeightMm ?? 0) / 10);
+      const faceW0 = kpCfgs[1]?.wallWidthMm ?? 0, faceH0 = kpCfgs[1]?.wallHeightMm ?? 0;
+      y += 18;
+      c.fillStyle = '#111111'; c.font = 'bold 18px sans-serif';
+      c.fillText('Основная стена — расчёт материала', 60, y + 10);
+      y += 34;
+      c.font = '16px sans-serif'; c.fillStyle = '#333333';
+      c.fillText(
+        `Стена: ${mWcm} × ${mHcm} см · площадь: ${tvMainWallCalc.mainAreaM2.toFixed(2).replace('.', ',')} м²`,
+        60, y + 8);
+      y += 28;
+      if (faceW0 > 0 && faceH0 > 0) {
+        c.fillText(
+          `Вычет ТВ-короба: ${Math.round(faceW0 / 10)} × ${Math.round(faceH0 / 10)} см · −${tvMainWallCalc.faceAreaM2.toFixed(2).replace('.', ',')} м²`,
+          60, y + 8);
+        y += 28;
+      }
+      c.fillStyle = '#111111'; c.font = 'bold 16px sans-serif';
+      c.fillText(
+        `Чистая площадь: ${tvMainWallCalc.netAreaM2.toFixed(2).replace('.', ',')} м² · панелей: ${tvMainWallCalc.panelsNeeded}`,
+        60, y + 8);
+      y += 36;
+      c.font = '16px sans-serif'; c.fillStyle = '#333333';
+    }
+
+    // Surface-mounted TV block: face + sides + top + bottom, no cutout
+    if (tvSurfaceCut) {
+      const faceW = kpCfgs[1]?.wallWidthMm ?? 0;
+      const faceH = kpCfgs[1]?.wallHeightMm ?? 0;
+      const faceWcm = Math.round(faceW / 10), faceHcm = Math.round(faceH / 10);
+      y += 18;
+      c.fillStyle = '#111111'; c.font = 'bold 18px sans-serif';
+      c.fillText('ТВ-короб — расчёт материала', 60, y + 10);
+      y += 34;
+      c.font = '16px sans-serif'; c.fillStyle = '#333333';
+      c.fillText(
+        `Лицевая плоскость: ${faceWcm} × ${faceHcm} см · площадь: ${((faceWcm / 100) * (faceHcm / 100)).toFixed(2).replace('.', ',')} м²`,
+        60, y + 8);
+      y += 28;
+      if (tvSurfaceSideDepthMm > 0) {
+        const sdCm = Math.round(tvSurfaceSideDepthMm / 10);
+        c.fillText(`Боковые (×2): ${sdCm} × ${faceHcm} см · площадь: ${(2 * (sdCm / 100) * (faceHcm / 100)).toFixed(2).replace('.', ',')} м²`, 60, y + 8);
+        y += 28;
+      }
+      if (tvSurfaceTopBottomDepthMm > 0) {
+        const tbCm = Math.round(tvSurfaceTopBottomDepthMm / 10);
+        c.fillText(`Верх/Низ (×2): ${faceWcm} × ${tbCm} см · площадь: ${(2 * (faceWcm / 100) * (tbCm / 100)).toFixed(2).replace('.', ',')} м²`, 60, y + 8);
+        y += 28;
+      }
+      c.fillText(`Угловое соединение: ${tvSurfaceJoint === 'profile' ? 'через профиль' : 'загиб панелей'}`, 60, y + 8);
+      y += 28;
+      if (tvBacklightEnabled && tvBacklightRuns > 0) {
+        const edgeNames = ['Верх', 'Право', 'Низ', 'Лево'];
+        const onEdges = edgeNames.filter((_, i) => tvBacklightEdges[i]).join(', ');
+        c.fillText(`Подсветка (${onEdges}) · профиль с подсветкой 3 м: ${tvBacklightRuns} шт.`, 60, y + 8);
+        y += 28;
+      }
+      c.fillText(`Деталей короба: ${tvSurfaceCut.pieces.length} · панелей: ${tvSurfaceCut.panels} (обрезки полос используются повторно)`, 60, y + 8);
+      y += 28;
+      if (tvMainWallCalc) {
+        c.fillText(`Основная стена: ${tvMainWallCalc.panelsNeeded} панелей · итого по зоне: ${tvSurfaceCut.panels + tvMainWallCalc.panelsNeeded}`, 60, y + 8);
+        y += 28;
+      }
+    }
+
+    // Door zone: reveals block
+    if (isDoor && (doorRevealSizes.left.depthMm > 0 || doorRevealSizes.right.depthMm > 0 || doorRevealSizes.top.depthMm > 0)) {
+      y += 18;
+      c.fillStyle = '#111111'; c.font = 'bold 18px sans-serif';
+      c.fillText('Дверной проём — расчёт материала', 60, y + 10);
+      y += 34;
+      c.font = '16px sans-serif'; c.fillStyle = '#333333';
+      c.fillText(
+        `Тип: ${doorType === 'with-transom' ? 'с фальшфрамугой' : 'стандартный'} · соединение: ${doorJoint === 'profile' ? 'через профиль' : 'загиб панелей'}`,
+        60, y + 8);
+      y += 28;
+      const dLeft = doorRevealSizes.left, dRight = doorRevealSizes.right, dTop = doorRevealSizes.top;
+      const printReveal = (name: string, depthMm: number, lengthMm: number) => {
+        if (depthMm <= 0 || lengthMm <= 0) return;
+        const dCm = Math.round(depthMm / 10), lCm = Math.round(lengthMm / 10);
+        c.fillText(`${name}: ${dCm} × ${lCm} см · площадь: ${((dCm / 100) * (lCm / 100)).toFixed(2).replace('.', ',')} м²`, 60, y + 8);
+        y += 28;
+      };
+      printReveal('Левый откос', dLeft.depthMm, dLeft.heightMm);
+      printReveal('Правый откос', dRight.depthMm, dRight.heightMm);
+      printReveal('Верхний откос', dTop.depthMm, dTop.widthMm);
+      if (doorType === 'with-transom' && dTop.heightMm > 0 && dTop.widthMm > 0) {
+        const dWcm = Math.round(dTop.widthMm / 10), dTcm = Math.round(dTop.heightMm / 10);
+        c.fillText(`Фальшфрамуга: ${dWcm} × ${dTcm} см · площадь: ${((dWcm / 100) * (dTcm / 100)).toFixed(2).replace('.', ',')} м²`, 60, y + 8);
+        y += 28;
+      }
+      if (doorCut) {
+        c.fillText(`Деталей: ${doorCut.pieces.length} · левый, правый и верхний откос${doorType === 'with-transom' && dTop.heightMm > 0 ? ' + фальшфрамуга' : ''} · панелей: ${doorCut.panels}`, 60, y + 8);
+        y += 28;
+        if (doorJoint === 'profile') {
+          c.fillText(
+            `Профили откосов: лев. ${Math.round(dLeft.heightMm / 10)} см + прав. ${Math.round(dRight.heightMm / 10)} см + верх. ${Math.round(dTop.widthMm / 10)} см · хлыстов 3 м: ${packProfileRuns([dLeft.heightMm, dRight.heightMm, dTop.widthMm])}`,
+            60, y + 8);
+          y += 28;
+        }
+        if (doorType === 'with-transom' && dTop.heightMm > 0) {
+          const hCm = Math.round(dTop.heightMm / 10);
+          const pcs = packProfileRuns([dTop.heightMm, dTop.heightMm]);
+          c.fillText(
+            `Профили фальшфрамуги (стыки с боковыми панелями): 2 × ${hCm} см · хлыстов 3 м: ${pcs}`,
+            60, y + 8);
+          y += 28;
+        }
+      }
+      y += 8;
+    }
+
+    // ── Zone dimensions & total area (for manual cross-check) ─────────────────
+    {
+      const dimLines: string[] = [];
+      let dimTotalM2 = 0;
+
+      if (isColumn && columnCalc) {
+        const colLabel = `${COLUMN_SHAPE_LABELS[columnShape]}${columnHeightMm > 0 ? ` · высота ${Math.round(columnHeightMm / 10)} см` : ''}`;
+        dimLines.push(`Колонна (${colLabel}): периметр ${(colPerMm / 10).toFixed(0)} см${columnCalc.areaM2 > 0 ? ` · площадь ${columnCalc.areaM2.toFixed(2).replace('.', ',')} м²` : ''}`);
+        if (columnCalc.areaM2 > 0) dimTotalM2 += columnCalc.areaM2;
+      } else if (isWindowAny) {
+        dimLines.push(`${isWindowPan ? 'Панорамное окно' : 'Окно'}: ${Math.round(winWidthMm / 10)} × ${Math.round(winHeightMm / 10)} см`);
+        if (winSlopeDepthMm > 0) {
+          const dCm = Math.round(winSlopeDepthMm / 10);
+          const slopeArea = 2 * (winSlopeDepthMm / 1000) * (winHeightMm / 1000) + (winSlopeDepthMm / 1000) * (winWidthMm / 1000);
+          dimTotalM2 += slopeArea;
+          dimLines.push(`Откосы: глубина ${dCm} см · площадь откосов: ${slopeArea.toFixed(2).replace('.', ',')} м²`);
+        }
+      } else if (isTvSurface) {
+        // Surface 0 = main wall
+        const mainW = kpCfgs[0]?.wallWidthMm ?? 0;
+        const mainH = kpCfgs[0]?.wallHeightMm ?? 0;
+        if (mainW > 0 && mainH > 0) {
+          const a = (mainW / 1000) * (mainH / 1000);
+          dimLines.push(`Стена: ${Math.round(mainW / 10)} × ${Math.round(mainH / 10)} см · ${a.toFixed(2).replace('.', ',')} м²`);
+          dimTotalM2 += a;
+        }
+        // Surface 1 = Короб face
+        const faceW = kpCfgs[1]?.wallWidthMm ?? 0;
+        const faceH = kpCfgs[1]?.wallHeightMm ?? 0;
+        if (faceW > 0 && faceH > 0) {
+          const a = (faceW / 1000) * (faceH / 1000);
+          dimLines.push(`ТВ-зона лицевая: ${Math.round(faceW / 10)} × ${Math.round(faceH / 10)} см · ${a.toFixed(2).replace('.', ',')} м²`);
+          dimTotalM2 += a;
+        }
+        if (tvSurfaceSideDepthMm > 0 && faceH > 0) {
+          const a = 2 * (tvSurfaceSideDepthMm / 1000) * (faceH / 1000);
+          dimLines.push(`Боковые (×2): ${Math.round(tvSurfaceSideDepthMm / 10)} × ${Math.round(faceH / 10)} см · ${a.toFixed(2).replace('.', ',')} м²`);
+          dimTotalM2 += a;
+        }
+        if (tvSurfaceTopBottomDepthMm > 0 && faceW > 0) {
+          const a = 2 * (faceW / 1000) * (tvSurfaceTopBottomDepthMm / 1000);
+          dimLines.push(`Верх/Низ (×2): ${Math.round(faceW / 10)} × ${Math.round(tvSurfaceTopBottomDepthMm / 10)} см · ${a.toFixed(2).replace('.', ',')} м²`);
+          dimTotalM2 += a;
+        }
+      } else {
+        // Regular walls, wall-niche, TV builtin, door
+        for (let q = 0; q < nQuads; q++) {
+          const cfg = kpCfgs[q];
+          if (cfg.wallWidthMm <= 0 || cfg.wallHeightMm <= 0) continue;
+          const aM2 = (cfg.wallWidthMm / 1000) * (cfg.wallHeightMm / 1000);
+          dimTotalM2 += aM2;
+          const label =
+            isTvBuiltin ? (nQuads === 1 ? 'ТВ-стена' : `ТВ-зона ${q + 1}`) :
+            (isDoor && q === 0) ? 'Стена с проёмом' :
+            nQuads === 1 ? 'Стена' : `Стена ${q + 1}`;
+          dimLines.push(`${label}: ${Math.round(cfg.wallWidthMm / 10)} × ${Math.round(cfg.wallHeightMm / 10)} см · площадь: ${aM2.toFixed(2).replace('.', ',')} м²`);
+        }
+        if (isDoor && doorOpeningAreaMm2 > 0) {
+          dimTotalM2 -= doorOpeningAreaMm2;
+          dimLines.push(`Дверной проём (вычет): −${(doorOpeningAreaMm2 / 1e6).toFixed(2).replace('.', ',')} м²`);
+          const dLeft = doorRevealSizes.left, dRight = doorRevealSizes.right, dTop = doorRevealSizes.top;
+          let revealArea = 0;
+          if (dLeft.depthMm > 0 && dLeft.heightMm > 0) revealArea += (dLeft.depthMm / 1000) * (dLeft.heightMm / 1000);
+          if (dRight.depthMm > 0 && dRight.heightMm > 0) revealArea += (dRight.depthMm / 1000) * (dRight.heightMm / 1000);
+          if (dTop.depthMm > 0 && dTop.widthMm > 0) revealArea += (dTop.depthMm / 1000) * (dTop.widthMm / 1000);
+          if (revealArea > 0) {
+            dimTotalM2 += revealArea;
+            dimLines.push(`Откосы проёма: +${revealArea.toFixed(2).replace('.', ',')} м²`);
+          }
+        }
+        if (isTvBuiltin && tvCutoutWidthMm > 0 && tvCutoutHeightMm > 0 && tvCutoutDepthMm > 0) {
+          const cutArea = 2 * (tvCutoutDepthMm / 1000) * (tvCutoutHeightMm / 1000)
+                        + 2 * (tvCutoutDepthMm / 1000) * (tvCutoutWidthMm / 1000);
+          dimTotalM2 += cutArea;
+          dimLines.push(`Загибы ТВ-выреза: ${Math.round(tvCutoutWidthMm / 10)} × ${Math.round(tvCutoutHeightMm / 10)} см, гл. ${Math.round(tvCutoutDepthMm / 10)} см · +${cutArea.toFixed(2).replace('.', ',')} м²`);
+        }
+      }
+
+      if (dimLines.length > 0 || dimTotalM2 > 0) {
+        y += 18;
+        c.fillStyle = '#111111'; c.font = 'bold 18px sans-serif';
+        c.fillText('Размеры зон', 60, y + 10);
+        y += 34;
+        c.font = '16px sans-serif'; c.fillStyle = '#444444';
+        for (const line of dimLines) {
+          c.fillText(line, 60, y + 8, W - 120);
+          y += 28;
+        }
+        if (dimTotalM2 > 0) {
+          c.fillStyle = '#111111'; c.font = 'bold 17px sans-serif';
+          c.fillText(`Общая площадь стен: ${dimTotalM2.toFixed(2).replace('.', ',')} м²`, 60, y + 8);
+          y += 36;
+        }
+      }
+    }
+
+    // Total
+    c.strokeStyle = '#111111'; c.lineWidth = 2;
+    c.beginPath(); c.moveTo(60, y + 4); c.lineTo(W - 60, y + 4); c.stroke();
+    y += 30;
+    c.fillStyle = '#111111'; c.font = 'bold 24px sans-serif'; c.textAlign = 'right';
+    c.fillText(`Итого${columnCalc ? ' (по периметру колонны)' : windowCut ? ' (по расчёту оконного проёма)' : tvSurfaceCut ? ' (по расчётным размерам ТВ-зоны накладной)' : wallCalcs.length > 0 ? (wallZone === 'tv' ? ' (по расчётным размерам ТВ-зоны)' : wallZone === 'door' ? ' (по расчётным размерам дверной зоны)' : ' (по расчётным размерам стен)') : ''}: ${fmt(finalTotal)}`, W - 60, y + 12);
+    c.textAlign = 'left';
+    y += 60;
+    c.fillStyle = '#888888'; c.font = '14px sans-serif';
+    c.fillText('Предложение носит информационный характер и не является публичной офертой.', 60, y);
+    c.fillText('Точный расчёт с учётом размеров помещения уточняйте у менеджера: +7 495 151-09-46.', 60, y + 24);
+
+    const { jsPDF } = await import('jspdf');
+    const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
+    pdf.addImage(cv.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 210, 297);
+    pdf.save('allwall-kp.pdf');
+
+    // Upload PDF to object storage so managers can retrieve it later.
+    // Non-critical: run after the download so the user isn't blocked.
+    if (savedOrderId !== null) {
+      try {
+        const urlResp = await fetch(`/api/orders/${savedOrderId}/pdf-upload-url`, { method: 'POST' });
+        if (urlResp.ok) {
+          const { uploadURL, objectPath } = await urlResp.json() as { uploadURL: string; objectPath: string };
+          const pdfBlob = pdf.output('blob');
+          const uploadResp = await fetch(uploadURL, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/pdf' },
+            body: pdfBlob,
+          });
+          if (uploadResp.ok) {
+            await fetch(`/api/orders/${savedOrderId}/pdf`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ objectPath }),
+            });
+          }
+        }
+      } catch { /* non-critical — PDF available locally even without storage */ }
+    }
   };
 
   const handleChangePanelCount = (count: number) => {
@@ -1097,6 +4033,37 @@ const BambooStudio = () => {
     setDividerPositions(makeEqualDividers(panelCount));
   };
 
+  const updateDoorRevealSize = (zone: DoorRevealZone, key: keyof DoorRevealSize, valueMm: number) => {
+    setDoorRevealSizes(prev => ({ ...prev, [zone]: { ...prev[zone], [key]: valueMm } }));
+    if (zone === 'top' && key === 'widthMm') setDoorWidthMm(valueMm);
+    if (zone === 'left' && key === 'heightMm') setDoorHeightMm(valueMm);
+    if ((zone === 'left' || zone === 'right' || zone === 'top') && key === 'depthMm') setDoorRevealDepthMm(valueMm);
+    if (zone === 'top' && key === 'heightMm') setDoorTransomHeightMm(valueMm);
+  };
+
+  // Start fitting (примерка): place panels VERTICALLY — panel count per surface is
+  // derived from the marked quad's proportions so each sector matches a real
+  // upright 1,22 × 2,8 м panel (width : height = 1220 : 2800)
+  const handleStartFitting = () => {
+    const nQuads = Math.floor(points.length / 4);
+    const dist = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
+    for (let q = 0; q < nQuads; q++) {
+      const qp = points.slice(q * 4, q * 4 + 4);
+      const avgW = (dist(qp[0], qp[1]) + dist(qp[3], qp[2])) / 2;
+      const avgH = (dist(qp[0], qp[3]) + dist(qp[1], qp[2])) / 2;
+      const count = avgH > 0
+        ? Math.min(15, Math.max(1, Math.round(avgW / (avgH * PANEL_W_MM / PANEL_H_MM))))
+        : 5;
+      const cfg = surfacesRef.current[q] ?? defaultSurfaceConfig();
+      surfacesRef.current[q] = { ...cfg, panelCount: count, dividerPositions: makeEqualDividers(count) };
+      if (q === activeSurfaceRef.current) {
+        setPanelCount(count);
+        setDividerPositions(makeEqualDividers(count));
+      }
+    }
+    setStep('edit');
+  };
+
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -1105,14 +4072,32 @@ const BambooStudio = () => {
         const img = new Image();
         img.onload = () => {
           maskStrokesRef.current = [];
+          historyRef.current = [];
+          setHistoryLen(0);
+          surfacesRef.current = [defaultSurfaceConfig()];
+          activeSurfaceRef.current = 0;
+          setActiveSurface(0);
+          setCornerTypes(['external', 'external']);
+          setWrapJunctions([false, false]);
+          setWallWidthMm(0);
+          setWallHeightMm(0);
+          setSavedPng(null);
           setImage(img);
           setStep('mark');
           setPoints([]);
+           setDoorOpeningPoints([]);
+           setDoorMarkMode('wall');
+           setDoorSelectedReveal('left');
+           setDoorRevealSizes({ left: { ...EMPTY_DOOR_REVEAL }, right: { ...EMPTY_DOOR_REVEAL }, top: { ...EMPTY_DOOR_REVEAL } });
           setSectorMaterials({});
           setActiveSector(null);
           setIsErasing(false);
           setPanelCount(5);
           setDividerPositions(makeEqualDividers(5));
+          setMoldingStyle('none');
+          setHMoldingStyle('none');
+          setHMoldingCount(0);
+          setHMoldingPositions([]);
         };
         img.src = f.target?.result as string;
       };
@@ -1120,26 +4105,91 @@ const BambooStudio = () => {
     }
   };
 
+  // Parse combined molding style value → { color, modifier }
+  const decodeMoldStyle = (val: string): { color: string; modifier: 'normal' | 'gap' | 'light' } => {
+    if (val.endsWith('_gap'))   return { color: val.slice(0, -4), modifier: 'gap' };
+    if (val.endsWith('_light')) return { color: val.slice(0, -6), modifier: 'light' };
+    if (val === 'gap')   return { color: 'black', modifier: 'gap' };
+    if (val === 'light') return { color: 'black', modifier: 'light' };
+    return { color: val === 'none' ? 'none' : val, modifier: 'normal' };
+  };
+  const encodeMoldStyle = (color: string, mod: 'normal' | 'gap' | 'light'): MoldingStyle => {
+    if (color === 'none') return 'none';
+    if (mod === 'gap')   return `${color}_gap`   as MoldingStyle;
+    if (mod === 'light') return `${color}_light` as MoldingStyle;
+    return color as MoldingStyle;
+  };
+
   // Compact molding style selector used in both v/h molding panels
+  // Row 1: colour (Нет / Чрн / Мтл / Брнз)
+  // Row 2: modifier – обычный / с разрывом / с подсветкой (hidden when colour = Нет)
   const MoldingStyleRow = ({
     value, onChange, vertical,
-  }: { value: string; onChange: (v: 'none'|'gold'|'black'|'metallic'|'brass') => void; vertical: boolean }) => {
-    const opts = [
-      { id: 'none',     label: 'Нет',  preview: 'bg-gray-100' },
-      { id: 'gold',     label: 'Злт',  preview: vertical ? 'bg-gradient-to-r from-yellow-900 via-yellow-300 to-yellow-900' : 'bg-gradient-to-b from-yellow-900 via-yellow-300 to-yellow-900' },
-      { id: 'black',    label: 'Чрн',  preview: vertical ? 'bg-gradient-to-r from-black via-gray-600 to-black'            : 'bg-gradient-to-b from-black via-gray-600 to-black' },
-      { id: 'metallic', label: 'Мтл',  preview: vertical ? 'bg-gradient-to-r from-gray-500 via-white to-gray-500'         : 'bg-gradient-to-b from-gray-500 via-white to-gray-500' },
-      { id: 'brass',    label: 'Лтн',  preview: vertical ? 'bg-gradient-to-r from-yellow-950 via-yellow-500 to-yellow-950' : 'bg-gradient-to-b from-yellow-950 via-yellow-500 to-yellow-950' },
-    ] as const;
+  }: { value: string; onChange: (v: MoldingStyle) => void; vertical: boolean }) => {
+    const dir = vertical ? 'to-r' : 'to-b';
+    const { color: curColor, modifier: curMod } = decodeMoldStyle(value);
+
+    // Linear-gradient profile bar icons — simulates a real metal strip cross-section
+    const COLOR_BAR: Record<string, React.CSSProperties> = {
+      none:     { background: '#e5e7eb' },
+      black:    { background: 'linear-gradient(to bottom, #111 0%, #2a2a2a 18%, #4a4a4a 35%, #5a5a5a 50%, #3a3a3a 65%, #1a1a1a 82%, #080808 100%)' },
+      metallic: { background: 'linear-gradient(to bottom, #5a5a5a 0%, #9e9e9e 18%, #d8d8d8 35%, #ffffff 50%, #d0d0d0 65%, #8a8a8a 82%, #4a4a4a 100%)' },
+      bronze:   { background: 'linear-gradient(to bottom, #2e1400 0%, #7a3c10 18%, #be6e2e 35%, #e09050 50%, #b86020 65%, #6e3008 82%, #1e0800 100%)' },
+      gold:     { background: 'linear-gradient(to bottom, #5a3d00 0%, #b8860b 18%, #ffd700 35%, #fff8c0 50%, #ffd700 65%, #b8860b 82%, #5a3d00 100%)' },
+    };
+
+    const colorOpts: Array<{ id: string; label: string }> = [
+      { id: 'none',     label: 'Нет'  },
+      { id: 'black',    label: 'Чрн'  },
+      { id: 'metallic', label: 'Мтл'  },
+      { id: 'bronze',   label: 'Брнз' },
+      { id: 'gold',     label: 'Злт'  },
+    ];
+    const modOpts: Array<{ id: 'normal' | 'gap' | 'light'; label: string }> = [
+      { id: 'normal', label: 'Обычный' },
+      { id: 'gap',    label: 'С разрывом' },
+      { id: 'light',  label: 'С подсветкой' },
+    ];
+
     return (
-      <div className="grid grid-cols-5 gap-1">
-        {opts.map(o => (
-          <button key={o.id} onClick={() => onChange(o.id)}
-            className={`flex flex-col items-center gap-1 transition-all ${value === o.id ? 'opacity-100' : 'opacity-40'}`}>
-            <div className={`w-full h-5 rounded border-[1.5px] ${o.preview} ${value === o.id ? 'border-black shadow-sm' : 'border-transparent'}`} />
-            <span className="text-[7px] font-bold uppercase text-gray-500 leading-none">{o.label}</span>
-          </button>
-        ))}
+      <div className="flex flex-col gap-1.5">
+        {/* colour row */}
+        <div className="grid grid-cols-5 gap-1">
+          {colorOpts.map(o => {
+            const active = curColor === o.id;
+            return (
+              <button key={o.id} onClick={() => onChange(encodeMoldStyle(o.id, o.id === 'none' ? 'normal' : curMod))}
+                className="flex flex-col items-center gap-1 transition-all">
+                {/* profile bar icon */}
+                <div className={`w-full h-5 rounded-sm border-2 flex items-center justify-center transition-all
+                  ${active ? 'border-gray-800 shadow-md scale-100' : 'border-transparent opacity-55'}`}
+                  style={COLOR_BAR[o.id]}>
+                  {o.id === 'none' && (
+                    <svg width="10" height="10" viewBox="0 0 10 10">
+                      <line x1="1.5" y1="1.5" x2="8.5" y2="8.5" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round"/>
+                      <line x1="8.5" y1="1.5" x2="1.5" y2="8.5" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round"/>
+                    </svg>
+                  )}
+                </div>
+                <span className={`text-[7px] font-bold uppercase leading-none transition-all ${active ? 'text-gray-800' : 'text-gray-400'}`}>{o.label}</span>
+              </button>
+            );
+          })}
+        </div>
+        {/* modifier row — only when a colour is chosen */}
+        {curColor !== 'none' && (
+          <div className="grid grid-cols-3 gap-1">
+            {modOpts.map(m => (
+              <button key={m.id} onClick={() => onChange(encodeMoldStyle(curColor, m.id))}
+                className={`text-[7px] font-bold uppercase py-[3px] rounded border transition-all
+                  ${curMod === m.id
+                    ? 'bg-gray-900 text-white border-gray-900'
+                    : 'bg-gray-100 text-gray-500 border-transparent hover:bg-gray-200'}`}>
+                {m.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     );
   };
@@ -1153,15 +4203,11 @@ const BambooStudio = () => {
       {/* ══════════════════════════════════════════
           WEBSITE HEADER — allwall.ru style
       ══════════════════════════════════════════ */}
-      <header className="sticky top-0 z-50 bg-[#1c1c1c] text-white">
+      <header className="sticky top-0 z-50 bg-[#2d2a27] text-[#fff9f4]">
         <div className="max-w-7xl mx-auto flex items-center justify-between px-6 h-16">
           {/* Logo */}
-          <a href="https://allwall.ru" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 shrink-0">
-            <img src="/favicon.jpg" alt="ALL WALL" className="h-9 w-9 object-contain rounded"/>
-            <div className="leading-none">
-              <div className="font-black text-base tracking-widest">ALL WALL</div>
-              <div className="text-[9px] text-gray-400 tracking-widest uppercase mt-0.5">Технология быстрого монтажа</div>
-            </div>
+          <a href="https://allwall.ru" target="_blank" rel="noopener noreferrer" className="flex items-center shrink-0">
+            <img src={`${BASE}logo.webp`} alt="ALL WALL" className="h-10 object-contain"/>
           </a>
 
           {/* Nav links */}
@@ -1172,7 +4218,7 @@ const BambooStudio = () => {
           </nav>
 
           {/* Phone */}
-          <a href="tel:+74951510946" className="shrink-0 text-sm font-bold text-white hover:text-[#7ec662] transition-colors hidden sm:block">
+          <a href="tel:+74951510946" className="shrink-0 text-sm font-normal text-[#fff9f4] hover:text-[#7ec662] transition-colors hidden sm:block" style={{fontFamily:'Manrope, sans-serif'}}>
             +7 (495) 151-09-46
           </a>
         </div>
@@ -1181,9 +4227,22 @@ const BambooStudio = () => {
       {/* ══════════════════════════════════════════
           HERO — описание и инструкция
       ══════════════════════════════════════════ */}
-      <section className="bg-[#1c1c1c] text-white pt-12 pb-14 px-6">
+      <section className="bg-[#2d2a27] text-[#fff9f4] pt-12 pb-14 px-6">
         <div className="max-w-5xl mx-auto text-center">
-          <h1 className="text-3xl md:text-5xl font-black leading-tight mb-5">
+          <h1 style={{
+            verticalAlign: 'middle',
+            color: '#ffffff',
+            fontSize: '46px',
+            fontFamily: 'var(--t-headline-font, Arial)',
+            lineHeight: 1.2,
+            fontWeight: 300,
+            backgroundPosition: 'center center',
+            borderWidth: 'var(--t396-borderwidth, 0)',
+            borderStyle: 'var(--t396-borderstyle, solid)' as React.CSSProperties['borderStyle'],
+            borderColor: 'var(--t396-bordercolor, transparent)',
+            transition: 'background-color var(--t396-speedhover, 0s) ease-in-out, color var(--t396-speedhover, 0s) ease-in-out, border-color var(--t396-speedhover, 0s) ease-in-out, box-shadow var(--t396-shadowshoverspeed, 0.2s) ease-in-out',
+            textShadow: 'var(--t396-shadow-text-x, 0px) var(--t396-shadow-text-y, 0px) var(--t396-shadow-text-blur, 0px) rgba(var(--t396-shadow-text-color, 0,0,0), var(--t396-shadow-text-opacity, 100%))',
+          } as React.CSSProperties} className="mb-5">
             Визуализатор<br/>стеновых панелей
           </h1>
           <p className="text-gray-400 text-lg max-w-2xl mx-auto mb-9 leading-relaxed">
@@ -1198,7 +4257,7 @@ const BambooStudio = () => {
               { n: '03', title: 'Подберите панели', desc: 'Выбирайте из 81 варианта — текстуры, цвета, молдинги.' },
               { n: '04', title: 'Сохраните результат', desc: 'Скачайте PNG и покажите дизайнеру или в магазин.' },
             ].map(s => (
-              <div key={s.n} className="bg-white/5 border border-white/10 rounded-2xl p-5 hover:bg-white/8 transition-colors">
+              <div key={s.n} className="bg-transparent border border-white p-5 hover:bg-white/5 transition-colors">
                 <div className="text-[#7ec662] text-3xl font-black mb-3 leading-none">{s.n}</div>
                 <div className="font-bold text-white mb-2 text-sm">{s.title}</div>
                 <div className="text-gray-400 text-xs leading-relaxed">{s.desc}</div>
@@ -1207,9 +4266,10 @@ const BambooStudio = () => {
           </div>
 
           <button onClick={scrollToTool}
-            className="inline-flex items-center gap-2 bg-[#7ec662] hover:bg-[#6ab352] text-black font-black text-sm px-8 py-4 rounded-xl transition-all active:scale-95 shadow-lg shadow-green-900/30">
+            className="inline-flex items-center px-10 py-4 transition-all active:scale-95 hover:opacity-90"
+            style={{ backgroundColor: '#ffffff', color: '#333333', borderRadius: '4px', fontFamily: 'Manrope, sans-serif', fontWeight: 700, fontSize: '14px', border: 'none', boxShadow: 'none' }}>
             Начать подбор
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+            <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
           </button>
         </div>
       </section>
@@ -1217,36 +4277,195 @@ const BambooStudio = () => {
       {/* ══════════════════════════════════════════
           APP TOOL
       ══════════════════════════════════════════ */}
-      <section ref={toolRef} id="tool" className="flex flex-col bg-[#ebebed] md:h-[calc(100vh-64px)]">
+      <section ref={toolRef} id="tool" className="flex flex-col bg-[#ebebed] h-screen">
         {/* ── App Nav ── */}
-        <nav className="h-12 shrink-0 border-b border-gray-200 bg-white/90 backdrop-blur-xl flex justify-between items-center px-5 z-40">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 bg-black rounded-lg flex items-center justify-center">
-              <Layout className="text-white w-4 h-4" />
-            </div>
-            <span className="font-bold text-sm tracking-tight">BambooStudio Pro</span>
-          </div>
+        <nav className="h-10 shrink-0 border-b border-gray-200 bg-white/90 backdrop-blur-xl flex justify-end items-center px-4 z-40">
           <div className="flex items-center gap-3">
             {step === 'edit' && (
-              <button onClick={undo} className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors" title="Ctrl+Z">
+              <button onClick={undo} disabled={historyLen === 0}
+                className={`text-xs font-medium flex items-center gap-1.5 transition-colors ${historyLen === 0 ? 'text-gray-300 cursor-default' : 'text-gray-600 hover:text-black'}`}
+                title={historyLen === 0 ? 'Нет действий для отмены' : 'Ctrl+Z'}>
                 <Undo2 size={13} /> Отменить
               </button>
             )}
-            <button
-              onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setStep('upload'); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
-              className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
-            >
-              <RotateCcw size={13} /> Сброс
-            </button>
+            {step === 'edit' && (
+              <button onClick={redo} disabled={redoLen === 0}
+                className={`text-xs font-medium flex items-center gap-1.5 transition-colors ${redoLen === 0 ? 'text-gray-300 cursor-default' : 'text-gray-600 hover:text-black'}`}
+                title={redoLen === 0 ? 'Нет действий для возврата' : 'Ctrl+Y'}>
+                <Redo2 size={13} /> Вернуть
+              </button>
+            )}
+            {step !== 'zone' && (
+              <button
+                 onClick={() => { maskStrokesRef.current = []; historyRef.current = []; setHistoryLen(0); surfacesRef.current = [defaultSurfaceConfig()]; activeSurfaceRef.current = 0; setActiveSurface(0); setCornerTypes(['external', 'external']); setWrapJunctions([false, false]); setWallWidthMm(0); setWallHeightMm(0); setColumnShape('rect'); setColumnSides([0, 0, 0, 0]); setColumnHeightMm(0); setSavedPng(null); setWinSlopeDepthMm(0); setWinWidthMm(0); setWinHeightMm(0); setWinJoint('profile'); setTvCutoutWidthMm(0); setTvCutoutHeightMm(0); setTvCutoutDepthMm(0); setTvCutoutJoint('profile'); setTvCutoutInputMode('size'); setTvCutoutPresetInches(null); setTvBoxDepthMm(0); setTvBoxJoint('profile'); setTvBoxJointColor('black'); setTvBacklightEdges([true,true,true,true]); setTvType(null); setTvSurfaceSideDepthMm(0); setTvSurfaceTopBottomDepthMm(0); setTvSurfaceJoint('profile'); setDoorType(null); setDoorWidthMm(0); setDoorHeightMm(0); setDoorRevealDepthMm(0); setDoorTransomHeightMm(0); setDoorJoint('profile'); setDoorShowDoor(true); setDoorOpeningPoints([]); setDoorMarkMode('wall'); setDoorSelectedReveal('left'); setDoorRevealSizes({ left: { ...EMPTY_DOOR_REVEAL }, right: { ...EMPTY_DOOR_REVEAL }, top: { ...EMPTY_DOOR_REVEAL } }); setStep('zone'); setWallZone(null); setWindowType(null); setImage(null); setPoints([]); setSectorMaterials({}); setActiveSector(null); setIsErasing(false); }}
+                className="text-xs font-medium text-gray-400 hover:text-black flex items-center gap-1.5 transition-colors"
+              >
+                ← Назад
+              </button>
+            )}
           </div>
         </nav>
 
         {/* ── Main: canvas + right tool panel ── */}
-        <div className="flex-1 flex flex-col md:flex-row gap-3 p-3 overflow-y-auto md:overflow-hidden md:min-h-0">
+        <div className="flex-1 flex flex-col md:flex-row gap-1.5 p-1.5 overflow-y-auto md:overflow-hidden md:min-h-0">
 
         {/* ── Canvas area ── */}
-        <div className="flex-1 relative min-w-0 min-h-[55vw] md:min-h-0">
-          {step === 'upload' ? (
+        <div className="flex-[2] relative min-w-0 min-h-[70vw] md:min-h-0">
+          {step === 'zone' && wallZone === 'tv' ? (
+            <div className="flex flex-col items-center justify-center w-full h-full rounded-3xl bg-white border-2 border-dashed border-gray-200 p-10">
+              <div className="text-center mb-8">
+                <h3 className="text-xl font-black text-gray-900 mb-1.5">Выберите тип ТВ-зоны</h3>
+                <p className="text-sm text-gray-400">Как будет установлен телевизор?</p>
+              </div>
+              <div className="grid grid-cols-2 gap-5 w-full max-w-2xl">
+                {([
+                  { id: 'builtin',  label: 'Встроенный ТВ',  img: `${BASE}zones/tv-builtin.webp` },
+                  { id: 'surface',  label: 'Накладной ТВ',   img: `${BASE}zones/tv-surface.jpg` },
+                ] as const).map(tt => (
+                  <button
+                    key={tt.id}
+                    onClick={() => { setTvType(tt.id); setStep('upload'); }}
+                    className="flex flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-gray-50 hover:border-black hover:shadow-lg transition-all active:scale-95 group text-left"
+                  >
+                    <div className="w-full h-60 bg-gray-200 overflow-hidden relative">
+                      <img
+                        src={tt.img}
+                        alt={tt.label}
+                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                      />
+                    </div>
+                    <div className="px-4 py-3">
+                      <span className="text-sm font-black uppercase tracking-wide text-gray-800 group-hover:text-black">{tt.label}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => { setWallZone(null); setTvType(null); }}
+                className="mt-7 text-xs font-bold text-gray-400 hover:text-black transition-colors underline underline-offset-2"
+              >
+                ← Назад к выбору зоны
+              </button>
+            </div>
+          ) : step === 'zone' && wallZone === 'window' ? (
+            <div className="flex flex-col items-center justify-center w-full h-full rounded-3xl bg-white border-2 border-dashed border-gray-200 p-10">
+              <div className="text-center mb-8">
+                <h3 className="text-xl font-black text-gray-900 mb-1.5">Выберите тип оконного проёма</h3>
+                <p className="text-sm text-gray-400">Какое окно на вашем фото?</p>
+              </div>
+              <div className="grid grid-cols-2 gap-5 w-full max-w-2xl">
+                {([
+                  { id: 'standard',  label: 'Стандартное окно',  img: `${BASE}zones/window-standard.jpg` },
+                  { id: 'panoramic', label: 'Панорамное окно',   img: `${BASE}zones/window-panoramic.jpg` },
+                ] as const).map(wt => (
+                  <button
+                    key={wt.id}
+                    onClick={() => { setWindowType(wt.id); setStep('upload'); }}
+                    className="flex flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-gray-50 hover:border-black hover:shadow-lg transition-all active:scale-95 group text-left"
+                  >
+                    <div className="w-full h-60 bg-gray-200 overflow-hidden relative">
+                      <img
+                        src={wt.img}
+                        alt={wt.label}
+                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                      />
+                    </div>
+                    <div className="px-4 py-3">
+                      <span className="text-sm font-black uppercase tracking-wide text-gray-800 group-hover:text-black">{wt.label}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => { setWallZone(null); setWindowType(null); }}
+                className="mt-7 text-xs font-bold text-gray-400 hover:text-black transition-colors underline underline-offset-2"
+              >
+                ← Назад к выбору зоны
+              </button>
+            </div>
+          ) : step === 'zone' && wallZone === 'door' ? (
+            <div className="flex flex-col items-center justify-center w-full h-full rounded-3xl bg-white border-2 border-dashed border-gray-200 p-10">
+              <div className="text-center mb-8">
+                <h3 className="text-xl font-black text-gray-900 mb-1.5">Выберите тип дверного проёма</h3>
+                <p className="text-sm text-gray-400">Есть ли над дверью фальшфрамуга?</p>
+              </div>
+              <div className="grid grid-cols-2 gap-5 w-full max-w-2xl">
+                {([
+                  { id: 'standard',     label: 'Стандартная дверь',      desc: 'левый и правый откос', img: `${BASE}zones/door-standard.jpg` },
+                  { id: 'with-transom', label: 'Дверь с фальшфрамугой', desc: 'откосы и фальшфрамуга сверху', img: `${BASE}zones/door-transom.jpg` },
+                ] as const).map(dt => (
+                  <button
+                    key={dt.id}
+                    onClick={() => { setDoorType(dt.id); setStep('upload'); }}
+                    className="flex flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-gray-50 hover:border-black hover:shadow-lg transition-all active:scale-95 group text-left"
+                  >
+                    <div className="w-full h-60 bg-gray-200 overflow-hidden relative">
+                      <img
+                        src={dt.img}
+                        alt={dt.label}
+                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                      />
+                      <div className="absolute bottom-0 inset-x-0 p-2.5">
+                        <span className="text-[10px] text-white font-bold bg-black/50 px-2.5 py-1 rounded-lg leading-tight">{dt.desc}</span>
+                      </div>
+                    </div>
+                    <div className="px-4 py-3">
+                      <span className="text-sm font-black uppercase tracking-wide text-gray-800 group-hover:text-black">{dt.label}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => { setWallZone(null); setDoorType(null); }}
+                className="mt-7 text-xs font-bold text-gray-400 hover:text-black transition-colors underline underline-offset-2"
+              >
+                ← Назад к выбору зоны
+              </button>
+            </div>
+          ) : step === 'zone' ? (
+            <div className="flex flex-col items-center justify-center w-full h-full rounded-3xl bg-white border-2 border-dashed border-gray-200 p-10">
+              <div className="text-center mb-8">
+                <h3 className="text-xl font-normal text-gray-900 mb-1.5" style={{fontFamily:'Manrope, sans-serif'}}>Выберите тип зоны</h3>
+                <p className="text-sm font-normal text-gray-400" style={{fontFamily:'Manrope, sans-serif'}}>Какой участок стены вы хотите оформить?</p>
+              </div>
+              <div className="grid grid-cols-3 gap-3 w-full max-w-3xl px-2">
+                {([
+                  { id: 'wall',       label: 'Стена',            img: `${BASE}zones/wall.jpg` },
+                  { id: 'wall-niche', label: 'Стена с выступом', img: `${BASE}zones/wall-niche.jpg` },
+                  { id: 'window',     label: 'Оконный проём',    img: `${BASE}zones/window.jpg` },
+                  { id: 'door',       label: 'Дверной проём',    img: `${BASE}zones/door.jpg` },
+                  { id: 'tv',         label: 'ТВ-зона',          img: `${BASE}zones/tv.jpg` },
+                  { id: 'column',     label: 'Колонна',           img: `${BASE}zones/column.jpg` },
+                ] as const).map(zone => (
+                  <button
+                    key={zone.id}
+                    onClick={() => {
+                      setWallZone(zone.id);
+                      if (zone.id === 'column') setCornerTypes(['external', 'external']);
+                      // Window / TV / Door: an extra screen to pick the type first
+                      if (zone.id !== 'window' && zone.id !== 'tv' && zone.id !== 'door') setStep('upload');
+                    }}
+                    className="flex flex-col overflow-hidden rounded-xl border-2 border-gray-100 bg-gray-50 hover:border-black hover:shadow-md transition-all active:scale-95 group text-left"
+                  >
+                    <div className="w-full h-36 bg-gray-200 overflow-hidden relative">
+                      <img
+                        src={zone.img}
+                        alt={zone.label}
+                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                      />
+                    </div>
+                    <div className="px-3 py-2">
+                      <span className="text-xs font-black uppercase tracking-wide text-gray-800 group-hover:text-black leading-tight">{zone.label}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : step === 'upload' ? (
             <label className="relative flex flex-col items-center justify-center w-full h-full rounded-3xl border-2 border-dashed border-gray-300 cursor-pointer overflow-hidden shadow-sm group">
               {/* Background image at 50% opacity */}
               <div className="absolute inset-0 bg-cover bg-center transition-opacity group-hover:opacity-60"
@@ -1283,11 +4502,23 @@ const BambooStudio = () => {
               )}
               {step === 'mark' && (
                 <div className="hidden md:flex absolute top-5 left-1/2 -translate-x-1/2 bg-white/90 text-black px-5 py-1.5 rounded-full text-[10px] font-bold shadow-lg backdrop-blur-md border border-gray-100 uppercase tracking-widest pointer-events-none">
-                  {points.length < 4 ? `Кликните на угол стены (${points.length}/4)` : 'Нажмите «Начать примерку»'}
+                  {wallZone === 'wall-niche'
+                    ? (points.length < 4 ? `Стена 1: точка ${points.length + 1}/4` : points.length < 8 ? `Стена 2 (опц.): точка ${points.length - 3}/4 или «Начать»` : points.length < 12 ? `Стена 3 (опц.): точка ${points.length - 7}/4 или «Начать»` : 'Нажмите «Начать примерку»')
+                    : wallZone === 'tv' && tvType !== null
+                    ? (points.length < 4 ? `Стена: точка ${points.length + 1}/4` : points.length < 8 ? `Короб: точка ${points.length - 3}/4 или «Начать»` : 'Нажмите «Начать примерку»')
+                    : wallZone === 'column'
+                    ? (points.length < 4 ? `Грань 1: точка ${points.length + 1}/4` : points.length < 8 ? `Грань 2 (опц.): точка ${points.length - 3}/4 или «Начать»` : 'Нажмите «Начать примерку»')
+                    : wallZone === 'window' && windowType === 'standard'
+                    ? (points.length < 4 ? `Откос: точка ${points.length + 1}/4` : points.length < 8 ? `Подоконник: точка ${points.length - 3}/4 или «Начать»` : 'Нажмите «Начать примерку»')
+                    : wallZone === 'window' && windowType === 'panoramic'
+                    ? (points.length < 4 ? `Откос: точка ${points.length + 1}/4` : points.length < 8 ? `Гориз. плоскость: точка ${points.length - 3}/4 или «Начать»` : 'Нажмите «Начать примерку»')
+                      : wallZone === 'door'
+                      ? (points.length < 4 ? `Стена с дверью: точка ${points.length + 1}/4` : doorMarkMode === 'opening' ? `Дверное полотно: точка ${doorOpeningPoints.length + 1}/4` : 'Задайте откосы или выделите дверь ластиком')
+                    : (points.length < 4 ? `Кликните на угол стены (${points.length}/4)` : 'Нажмите «Начать примерку»')}
                 </div>
               )}
               {step === 'edit' && !isErasing && (
-                <div className="hidden md:flex absolute top-5 left-1/2 -translate-x-1/2 bg-white/90 text-black px-5 py-1.5 rounded-full text-[10px] font-bold shadow-lg backdrop-blur-md border border-gray-100 uppercase tracking-widest pointer-events-none">
+                <div className="hidden md:flex absolute left-1/2 -translate-x-1/2 bg-white/90 text-black px-5 py-1.5 rounded-full text-[10px] font-bold shadow-lg backdrop-blur-md border border-gray-100 uppercase tracking-widest pointer-events-none" style={{ top: panelCount > 1 ? 52 : 20 }}>
                   {isDraggingDivider ? 'Перемещайте разделитель' : 'Выберите панель или перетащите разделитель'}
                 </div>
               )}
@@ -1305,7 +4536,19 @@ const BambooStudio = () => {
           <div className="flex md:hidden justify-center">
             {step === 'mark' && (
               <div className="bg-white/90 text-black px-5 py-1.5 rounded-full text-[10px] font-bold shadow-lg backdrop-blur-md border border-gray-100 uppercase tracking-widest">
-                {points.length < 4 ? `Кликните на угол стены (${points.length}/4)` : 'Нажмите «Начать примерку»'}
+                {wallZone === 'wall-niche'
+                  ? (points.length < 4 ? `Стена 1: точка ${points.length + 1}/4` : points.length < 8 ? `Стена 2 (опц.): точка ${points.length - 3}/4 или «Начать»` : points.length < 12 ? `Стена 3 (опц.): точка ${points.length - 7}/4 или «Начать»` : 'Нажмите «Начать примерку»')
+                  : wallZone === 'tv' && tvType !== null
+                  ? (points.length < 4 ? `Стена: точка ${points.length + 1}/4` : points.length < 8 ? `Короб: точка ${points.length - 3}/4 или «Начать»` : 'Нажмите «Начать примерку»')
+                  : wallZone === 'column'
+                  ? (points.length < 4 ? `Грань 1: точка ${points.length + 1}/4` : points.length < 8 ? `Грань 2 (опц.): точка ${points.length - 3}/4 или «Начать»` : 'Нажмите «Начать примерку»')
+                  : wallZone === 'window' && windowType === 'standard'
+                  ? (points.length < 4 ? `Откос: точка ${points.length + 1}/4` : points.length < 8 ? `Подоконник: точка ${points.length - 3}/4 или «Начать»` : 'Нажмите «Начать примерку»')
+                   : wallZone === 'window' && windowType === 'panoramic'
+                   ? (points.length < 4 ? `Откос: точка ${points.length + 1}/4` : points.length < 8 ? `Гориз. плоскость: точка ${points.length - 3}/4 или «Начать»` : 'Нажмите «Начать примерку»')
+                   : wallZone === 'door'
+                   ? (points.length < 4 ? `Стена с дверью: точка ${points.length + 1}/4` : doorMarkMode === 'opening' ? `Дверное полотно: точка ${doorOpeningPoints.length + 1}/4` : 'Задайте откосы или выделите дверь ластиком')
+                  : (points.length < 4 ? `Кликните на угол стены (${points.length}/4)` : 'Нажмите «Начать примерку»')}
               </div>
             )}
             {step === 'edit' && !isErasing && (
@@ -1321,32 +4564,111 @@ const BambooStudio = () => {
           </div>
         )}
 
-        {/* ── Right tool panel ── */}
-        <div className="w-full md:w-[232px] shrink-0 flex flex-col gap-2 overflow-y-auto pb-4 md:pb-1" style={{ scrollbarWidth: 'none' }}>
+        {/* ── Right tool panel — hidden on zone-selection step ── */}
+        <div className={`w-full md:flex-[1] md:min-w-0 shrink-0 flex flex-col gap-1.5 overflow-y-auto pb-4 md:pb-1 ${step === 'zone' ? 'hidden' : ''}`} style={{ scrollbarWidth: 'none' }}>
 
           {/* MARK step */}
           {step === 'mark' && (
             <div className="bg-white rounded-2xl p-4 shadow-sm">
               <div className="flex items-center gap-1.5 mb-3">
                 <Check size={12} className="text-gray-400" />
-                <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Разметка стены</span>
+                <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Разметка стены</span>
               </div>
-              <p className="text-[9px] text-gray-400 mb-4 leading-relaxed">Кликайте по 4 углам стены по часовой стрелке.</p>
-              <div className="flex justify-between mb-5">
-                {[1,2,3,4].map(i => (
-                  <div key={i} className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${points.length >= i ? 'bg-black text-white border-black' : 'text-gray-200 border-gray-100'}`}>
-                    {points.length >= i ? <Check size={13}/> : i}
+              {wallZone === 'door' ? (<>
+                <p className="text-[9px] text-gray-400 mb-3 leading-relaxed">
+                  Сначала отметьте <span className="font-bold text-gray-600">4 угла стены с дверью</span>, затем отдельным ластиком выделите дверное полотно. Размеры откосов задаются на следующем экране.
+                </p>
+                {points.length >= 4 && (<>
+                  <div className={`rounded-xl p-2.5 border ${doorMarkMode === 'opening' ? 'border-red-400 bg-red-50' : 'border-gray-200 bg-white'}`}>
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <p className="text-[8px] font-black uppercase tracking-widest text-gray-500">Ластик · дверь клиента</p>
+                      <span className="text-[8px] font-bold text-red-500">{doorOpeningPoints.length}/4 точки</span>
+                    </div>
+                    <p className="text-[8px] text-gray-400 mb-2">Выделите 4 угла полотна — область внутри будет вырезана из визуализации.</p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button onClick={() => { setDoorOpeningPoints([]); setDoorMarkMode('opening'); }}
+                        className={`py-2 rounded-lg text-[8px] font-bold transition-all active:scale-95 ${
+                          doorMarkMode === 'opening'
+                            ? 'bg-red-500 text-white shadow-md'
+                            : doorOpeningPoints.length < 4
+                              ? 'bg-black text-white shadow-md ring-2 ring-black ring-offset-1'
+                              : 'bg-gray-200 text-gray-400'
+                        }`}>
+                        {doorOpeningPoints.length === 4 ? 'Выделить заново' : 'Выделить 4 точки'}
+                      </button>
+                      <button disabled={doorOpeningPoints.length === 0} onClick={() => { setDoorOpeningPoints([]); setDoorMarkMode('wall'); }}
+                        className="py-2 rounded-lg text-[8px] font-bold border border-gray-200 text-gray-500 disabled:opacity-30">
+                        Сбросить вырез
+                      </button>
+                    </div>
+                  </div>
+                </>)}
+              </>) : wallZone === 'wall-niche' ? (<>
+                <p className="text-[9px] text-gray-400 mb-2 leading-relaxed">
+                  Каждая стена отмечается <span className="font-bold text-gray-600">отдельно</span> — 4 угла по часовой стрелке. Контуры стен не связаны между собой.<br/>
+                  <span className="font-bold text-[#007aff]">Стена 1</span> — основная (обязательно).<br/>
+                  <span className="font-bold text-[#7ec662]">Стена 2</span> и <span className="font-bold text-[#ff9500]">Стена 3</span> — по желанию.
+                </p>
+                {points.length >= 8 && (
+                  <div className="mb-3">
+                    <p className="text-[9px] text-gray-400 mb-1.5 font-bold uppercase tracking-wide">Тип углов:</p>
+                    <CornerTypeCheckboxes nJunctions={Math.min(2, Math.floor(points.length / 4) - 1)} cornerTypes={cornerTypes} setCornerTypes={(v) => { pushHistory(); setCornerTypes(v); }} wrapJunctions={wrapJunctions} setWrapJunctions={(v) => { pushHistory(); setWrapJunctions(v); }} />
+                  </div>
+                )}
+              </>) : wallZone === 'tv' && tvType !== null ? (<>
+                <p className="text-[9px] text-gray-400 mb-2 leading-relaxed">
+                  Сначала отметьте <span className="font-bold text-[#007aff]">4 угла стены</span> (Стена), затем <span className="font-bold text-[#7ec662]">4 угла ТВ-короба</span> (Короб) — каждый квадрат по часовой стрелке.
+                </p>
+              </>) : wallZone === 'column' ? (
+                <p className="text-[9px] text-gray-400 mb-2 leading-relaxed">
+                  Отметьте <span className="font-bold text-gray-600">видимые грани</span> колонны — каждая грань отдельно, 4 угла по часовой стрелке.<br/>
+                  <span className="font-bold text-[#007aff]">Грань 1</span> — обязательно, <span className="font-bold text-[#7ec662]">Грань 2</span> — по желанию.<br/>
+                  На углах панель <span className="font-bold text-[#5a9c3e]">загибается</span> — профиль не требуется. Для круглой колонны отметьте видимую часть одной плоскостью.
+                </p>
+              ) : wallZone === 'window' && windowType === 'standard' ? (
+                <p className="text-[9px] text-gray-400 mb-2 leading-relaxed">
+                  Отметьте <span className="font-bold text-gray-600">2 видимые плоскости</span> окна — каждая отдельно, 4 угла по часовой стрелке.<br/>
+                  <span className="font-bold text-[#007aff]">Откос</span> — видимая боковая/верхняя плоскость (обязательно).<br/>
+                  <span className="font-bold text-[#7ec662]">Подоконник</span> — по желанию.<br/>
+                  В расчёте: <span className="font-bold text-gray-600">3 откоса</span> (2 вертикальных + верхний) и <span className="font-bold text-gray-600">1 подоконник</span>.
+                </p>
+              ) : wallZone === 'window' && windowType === 'panoramic' ? (
+                <p className="text-[9px] text-gray-400 mb-2 leading-relaxed">
+                  Отметьте <span className="font-bold text-gray-600">до 2 плоскостей</span> панорамного окна — каждая отдельно, 4 угла по часовой стрелке.<br/>
+                  <span className="font-bold text-[#007aff]">Откос</span> — боковая/верхняя плоскость (обязательно).<br/>
+                  <span className="font-bold text-[#7ec662]">Горизонтальная плоскость</span> — верхняя горизонтальная поверхность (по желанию).
+                </p>
+              ) : (
+                <p className="text-[9px] text-gray-400 mb-4 leading-relaxed">Кликайте по 4 углам стены по часовой стрелке.</p>
+              )}
+              <div className="flex flex-wrap gap-1.5 mb-5">
+                {Array.from({ length: wallZone === 'wall-niche' ? 12 : wallZone === 'column' || wallZone === 'window' || wallZone === 'tv' ? 8 : 4 }, (_, i) => i + 1).map(i => (
+                  <div key={i} className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-all ${
+                    points.length >= i
+                      ? (i <= 4 ? 'bg-[#007aff] text-white border-[#007aff]' : i <= 8 ? 'bg-[#7ec662] text-white border-[#7ec662]' : 'bg-[#ff9500] text-white border-[#ff9500]')
+                      : i <= 4 ? 'text-gray-300 border-gray-200' : 'text-gray-200 border-dashed border-gray-200'
+                  }`}>
+                    {points.length >= i ? <Check size={11}/> : i}
                   </div>
                 ))}
               </div>
-              {points.length > 0 && (
-                <button onClick={() => setPoints(points.slice(0,-1))}
+              {(points.length > 0 || (wallZone === 'door' && doorOpeningPoints.length > 0)) && (
+                <button onClick={() => {
+                  if (wallZone === 'door' && doorMarkMode === 'opening') setDoorOpeningPoints(doorOpeningPoints.slice(0, -1));
+                  else setPoints(points.slice(0, -1));
+                }}
                   className="w-full mb-2 py-1.5 text-[9px] font-bold text-gray-400 hover:text-red-500 flex items-center justify-center gap-1 transition-colors">
-                  <Undo2 size={11}/> Отменить точку
+                  <Undo2 size={11}/> Отменить {wallZone === 'door' && doorMarkMode === 'opening' ? 'точку двери' : 'точку'}
                 </button>
               )}
-              <button disabled={points.length < 4} onClick={() => setStep('edit')}
-                className="w-full py-3 bg-black text-white rounded-xl text-xs font-bold shadow disabled:opacity-20 transition-all active:scale-95">
+              <button disabled={points.length < 4} onClick={handleStartFitting}
+                className={`w-full py-4 rounded-xl text-sm font-bold shadow transition-all active:scale-95 ${
+                  points.length < 4
+                    ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
+                    : wallZone === 'door' && doorOpeningPoints.length < 4
+                      ? 'bg-gray-200 text-gray-400'
+                      : 'bg-black text-white ring-2 ring-black ring-offset-1 shadow-lg'
+                }`}>
                 Начать примерку
               </button>
             </div>
@@ -1355,73 +4677,924 @@ const BambooStudio = () => {
           {/* EDIT step tools */}
           {step === 'edit' && (<>
 
-            {/* Panels */}
-            <div className="bg-white rounded-2xl p-3.5 shadow-sm">
-              <div className="flex items-center justify-between mb-2.5">
-                <div className="flex items-center gap-1.5">
-                  <Columns size={12} className="text-gray-400"/>
-                  <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Панели</span>
+            {/* Surface selector at top — wall-niche only */}
+            {wallZone === 'wall-niche' && points.length >= 8 && (
+              <div className="bg-white rounded-2xl p-4 shadow-sm">
+                <div className="flex items-center gap-1.5 mb-2.5">
+                  <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Поверхность</span>
                 </div>
-                <button onClick={handleResetWidths} className="text-[8px] font-bold text-gray-300 hover:text-black transition-colors uppercase tracking-wide">сброс</button>
+                <div className="flex flex-col gap-1.5">
+                  {Array.from({ length: Math.min(3, Math.floor(points.length / 4)) }, (_, i) => i).map(i => (
+                    <button key={i} onClick={() => switchSurface(i)}
+                      className={`w-full py-2 px-3 text-left text-[10px] font-bold rounded-xl border transition-all active:scale-95 ${activeSurface === i ? 'bg-[#7ec662] text-white border-[#7ec662]' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
+                      {SURFACE_LABELS[i]}
+                    </button>
+                  ))}
+                </div>
+                {/* Active wall badge */}
+                <div className="mt-2.5 flex items-center gap-1.5 px-2 py-1.5 bg-[#7ec662]/10 rounded-lg">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#7ec662] shrink-0"/>
+                  <span className="text-[9px] font-bold text-[#5a9c3e]">
+                    Редактирование: {SURFACE_LABELS[activeSurface]}
+                  </span>
+                </div>
+                <p className="text-[8px] text-gray-400 mt-1.5 leading-relaxed">Кликните по стене на фото — панель переключится автоматически.</p>
               </div>
-              <div className="flex justify-between mb-1">
-                <span className="text-[9px] text-gray-400 font-bold uppercase">Количество</span>
-                <span className="text-[9px] font-bold">{panelCount}</span>
-              </div>
-              <input type="range" min="1" max="15" value={panelCount}
-                onChange={(e) => handleChangePanelCount(parseInt(e.target.value))}
-                className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
-            </div>
+            )}
 
-            {/* Eraser */}
-            <div className={`rounded-2xl p-3.5 shadow-sm transition-colors ${isErasing ? 'bg-red-50 ring-2 ring-red-400' : 'bg-white'}`}>
+            {/* TV zone: Стена / Короб slider toggle (works for both surface and builtin) */}
+            {wallZone === 'tv' && tvType !== null && (
+              <>
+                {/* Slider toggle */}
+                <div className="bg-white rounded-2xl p-3 shadow-sm">
+                  <div
+                    className="relative flex rounded-xl bg-gray-100 p-0.5 h-9 cursor-pointer select-none"
+                    onClick={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const next = e.clientX - rect.left < rect.width / 2 ? 'wall' : 'box';
+                      setTvZoneView(next);
+                      switchSurface(next === 'wall' ? 0 : 1);
+                    }}
+                  >
+                    <div className={`absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-lg bg-black shadow-sm transition-all duration-200 ${tvZoneView === 'box' ? 'left-[calc(50%+2px)]' : 'left-0.5'}`} />
+                    <span className={`relative flex-1 flex items-center justify-center text-[10px] font-bold z-10 transition-colors duration-200 ${tvZoneView === 'wall' ? 'text-white' : 'text-gray-500'}`}>Стена</span>
+                    <span className={`relative flex-1 flex items-center justify-center text-[10px] font-bold z-10 transition-colors duration-200 ${tvZoneView === 'box' ? 'text-white' : 'text-gray-500'}`}>Короб</span>
+                  </div>
+                </div>
+
+                {/* ── НАКЛАДНОЙ ТВ (surface) — 2 поверхности: Стена + Короб ── */}
+                {tvType === 'surface' && (<>
+                  {/* Стена mode — основная стена (surface 0) */}
+                  {tvZoneView === 'wall' && (
+                    <div className="bg-white rounded-2xl p-4 shadow-sm">
+                      <div className="flex items-center gap-1.5 mb-2.5">
+                        <Columns size={12} className="text-gray-400"/>
+                        <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">{`ТВ-зона — ${TV_ZONE_LABELS[activeSurface]}`}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 mb-2">
+                        <label className="block">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase">Ширина, см</span>
+                          <MeterInput placeholder="напр. 360" valueMm={wallWidthMm} onChangeMm={(v) => { pushHistory(); setWallWidthMm(v); }} />
+                        </label>
+                        <label className="block">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase">Высота, см</span>
+                          <MeterInput placeholder="напр. 270" valueMm={wallHeightMm} onChangeMm={(v) => { pushHistory(); setWallHeightMm(v); }} />
+                        </label>
+                      </div>
+                      {(() => {
+                        const pMat = sectorMaterials[0];
+                        const pW = pMat?.panelWidthMm ?? PANEL_W_MM;
+                        const pH = pMat?.panelHeightMm ?? PANEL_H_MM;
+                        const pAreaM2 = (pW * pH) / 1e6;
+                        return (
+                          <p className="text-[8px] text-gray-400 mb-1.5">
+                            Панель: {(pH / 10).toFixed(0)} × {(pW / 10).toFixed(0)} см ({pAreaM2.toFixed(2).replace('.', ',')} м²)
+                          </p>
+                        );
+                      })()}
+                      {wallWidthMm > 0 && wallHeightMm > 0 && (() => {
+                        const pMat = sectorMaterials[0];
+                        const pW = pMat?.panelWidthMm ?? PANEL_W_MM;
+                        const pH = pMat?.panelHeightMm ?? PANEL_H_MM;
+                        const areaM2 = (wallWidthMm / 1000) * (wallHeightMm / 1000);
+                        const cols = Math.ceil(wallWidthMm / pW);
+                        const opt = optimizedPanelCalc(cols, wallHeightMm, pH);
+                        const enough = panelCount >= cols;
+                        const tooTall = wallHeightMm > pH;
+                        return (
+                          <div className="space-y-1">
+                            <p className="text-[9px] font-bold text-gray-600">Площадь стены: {areaM2.toFixed(2).replace('.', ',')} м²</p>
+                            <p className={`text-[9px] font-bold ${enough ? 'text-[#5a9c3e]' : 'text-amber-600'}`}>
+                              {enough
+                                ? `✓ Панелей в ряду достаточно: ${panelCount} (по ширине ${cols})`
+                                : `⚠ По ширине нужно ${cols} ${panelsWord(cols)} в ряду — в проекте ${panelCount}`}
+                            </p>
+                            {!enough && (
+                              <button onClick={() => handleChangePanelCount(cols)}
+                                className="w-full py-1.5 text-[9px] font-bold rounded-lg bg-[#7ec662] text-white hover:bg-[#6db453] transition-all active:scale-95">
+                                Установить {cols} {panelsWord(cols)} в ряд
+                              </button>
+                            )}
+                            {tooTall && (
+                              <div className="space-y-1.5">
+                                <p className="text-[9px] font-bold text-amber-600">
+                                  {`⚠ Высота стены больше 2,8 м — ${opt.fullRows} ${rowsWord(opt.fullRows)} по высоте, всего ${opt.needed} ${panelsWord(opt.needed)} (в расчёте КП учтено)`}
+                                </p>
+                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 space-y-1">
+                                  <p className="text-[9px] font-black text-amber-700 uppercase tracking-wide">Стыковочный профиль</p>
+                                  {(['bottom', 'top'] as const).map(pos => {
+                                    const label = pos === 'bottom' ? 'Снизу' : 'Сверху';
+                                    const checked = jointProfilePosition.includes(pos);
+                                    return (
+                                      <label key={pos} className="flex items-center gap-2 cursor-pointer group">
+                                        <input type="checkbox" checked={checked}
+                                          onChange={() => {
+                                            pushHistory();
+                                            const current = adoptedSeamCurrentRef.current;
+                                            if (current.size > 0) {
+                                              const filtered = hMoldingPositionsRef.current.filter(p => !current.has(p));
+                                              hMoldingPositionsRef.current = filtered;
+                                              setHMoldingPositions(filtered);
+                                              adoptedSeamOriginalsRef.current = new Set();
+                                              adoptedSeamCurrentRef.current = new Set();
+                                              hMoldingCompanionMapRef.current = new Map();
+                                            }
+                                            setJointProfilePosition(prev =>
+                                              prev.includes(pos) ? prev.filter(p => p !== pos) : [...prev, pos]
+                                            );
+                                          }}
+                                          className="w-3 h-3 accent-amber-600 cursor-pointer"
+                                        />
+                                        <span className="text-[9px] font-bold text-amber-800 group-hover:text-amber-900">{label}</span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                            <p className="text-[8px] text-gray-400">Ширина панели в проекте: {Math.round(wallWidthMm / panelCount / 10)} см (макс. 122 см)</p>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+                  {/* Короб mode — Лицевая плоскость короба (surface 1) */}
+                  {tvZoneView === 'box' && (
+                    <div className="bg-white rounded-2xl p-4 shadow-sm">
+                      <div className="flex items-center gap-1.5 mb-2.5">
+                        <Columns size={12} className="text-gray-400"/>
+                        <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Лицевая плоскость короба</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 mb-2">
+                        <label className="block">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase">Ширина, см</span>
+                          <MeterInput placeholder="напр. 360" valueMm={wallWidthMm} onChangeMm={(v) => { pushHistory(); setWallWidthMm(v); }} />
+                        </label>
+                        <label className="block">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase">Высота, см</span>
+                          <MeterInput placeholder="напр. 270" valueMm={wallHeightMm} onChangeMm={(v) => { pushHistory(); setWallHeightMm(v); }} />
+                        </label>
+                      </div>
+                      {wallWidthMm > 0 && wallHeightMm > 0 && (() => {
+                        const pMat = sectorMaterials[0];
+                        const pW = pMat?.panelWidthMm ?? PANEL_W_MM;
+                        const pH = pMat?.panelHeightMm ?? PANEL_H_MM;
+                        const isHorizBox = panelOrientation === 'horizontal' || panelOrientation === 'lengthwise';
+                        const singleRowH = isHorizBox ? pW : pH;
+                        const areaM2 = (wallWidthMm / 1000) * (wallHeightMm / 1000);
+                        const tooTall = wallHeightMm > singleRowH;
+                        const opt = optimizedPanelCalc(
+                          isHorizBox ? Math.ceil(wallHeightMm / pW) : Math.ceil(wallWidthMm / pW),
+                          isHorizBox ? wallWidthMm : wallHeightMm,
+                          isHorizBox ? pW : pH
+                        );
+                        const colsNeeded = !isHorizBox ? Math.ceil(wallWidthMm / pW) : 0;
+                        const tooWide = !isHorizBox && wallWidthMm > pW;
+                        const seamCount = colsNeeded > 1 ? colsNeeded - 1 : 0;
+                        const seamProfileRuns = seamCount > 0 ? packProfileRuns(Array(seamCount).fill(wallHeightMm)) : 0;
+                        return (
+                          <div className="space-y-1 mb-1">
+                            <p className="text-[8px] text-gray-400">
+                              Панель: {(pH / 10).toFixed(0)} × {(pW / 10).toFixed(0)} см · {isHorizBox ? 'горизонт.' : 'вертик.'} · ряд = {(singleRowH / 10).toFixed(0)} см
+                            </p>
+                            <p className="text-[9px] font-bold text-gray-600">Площадь лицевой: {areaM2.toFixed(2).replace('.', ',')} м²</p>
+                            {tooTall && (
+                              <div className="space-y-1.5">
+                                <p className="text-[9px] font-bold text-amber-600">
+                                  {`⚠ ${isHorizBox ? 'Высота короба' : 'Высота'} > ${(singleRowH / 10).toFixed(0)} см — ${opt.fullRows} ${rowsWord(opt.fullRows)} по ${isHorizBox ? 'высоте' : 'вертикали'}, итого ${opt.needed} ${panelsWord(opt.needed)}`}
+                                </p>
+                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 space-y-1">
+                                  <p className="text-[9px] font-black text-amber-700 uppercase tracking-wide">Стыковочный профиль (горизонт.)</p>
+                                  {(['bottom', 'top'] as const).map(pos => {
+                                    const label = pos === 'bottom' ? 'Снизу' : 'Сверху';
+                                    const checked = jointProfilePosition.includes(pos);
+                                    return (
+                                      <label key={pos} className="flex items-center gap-2 cursor-pointer group">
+                                        <input type="checkbox" checked={checked}
+                                          onChange={() => {
+                                            pushHistory();
+                                            const current = adoptedSeamCurrentRef.current;
+                                            if (current.size > 0) {
+                                              const filtered = hMoldingPositionsRef.current.filter(p => !current.has(p));
+                                              hMoldingPositionsRef.current = filtered;
+                                              setHMoldingPositions(filtered);
+                                              adoptedSeamOriginalsRef.current = new Set();
+                                              adoptedSeamCurrentRef.current = new Set();
+                                              hMoldingCompanionMapRef.current = new Map();
+                                            }
+                                            setJointProfilePosition(prev =>
+                                              prev.includes(pos) ? prev.filter(p => p !== pos) : [...prev, pos]
+                                            );
+                                          }}
+                                          className="w-3 h-3 accent-amber-600 cursor-pointer"
+                                        />
+                                        <span className="text-[9px] font-bold text-amber-800 group-hover:text-amber-900">{label}</span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                            {tooWide && (
+                              <div className="space-y-1.5">
+                                <p className="text-[9px] font-bold text-amber-600">
+                                  {`⚠ Ширина ${Math.round(wallWidthMm / 10)} см > ${Math.round(pW / 10)} см — ${colsNeeded} кол., ${seamCount} верт. ${seamCount === 1 ? 'стык' : seamCount < 5 ? 'стыка' : 'стыков'} по ${Math.round(wallHeightMm / 10)} см`}
+                                </p>
+                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5">
+                                  <p className="text-[9px] font-black text-amber-700 uppercase tracking-wide mb-0.5">Стыковочный профиль (вертик.)</p>
+                                  <p className="text-[9px] text-amber-800">
+                                    {`${seamCount} ${seamCount === 1 ? 'стык' : seamCount < 5 ? 'стыка' : 'стыков'} × ${Math.round(wallHeightMm / 10)} см → ${seamProfileRuns} хл. 3 м`}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                      <button
+                        onClick={() => { pushHistory(); setTvBacklightEnabled(v => !v); }}
+                        className={`w-full py-1.5 rounded-lg text-[9px] font-bold border transition-all active:scale-95 flex items-center justify-center gap-1.5 ${tvBacklightEnabled ? 'bg-amber-50 text-amber-700 border-amber-300' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
+                        {tvBacklightEnabled ? '✦ Подсветка включена' : '✦ Подсветка вокруг короба'}
+                      </button>
+                      {tvBacklightEnabled && (() => {
+                        const blBtn = (i: 0|1|2|3, lbl: string) => (
+                          <button onClick={() => { pushHistory(); setTvBacklightEdges(e => { const n=[...e] as [boolean,boolean,boolean,boolean]; n[i]=!n[i]; return n; }); }}
+                            className={`py-1 rounded text-[8px] font-bold border transition-all active:scale-95 ${tvBacklightEdges[i] ? 'bg-amber-400 text-white border-amber-500' : 'bg-gray-50 text-gray-400 border-gray-200 hover:border-gray-300'}`}>{lbl}</button>
+                        );
+                        return (
+                          <div className="mt-2">
+                            <p className="text-[9px] font-bold text-gray-400 uppercase mb-1.5">Грани с подсветкой</p>
+                            <div className="grid grid-cols-3 gap-1">
+                              <div/>{blBtn(0,'↑ Верх')}<div/>
+                              {blBtn(3,'← Лево')}
+                              <div className="rounded bg-gray-50 flex items-center justify-center"><span className="text-[7px] text-gray-300">✦</span></div>
+                              {blBtn(1,'Право →')}
+                              <div/>{blBtn(2,'↓ Низ')}<div/>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+                  {/* Короб mode — Глубина граней короба */}
+                  {tvZoneView === 'box' && (
+                    <div className="bg-white rounded-2xl p-4 shadow-sm">
+                      <div className="flex items-center gap-1.5 mb-2.5">
+                        <Columns size={12} className="text-gray-400"/>
+                        <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Глубина граней короба</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 mb-2">
+                        <label className="block">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase">Боковые (×2), см</span>
+                          <MeterInput placeholder="напр. 20" valueMm={tvSurfaceSideDepthMm} onChangeMm={(v) => { pushHistory(); setTvSurfaceSideDepthMm(v); }} />
+                        </label>
+                        <label className="block">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase">Верх/Низ (×2), см</span>
+                          <MeterInput placeholder="напр. 15" valueMm={tvSurfaceTopBottomDepthMm} onChangeMm={(v) => { pushHistory(); setTvSurfaceTopBottomDepthMm(v); }} />
+                        </label>
+                      </div>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Угловое соединение</p>
+                      <div className="flex gap-1.5 mb-1.5">
+                        {([{ id: 'profile', label: 'Профиль' }, { id: 'bend', label: 'Загиб' }] as const).map(({ id, label }) => (
+                          <button key={id} onClick={() => { pushHistory(); setTvSurfaceJoint(id); }}
+                            className={`flex-1 py-1.5 rounded-lg text-[9px] font-bold border transition-all active:scale-95 ${tvSurfaceJoint === id ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      {tvSurfaceJoint === 'profile' && (
+                        <div className="grid grid-cols-4 gap-1">
+                          {PROFILE_COLOR_OPTS.map(o => {
+                            const active = tvSurfaceJointColor === o.id;
+                            return (
+                              <button key={o.id} onClick={() => { pushHistory(); setTvSurfaceJointColor(o.id); }}
+                                className="flex flex-col items-center gap-1 transition-all">
+                                <div className={`w-full h-5 rounded-sm border-2 transition-all ${active ? 'border-gray-800 shadow-md' : 'border-transparent opacity-55'}`}
+                                  style={PROFILE_COLOR_BAR[o.id]}/>
+                                <span className={`text-[7px] font-bold uppercase leading-none ${active ? 'text-gray-800' : 'text-gray-400'}`}>{o.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>)}
+
+                {/* ── ВСТРОЕННЫЙ ТВ (builtin) ── */}
+                {tvType === 'builtin' && (<>
+                  {/* Стена mode — размеры основной стены с вырезом */}
+                  {tvZoneView === 'wall' && (
+                    <div className="bg-white rounded-2xl p-4 shadow-sm">
+                      <div className="flex items-center gap-1.5 mb-2.5">
+                        <Columns size={12} className="text-gray-400"/>
+                        <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">{`ТВ-зона — ${TV_ZONE_LABELS[activeSurface]}`}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 mb-2">
+                        <label className="block">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase">Ширина, см</span>
+                          <MeterInput placeholder="напр. 360" valueMm={wallWidthMm} onChangeMm={(v) => { pushHistory(); setWallWidthMm(v); }} />
+                        </label>
+                        <label className="block">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase">Высота, см</span>
+                          <MeterInput placeholder="напр. 270" valueMm={wallHeightMm} onChangeMm={(v) => { pushHistory(); setWallHeightMm(v); }} />
+                        </label>
+                      </div>
+                      {(() => {
+                        const pMat = sectorMaterials[0];
+                        const pW = pMat?.panelWidthMm ?? PANEL_W_MM;
+                        const pH = pMat?.panelHeightMm ?? PANEL_H_MM;
+                        const pAreaM2 = (pW * pH) / 1e6;
+                        return (
+                          <p className="text-[8px] text-gray-400 mb-1.5">
+                            Панель: {(pH / 10).toFixed(0)} × {(pW / 10).toFixed(0)} см ({pAreaM2.toFixed(2).replace('.', ',')} м²)
+                          </p>
+                        );
+                      })()}
+                      {wallWidthMm > 0 && wallHeightMm > 0 && (() => {
+                        const pMat = sectorMaterials[0];
+                        const pW = pMat?.panelWidthMm ?? PANEL_W_MM;
+                        const pH = pMat?.panelHeightMm ?? PANEL_H_MM;
+                        const areaM2 = (wallWidthMm / 1000) * (wallHeightMm / 1000);
+                        const cols = Math.ceil(wallWidthMm / pW);
+                        const opt = optimizedPanelCalc(cols, wallHeightMm, pH);
+                        const enough = panelCount >= cols;
+                        const tooTall = wallHeightMm > pH;
+                        return (
+                          <div className="space-y-1">
+                            <p className="text-[9px] font-bold text-gray-600">Площадь стены: {areaM2.toFixed(2).replace('.', ',')} м²</p>
+                            <p className={`text-[9px] font-bold ${enough ? 'text-[#5a9c3e]' : 'text-amber-600'}`}>
+                              {enough
+                                ? `✓ Панелей в ряду достаточно: ${panelCount} (по ширине ${cols})`
+                                : `⚠ По ширине нужно ${cols} ${panelsWord(cols)} в ряду — в проекте ${panelCount}`}
+                            </p>
+                            {!enough && (
+                              <button onClick={() => handleChangePanelCount(cols)}
+                                className="w-full py-1.5 text-[9px] font-bold rounded-lg bg-[#7ec662] text-white hover:bg-[#6db453] transition-all active:scale-95">
+                                Установить {cols} {panelsWord(cols)} в ряд
+                              </button>
+                            )}
+                            {tooTall && (
+                              <div className="space-y-1.5">
+                                <p className="text-[9px] font-bold text-amber-600">
+                                  {`⚠ Высота стены больше 2,8 м — ${opt.fullRows} ${rowsWord(opt.fullRows)} по высоте, всего ${opt.needed} ${panelsWord(opt.needed)} (в расчёте КП учтено)`}
+                                </p>
+                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 space-y-1">
+                                  <p className="text-[9px] font-black text-amber-700 uppercase tracking-wide">Стыковочный профиль</p>
+                                  {(['bottom', 'top'] as const).map(pos => {
+                                    const label = pos === 'bottom' ? 'Снизу' : 'Сверху';
+                                    const checked = jointProfilePosition.includes(pos);
+                                    return (
+                                      <label key={pos} className="flex items-center gap-2 cursor-pointer group">
+                                        <input
+                                          type="checkbox"
+                                          checked={checked}
+                                          onChange={() => {
+                                            pushHistory();
+                                            const current = adoptedSeamCurrentRef.current;
+                                            if (current.size > 0) {
+                                              const filtered = hMoldingPositionsRef.current.filter(p => !current.has(p));
+                                              hMoldingPositionsRef.current = filtered;
+                                              setHMoldingPositions(filtered);
+                                              adoptedSeamOriginalsRef.current = new Set();
+                                              adoptedSeamCurrentRef.current = new Set();
+                                              hMoldingCompanionMapRef.current = new Map();
+                                            }
+                                            setJointProfilePosition(prev =>
+                                              prev.includes(pos)
+                                                ? prev.filter(p => p !== pos)
+                                                : [...prev, pos]
+                                            );
+                                          }}
+                                          className="w-3 h-3 accent-amber-600 cursor-pointer"
+                                        />
+                                        <span className="text-[9px] font-bold text-amber-800 group-hover:text-amber-900">{label}</span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                            <p className="text-[8px] text-gray-400">Ширина панели в проекте: {Math.round(wallWidthMm / panelCount / 10)} см (макс. 122 см)</p>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+                  {/* Короб mode — лицевая плоскость: размеры + принудительный профиль */}
+                  {tvZoneView === 'box' && (
+                    <div className="bg-white rounded-2xl p-4 shadow-sm">
+                      <div className="flex items-center gap-1.5 mb-2.5">
+                        <Columns size={12} className="text-gray-400"/>
+                        <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Лицевая плоскость короба</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 mb-2">
+                        <label className="block">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase">Ширина, см</span>
+                          <MeterInput placeholder="напр. 360" valueMm={wallWidthMm} onChangeMm={(v) => { pushHistory(); setWallWidthMm(v); }} />
+                        </label>
+                        <label className="block">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase">Высота, см</span>
+                          <MeterInput placeholder="напр. 270" valueMm={wallHeightMm} onChangeMm={(v) => { pushHistory(); setWallHeightMm(v); }} />
+                        </label>
+                      </div>
+                      {wallWidthMm > 0 && wallHeightMm > 0 && (() => {
+                        const pMat = sectorMaterials[0];
+                        const pW = pMat?.panelWidthMm ?? PANEL_W_MM;
+                        const pH = pMat?.panelHeightMm ?? PANEL_H_MM;
+                        const isHorizBox = panelOrientation === 'horizontal' || panelOrientation === 'lengthwise';
+                        // For horizontal panels, single row height = panel WIDTH; for vertical = panel HEIGHT
+                        const singleRowH = isHorizBox ? pW : pH;
+                        const areaM2 = (wallWidthMm / 1000) * (wallHeightMm / 1000);
+                        // tooTall: height > single panel span → horizontal stacking seam needed
+                        const tooTall = wallHeightMm > singleRowH;
+                        const opt = optimizedPanelCalc(
+                          isHorizBox ? Math.ceil(wallHeightMm / pW) : Math.ceil(wallWidthMm / pW),
+                          isHorizBox ? wallWidthMm : wallHeightMm,
+                          isHorizBox ? pW : pH
+                        );
+                        // tooWide (vertical only): width > panel width → multiple columns → vertical seam profiles
+                        const colsNeeded = !isHorizBox ? Math.ceil(wallWidthMm / pW) : 0;
+                        const tooWide = !isHorizBox && wallWidthMm > pW;
+                        const seamCount = colsNeeded > 1 ? colsNeeded - 1 : 0;
+                        const seamProfileRuns = seamCount > 0
+                          ? packProfileRuns(Array(seamCount).fill(wallHeightMm))
+                          : 0;
+                        return (
+                          <div className="space-y-1 mb-1">
+                            <p className="text-[8px] text-gray-400">
+                              Панель: {(pH / 10).toFixed(0)} × {(pW / 10).toFixed(0)} см · {isHorizBox ? 'горизонт.' : 'вертик.'} · ряд = {(singleRowH / 10).toFixed(0)} см
+                            </p>
+                            <p className="text-[9px] font-bold text-gray-600">Площадь лицевой: {areaM2.toFixed(2).replace('.', ',')} м²</p>
+                            {tooTall && (
+                              <div className="space-y-1.5">
+                                <p className="text-[9px] font-bold text-amber-600">
+                                  {`⚠ ${isHorizBox ? 'Высота короба' : 'Высота'} > ${(singleRowH / 10).toFixed(0)} см — ${opt.fullRows} ${rowsWord(opt.fullRows)} по ${isHorizBox ? 'высоте' : 'вертикали'}, итого ${opt.needed} ${panelsWord(opt.needed)}`}
+                                </p>
+                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 space-y-1">
+                                  <p className="text-[9px] font-black text-amber-700 uppercase tracking-wide">Стыковочный профиль (горизонт.)</p>
+                                  {(['bottom', 'top'] as const).map(pos => {
+                                    const label = pos === 'bottom' ? 'Снизу' : 'Сверху';
+                                    const checked = jointProfilePosition.includes(pos);
+                                    return (
+                                      <label key={pos} className="flex items-center gap-2 cursor-pointer group">
+                                        <input
+                                          type="checkbox"
+                                          checked={checked}
+                                          onChange={() => {
+                                            pushHistory();
+                                            const current = adoptedSeamCurrentRef.current;
+                                            if (current.size > 0) {
+                                              const filtered = hMoldingPositionsRef.current.filter(p => !current.has(p));
+                                              hMoldingPositionsRef.current = filtered;
+                                              setHMoldingPositions(filtered);
+                                              adoptedSeamOriginalsRef.current = new Set();
+                                              adoptedSeamCurrentRef.current = new Set();
+                                              hMoldingCompanionMapRef.current = new Map();
+                                            }
+                                            setJointProfilePosition(prev =>
+                                              prev.includes(pos)
+                                                ? prev.filter(p => p !== pos)
+                                                : [...prev, pos]
+                                            );
+                                          }}
+                                          className="w-3 h-3 accent-amber-600 cursor-pointer"
+                                        />
+                                        <span className="text-[9px] font-bold text-amber-800 group-hover:text-amber-900">{label}</span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                            {tooWide && (
+                              <div className="space-y-1.5">
+                                <p className="text-[9px] font-bold text-amber-600">
+                                  {`⚠ Ширина ${Math.round(wallWidthMm / 10)} см > ${Math.round(pW / 10)} см — ${colsNeeded} кол., ${seamCount} верт. ${seamCount === 1 ? 'стык' : seamCount < 5 ? 'стыка' : 'стыков'} по ${Math.round(wallHeightMm / 10)} см`}
+                                </p>
+                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5">
+                                  <p className="text-[9px] font-black text-amber-700 uppercase tracking-wide mb-0.5">Стыковочный профиль (вертик.)</p>
+                                  <p className="text-[9px] text-amber-800">
+                                    {`${seamCount} ${seamCount === 1 ? 'стык' : seamCount < 5 ? 'стыка' : 'стыков'} × ${Math.round(wallHeightMm / 10)} см → ${seamProfileRuns} хл. 3 м`}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                      <button
+                        onClick={() => { pushHistory(); setTvBacklightEnabled(v => !v); }}
+                        className={`w-full py-1.5 rounded-lg text-[9px] font-bold border transition-all active:scale-95 flex items-center justify-center gap-1.5 ${tvBacklightEnabled ? 'bg-amber-50 text-amber-700 border-amber-300' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
+                        {tvBacklightEnabled ? '✦ Подсветка включена' : '✦ Подсветка вокруг короба'}
+                      </button>
+                      {tvBacklightEnabled && (() => {
+                        const blBtn = (i: 0|1|2|3, lbl: string) => (
+                          <button onClick={() => { pushHistory(); setTvBacklightEdges(e => { const n=[...e] as [boolean,boolean,boolean,boolean]; n[i]=!n[i]; return n; }); }}
+                            className={`py-1 rounded text-[8px] font-bold border transition-all active:scale-95 ${tvBacklightEdges[i] ? 'bg-amber-400 text-white border-amber-500' : 'bg-gray-50 text-gray-400 border-gray-200 hover:border-gray-300'}`}>{lbl}</button>
+                        );
+                        return (
+                          <div className="mt-2">
+                            <p className="text-[9px] font-bold text-gray-400 uppercase mb-1.5">Грани с подсветкой</p>
+                            <div className="grid grid-cols-3 gap-1">
+                              <div/>{blBtn(0,'↑ Верх')}<div/>
+                              {blBtn(3,'← Лево')}
+                              <div className="rounded bg-gray-50 flex items-center justify-center"><span className="text-[7px] text-gray-300">✦</span></div>
+                              {blBtn(1,'Право →')}
+                              <div/>{blBtn(2,'↓ Низ')}<div/>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+                  {/* Короб mode — глубина короба (грани стены 2) */}
+                  {tvZoneView === 'box' && (
+                    <div className="bg-white rounded-2xl p-4 shadow-sm">
+                      <div className="flex items-center gap-1.5 mb-2.5">
+                        <Columns size={12} className="text-gray-400"/>
+                        <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Глубина короба</span>
+                      </div>
+                      <label className="block mb-2">
+                        <span className="text-[10px] font-bold text-gray-400 uppercase">Глубина, см</span>
+                        <MeterInput placeholder="напр. 20" valueMm={tvBoxDepthMm} onChangeMm={(v) => { pushHistory(); setTvBoxDepthMm(v); }} />
+                      </label>
+                      {tvBoxDepthMm > 0 && tvCutoutDepthMm > 0 && tvBoxDepthMm < tvCutoutDepthMm && (
+                        <p className="text-[9px] font-bold text-red-500 mb-2">
+                          ⚠ Глубина короба ({Math.round(tvBoxDepthMm / 10)} см) меньше глубины выреза под ТВ ({Math.round(tvCutoutDepthMm / 10)} см)
+                        </p>
+                      )}
+                      {tvBoxDepthMm > 0 && (() => {
+                        const bW = wallWidthMm;
+                        const bH = wallHeightMm;
+                        if (bW <= 0 || bH <= 0) return null;
+                        const d = tvBoxDepthMm / 1000;
+                        const sidesArea = 2 * d * (bH / 1000);
+                        const tbArea = 2 * d * (bW / 1000);
+                        return (
+                          <p className="text-[9px] text-[#5a9c3e] font-bold mb-2">
+                            Грани: бок. ×2 ({sidesArea.toFixed(2).replace('.', ',')} м²) + верх/низ ({tbArea.toFixed(2).replace('.', ',')} м²) = {(sidesArea + tbArea).toFixed(2).replace('.', ',')} м²
+                          </p>
+                        );
+                      })()}
+                      <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Угловое соединение граней</p>
+                      <div className="flex gap-1.5 mb-1.5">
+                        {([{ id: 'profile', label: 'Профиль' }, { id: 'bend', label: 'Загиб' }] as const).map(({ id, label }) => (
+                          <button key={id} onClick={() => { pushHistory(); setTvBoxJoint(id); }}
+                            className={`flex-1 py-1.5 rounded-lg text-[9px] font-bold border transition-all active:scale-95 ${tvBoxJoint === id ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      {tvBoxJoint === 'profile' && (
+                        <div className="grid grid-cols-4 gap-1">
+                          {PROFILE_COLOR_OPTS.map(o => {
+                            const active = tvBoxJointColor === o.id;
+                            return (
+                              <button key={o.id} onClick={() => { pushHistory(); setTvBoxJointColor(o.id); }}
+                                className="flex flex-col items-center gap-1 transition-all">
+                                <div className={`w-full h-5 rounded-sm border-2 transition-all ${active ? 'border-gray-800 shadow-md' : 'border-transparent opacity-55'}`}
+                                  style={PROFILE_COLOR_BAR[o.id]}/>
+                                <span className={`text-[7px] font-bold uppercase leading-none ${active ? 'text-gray-800' : 'text-gray-400'}`}>{o.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {/* Короб mode — вырез под телевизор: размеры, глубина, грани */}
+                  {tvZoneView === 'box' && (
+                    <div className="bg-white rounded-2xl p-4 shadow-sm">
+                      <div className="flex items-center gap-1.5 mb-2.5">
+                        <Columns size={12} className="text-gray-400"/>
+                        <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Вырез под телевизор</span>
+                      </div>
+                      <div className="flex gap-1.5 mb-3">
+                        {([['size', 'По размерам'], ['inches', 'По дюймам ТВ']] as const).map(([mode, label]) => (
+                          <button key={mode} onClick={() => { pushHistory(); setTvCutoutInputMode(mode); if (mode === 'size') setTvCutoutPresetInches(null); }}
+                            className={`flex-1 py-1.5 rounded-lg text-[9px] font-bold border transition-all active:scale-95 ${tvCutoutInputMode === mode ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      {tvCutoutInputMode === 'inches' && (
+                        <div className="flex gap-1.5 mb-3">
+                          {([50, 55, 65] as const).map(inch => (
+                            <button key={inch} onClick={() => {
+                              pushHistory();
+                              setTvCutoutPresetInches(inch);
+                              setTvCutoutWidthMm(TV_INCH_PRESETS[inch].wMm);
+                              setTvCutoutHeightMm(TV_INCH_PRESETS[inch].hMm);
+                            }}
+                              className={`flex-1 py-2 rounded-xl text-[11px] font-bold transition-all active:scale-95 ${tvCutoutPresetInches === inch ? 'bg-black text-white' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}>
+                              {inch}"
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {tvCutoutInputMode === 'size' && (
+                        <div className="grid grid-cols-2 gap-2 mb-2">
+                          <label className="block">
+                            <span className="text-[10px] font-bold text-gray-400 uppercase">Ширина выреза, см</span>
+                            <MeterInput placeholder="напр. 120" valueMm={tvCutoutWidthMm} onChangeMm={(v) => { pushHistory(); setTvCutoutWidthMm(v); }} />
+                          </label>
+                          <label className="block">
+                            <span className="text-[10px] font-bold text-gray-400 uppercase">Высота выреза, см</span>
+                            <MeterInput placeholder="напр. 70" valueMm={tvCutoutHeightMm} onChangeMm={(v) => { pushHistory(); setTvCutoutHeightMm(v); }} />
+                          </label>
+                        </div>
+                      )}
+                      <div className="mb-2">
+                        <label className="block">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase">Глубина выреза, см</span>
+                          <MeterInput placeholder="напр. 15" valueMm={tvCutoutDepthMm} onChangeMm={(v) => { pushHistory(); setTvCutoutDepthMm(v); }} />
+                        </label>
+                      </div>
+                      {tvCutoutDepthMm > 0 && (
+                        <div className="mb-2">
+                          <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Тип соединения на углах</p>
+                          <div className="flex gap-1.5 mb-1.5">
+                            {(['profile', 'bend'] as const).map(jt => (
+                              <button key={jt} onClick={() => { pushHistory(); setTvCutoutJoint(jt); }}
+                                className={`flex-1 py-1.5 rounded-lg text-[9px] font-bold border transition-all active:scale-95 ${tvCutoutJoint === jt ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
+                                {jt === 'profile' ? 'Профиль' : 'Загиб панели'}
+                              </button>
+                            ))}
+                          </div>
+                          {tvCutoutJoint === 'profile' && (
+                            <div className="grid grid-cols-4 gap-1">
+                              {PROFILE_COLOR_OPTS.map(o => {
+                                const active = tvCutoutJointColor === o.id;
+                                return (
+                                  <button key={o.id} onClick={() => { pushHistory(); setTvCutoutJointColor(o.id); }}
+                                    className="flex flex-col items-center gap-1 transition-all">
+                                    <div className={`w-full h-5 rounded-sm border-2 transition-all ${active ? 'border-gray-800 shadow-md' : 'border-transparent opacity-55'}`}
+                                      style={PROFILE_COLOR_BAR[o.id]}/>
+                                    <span className={`text-[7px] font-bold uppercase leading-none ${active ? 'text-gray-800' : 'text-gray-400'}`}>{o.label}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {tvCutoutWidthMm > 0 && tvCutoutHeightMm > 0 && (() => {
+                        const cW = tvCutoutWidthMm / 1000, cH = tvCutoutHeightMm / 1000, cD = tvCutoutDepthMm / 1000;
+                        const sidesArea = tvCutoutDepthMm > 0 ? 2 * cD * cH : 0;
+                        const topArea = tvCutoutDepthMm > 0 ? cD * cW : 0;
+                        const bottomArea = tvCutoutDepthMm > 0 ? cD * cW : 0;
+                        const totalZagiby = sidesArea + topArea + bottomArea;
+                        const profilePieces = tvCutoutJoint === 'profile' && tvCutoutWidthMm > 0 && tvCutoutHeightMm > 0
+                          ? packProfileRuns([tvCutoutHeightMm, tvCutoutHeightMm, tvCutoutWidthMm, tvCutoutWidthMm])
+                          : 0;
+                        return (
+                          <div className="space-y-1">
+                            <p className="text-[9px] text-gray-500 leading-relaxed">
+                              Площадь выреза: <span className="font-bold text-gray-700">{(cW * cH).toFixed(2).replace('.', ',')} м²</span>
+                              {tvCutoutDepthMm > 0 && <span> · глубина <span className="font-bold text-gray-700">{cD.toLocaleString('ru-RU')} м</span></span>}
+                            </p>
+                            {tvCutoutDepthMm > 0 && (
+                              <p className="text-[9px] text-[#5a9c3e] font-bold leading-relaxed">
+                                Грани внутри: боковые ×2 ({sidesArea.toFixed(2).replace('.', ',')} м²) + верхний ({topArea.toFixed(2).replace('.', ',')} м²) + нижний ({bottomArea.toFixed(2).replace('.', ',')} м²) = {totalZagiby.toFixed(2).replace('.', ',')} м²
+                              </p>
+                            )}
+                            {tvCutoutJoint === 'profile' && tvCutoutWidthMm > 0 && tvCutoutHeightMm > 0 && (
+                              <p className="text-[9px] text-gray-500 leading-relaxed">
+                                Профили по периметру стыков: бок. 2×{cH.toLocaleString('ru-RU')} + гориз. 2×{cW.toLocaleString('ru-RU')} м → <span className="font-bold text-gray-700">{profilePieces} хл. 3 м</span> (остатки используются, если хватает на целый прогон).
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </>)}
+              </>
+            )}
+
+            {/* Размеры стены (not shown for TV zone — handled by Стена/Короб toggle above) */}
+            {wallZone !== 'column' && wallZone !== 'window' && wallZone !== 'tv' && (
+            <div className="bg-white rounded-2xl p-4 shadow-sm">
               <div className="flex items-center gap-1.5 mb-2.5">
-                <Eraser size={12} className={isErasing ? 'text-red-400' : 'text-gray-400'}/>
-                <span className={`text-[9px] font-black uppercase tracking-widest ${isErasing ? 'text-red-400' : 'text-gray-400'}`}>Ластик</span>
+                <Columns size={12} className="text-gray-400"/>
+                <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">{wallZone === 'tv' ? (tvType === 'surface' ? 'ТВ-короб — лицевая плоскость' : `ТВ-зона — ${TV_ZONE_LABELS[activeSurface]}`) : wallZone === 'door' ? 'Размеры стены с дверью' : `Размеры стены ${activeSurface + 1}`}</span>
               </div>
-              <button
-                onClick={() => { setIsErasing(!isErasing); setActiveSector(null); }}
-                className={`w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all active:scale-95 ${
-                  isErasing
-                    ? 'bg-red-500 text-white shadow-md shadow-red-200'
-                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                }`}>
-                <Eraser size={14}/>
-                {isErasing ? 'Ластик включён — рисуйте' : 'Включить ластик'}
-              </button>
-              <div className="flex justify-between mt-3 mb-1">
-                <span className="text-[9px] text-gray-400 font-bold uppercase">Размер кисти</span>
-                <span className="text-[9px] font-bold">{brushSize}px</span>
+              <div className="grid grid-cols-2 gap-2 mb-2">
+                <label className="block">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase">Ширина, см</span>
+                  <MeterInput placeholder="напр. 360" valueMm={wallWidthMm} onChangeMm={(v) => { pushHistory(); setWallWidthMm(v); }} />
+                </label>
+                <label className="block">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase">Высота, см</span>
+                  <MeterInput placeholder="напр. 270" valueMm={wallHeightMm} onChangeMm={(v) => { pushHistory(); setWallHeightMm(v); }} />
+                </label>
               </div>
-              <input type="range" min="10" max="150" value={brushSize}
-                onChange={(e) => setBrushSize(parseInt(e.target.value))}
-                className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
-              <div className="flex gap-1.5 mt-2.5">
-                <button onClick={undoEraserStroke}
-                  className="flex-1 py-1.5 text-[8px] font-bold text-gray-400 hover:text-black flex items-center justify-center gap-1 transition-colors border border-gray-100 rounded-lg hover:border-gray-300">
-                  <Undo2 size={9}/> Отмена
+              {(() => {
+                const pMat = sectorMaterials[0];
+                const pW = pMat?.panelWidthMm ?? PANEL_W_MM;
+                const pH = pMat?.panelHeightMm ?? PANEL_H_MM;
+                const pAreaM2 = (pW * pH) / 1e6;
+                return (
+                  <p className="text-[8px] text-gray-400 mb-1.5">
+                    Панель: {(pH / 10).toFixed(0)} × {(pW / 10).toFixed(0)} см ({pAreaM2.toFixed(2).replace('.', ',')} м²)
+                  </p>
+                );
+              })()}
+              {/* Wall-niche: принудительный профиль всегда виден (не зависит от размеров поверхности) */}
+              {wallZone === 'wall-niche' && (
+                <div className="mt-2 mb-2 bg-amber-50 border border-amber-200 rounded-xl p-2.5 space-y-1">
+                  <p className="text-[9px] font-black text-amber-700 uppercase tracking-wide">Стыковочный профиль</p>
+                  {(['bottom', 'top'] as const).map(pos => {
+                    const label = pos === 'bottom' ? 'Снизу' : 'Сверху';
+                    const checked = jointProfilePosition.includes(pos);
+                    return (
+                      <label key={pos} className="flex items-center gap-2 cursor-pointer group">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => {
+                            pushHistory();
+                            const current = adoptedSeamCurrentRef.current;
+                            if (current.size > 0) {
+                              const filtered = hMoldingPositionsRef.current.filter(p => !current.has(p));
+                              hMoldingPositionsRef.current = filtered;
+                              setHMoldingPositions(filtered);
+                              adoptedSeamOriginalsRef.current = new Set();
+                              adoptedSeamCurrentRef.current = new Set();
+                              hMoldingCompanionMapRef.current = new Map();
+                            }
+                            const newJpp: ('bottom' | 'top')[] = jointProfilePosition.includes(pos)
+                              ? jointProfilePosition.filter(p => p !== pos)
+                              : [...jointProfilePosition, pos];
+                            setJointProfilePosition(newJpp);
+                            // Propagate to all surfaces of the niche
+                            const nSurfaces = Math.floor(points.length / 4);
+                            for (let s = 0; s < nSurfaces; s++) {
+                              if (s === activeSurface) continue;
+                              const existing = surfacesRef.current[s] ?? defaultSurfaceConfig();
+                              surfacesRef.current[s] = { ...existing, jointProfilePosition: newJpp };
+                            }
+                          }}
+                          className="w-3 h-3 accent-amber-600 cursor-pointer"
+                        />
+                        <span className="text-[9px] font-bold text-amber-800 group-hover:text-amber-900">{label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+              {wallWidthMm > 0 && wallHeightMm > 0 && (() => {
+                const pMat = sectorMaterials[0];
+                const pW = pMat?.panelWidthMm ?? PANEL_W_MM;
+                const pH = pMat?.panelHeightMm ?? PANEL_H_MM;
+                const areaM2 = (wallWidthMm / 1000) * (wallHeightMm / 1000);
+                const cols = Math.ceil(wallWidthMm / pW);
+                const opt = optimizedPanelCalc(cols, wallHeightMm, pH);
+                const enough = panelCount >= cols;
+                const tooTall = wallHeightMm > pH;
+                return (
+                  <div className="space-y-1">
+                    <p className="text-[9px] font-bold text-gray-600">Площадь стены: {areaM2.toFixed(2).replace('.', ',')} м²</p>
+                    <p className={`text-[9px] font-bold ${enough ? 'text-[#5a9c3e]' : 'text-amber-600'}`}>
+                      {enough
+                        ? `✓ Панелей в ряду достаточно: ${panelCount} (по ширине ${cols})`
+                        : `⚠ По ширине нужно ${cols} ${panelsWord(cols)} в ряду — в проекте ${panelCount}`}
+                    </p>
+                    {!enough && (
+                      <button onClick={() => handleChangePanelCount(cols)}
+                        className="w-full py-1.5 text-[9px] font-bold rounded-lg bg-[#7ec662] text-white hover:bg-[#6db453] transition-all active:scale-95">
+                        Установить {cols} {panelsWord(cols)} в ряд
+                      </button>
+                    )}
+                    {tooTall && (
+                      <div className="space-y-1.5">
+                        <p className="text-[9px] font-bold text-amber-600">
+                          {`⚠ Высота стены больше 2,8 м — ${opt.fullRows} ${rowsWord(opt.fullRows)} по высоте, всего ${opt.needed} ${panelsWord(opt.needed)} (в расчёте КП учтено)`}
+                        </p>
+                        {/* wall-niche: joint profile shown above (always visible), skip duplicate */}
+                        {wallZone !== 'wall-niche' && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 space-y-1">
+                          <p className="text-[9px] font-black text-amber-700 uppercase tracking-wide">Стыковочный профиль</p>
+                          {(['bottom', 'top'] as const).map(pos => {
+                            const label = pos === 'bottom' ? 'Снизу' : 'Сверху';
+                            const checked = jointProfilePosition.includes(pos);
+                            return (
+                              <label key={pos} className="flex items-center gap-2 cursor-pointer group">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => {
+                                    pushHistory();
+                                    // When jpp changes, remove all adopted seams (moved or not).
+                                    const current = adoptedSeamCurrentRef.current;
+                                    if (current.size > 0) {
+                                      const filtered = hMoldingPositionsRef.current.filter(p => !current.has(p));
+                                      hMoldingPositionsRef.current = filtered;
+                                      setHMoldingPositions(filtered);
+                                      adoptedSeamOriginalsRef.current = new Set();
+                                      adoptedSeamCurrentRef.current = new Set();
+                                      hMoldingCompanionMapRef.current = new Map();
+                                    }
+                                    const newJpp: ('bottom' | 'top')[] = jointProfilePosition.includes(pos)
+                                      ? jointProfilePosition.filter(p => p !== pos)
+                                      : [...jointProfilePosition, pos];
+                                    setJointProfilePosition(newJpp);
+                                  }}
+                                  className="w-3 h-3 accent-amber-600 cursor-pointer"
+                                />
+                                <span className="text-[9px] font-bold text-amber-800 group-hover:text-amber-900">{label}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                        )}
+                      </div>
+                    )}
+                    <p className="text-[8px] text-gray-400">Ширина панели в проекте: {Math.round(wallWidthMm / panelCount / 10)} см (макс. 122 см)</p>
+                  </div>
+                );
+              })()}
+            </div>
+            )}
+
+            {/* Панели + Ластик — компактный ряд */}
+            <div className={`grid gap-1.5 ${wallZone !== 'door' ? 'grid-cols-2' : 'grid-cols-1'}`}>
+              <div className="bg-white rounded-2xl p-3 shadow-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-1">
+                    <Columns size={10} className="text-gray-400"/>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Панели</span>
+                  </div>
+                  <button onClick={handleResetWidths} className="text-[8px] text-gray-300 hover:text-black transition-colors">↺</button>
+                </div>
+                <div className="flex justify-between mb-1">
+                  <span className="text-[10px] text-gray-400 font-bold">Кол-во</span>
+                  <span className="text-[10px] font-bold">{panelCount}</span>
+                </div>
+                <input type="range" min="1" max="15" value={panelCount}
+                  onChange={(e) => handleChangePanelCount(parseInt(e.target.value))}
+                  className="w-full h-1 bg-gray-100 rounded-full appearance-none accent-black"/>
+                {wallZone === 'tv' && !(tvType === 'builtin' && activeSurface === 0) && (
+                  <div className="flex gap-1 mt-2">
+                    {(['vertical', 'horizontal'] as const).map(ori => (
+                      <button key={ori} onClick={() => { pushHistory(); setPanelOrientation(ori); }}
+                        className={`flex-1 py-1 rounded-lg text-[8px] font-bold border transition-all active:scale-95 ${(panelOrientation === ori || (ori === 'horizontal' && panelOrientation === 'lengthwise')) ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-500 border-gray-200'}`}>
+                        {ori === 'vertical' ? 'Верт.' : 'Гориз.'}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {wallZone !== 'door' && (
+              <div className={`rounded-2xl p-3 shadow-sm transition-colors ${isErasing ? 'bg-red-50 ring-2 ring-red-400' : 'bg-white'}`}>
+                <div className="flex items-center gap-1 mb-2">
+                  <Eraser size={10} className={isErasing ? 'text-red-400' : 'text-gray-400'}/>
+                  <span className={`text-[10px] font-black uppercase tracking-widest ${isErasing ? 'text-red-400' : 'text-gray-400'}`}>Ластик</span>
+                </div>
+                <button
+                  onClick={() => { setIsErasing(!isErasing); setActiveSector(null); }}
+                  className={`w-full py-1.5 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 transition-all active:scale-95 ${
+                    isErasing ? 'bg-red-500 text-white shadow-md shadow-red-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  }`}>
+                  <Eraser size={11}/>
+                  {isErasing ? 'Выключить' : 'Включить'}
                 </button>
-                <button onClick={clearMask}
-                  className="flex-1 py-1.5 text-[8px] font-bold text-gray-400 hover:text-red-500 flex items-center justify-center gap-1 transition-colors border border-gray-100 rounded-lg hover:border-red-200">
-                  <RotateCcw size={9}/> Сброс
-                </button>
+                <div className="flex justify-between mt-2 mb-1">
+                  <span className="text-[9px] text-gray-400 font-bold">Кисть {brushSize}px</span>
+                </div>
+                <input type="range" min="10" max="150" value={brushSize}
+                  onChange={(e) => setBrushSize(parseInt(e.target.value))}
+                  className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
+                <div className="flex gap-1 mt-1.5">
+                  <button onClick={undoEraserStroke}
+                    className="flex-1 py-1 text-[8px] font-bold text-gray-400 hover:text-black flex items-center justify-center gap-0.5 transition-colors border border-gray-100 rounded-lg hover:border-gray-300">
+                    <Undo2 size={8}/> Отмена
+                  </button>
+                  <button onClick={clearMask}
+                    className="flex-1 py-1 text-[8px] font-bold text-gray-400 hover:text-red-500 flex items-center justify-center gap-0.5 transition-colors border border-gray-100 rounded-lg hover:border-red-200">
+                    <RotateCcw size={8}/> Сброс
+                  </button>
+                </div>
               </div>
+              )}
             </div>
 
             {/* Material */}
-            <div className="bg-white rounded-2xl p-3.5 shadow-sm">
+            <div className="bg-white rounded-2xl p-4 shadow-sm">
               <div className="flex items-center gap-1.5 mb-2">
                 <span className="w-3 h-3 rounded-full bg-gradient-to-br from-amber-700 to-yellow-400 shrink-0"/>
-                <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Материал</span>
+                <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Материал</span>
               </div>
               <p className="text-[8px] text-gray-400 font-bold italic mb-2">
                 {activeSector !== null ? `Панель №${activeSector + 1} — выберите материал` : 'Кликните по панели → выберите материал'}
               </p>
               <SeriesAccordion
-                series={PANEL_SERIES as PanelSeries[]}
+                series={catalogSeries}
                 openIds={openSeries}
                 onToggle={toggleSeries}
                 selectedId={activeSector !== null ? sectorMaterials[activeSector]?.id : undefined}
+                nameOverrides={seriesNameOverrides}
                 onSelect={(panel) => {
                   pushHistory();
                   if (activeSector !== null) {
@@ -1432,107 +5605,573 @@ const BambooStudio = () => {
                     setSectorMaterials(all);
                   }
                   // Auto-collapse all series except the one with the selected panel
-                  const owner = (PANEL_SERIES as PanelSeries[]).find(s => s.panels.some(p => p.id === panel.id));
+                  const owner = catalogSeries.find(s => s.panels.some(p => p.id === panel.id));
                   if (owner) setOpenSeries(new Set([owner.id]));
                 }}
               />
+              {/* Uniform texture scale slider — always visible when any panel has a texture */}
+              {(() => {
+                // Prefer the active sector's material; fall back to any textured panel
+                const mat = activeSector !== null
+                  ? sectorMaterials[activeSector]
+                  : Object.values(sectorMaterials).find(m => m?.texture && !m?.textureStretch);
+                if (!mat?.texture || mat?.textureStretch || mat?.textureScale == null) return null;
+                const defaultScale = mat.textureScale ?? 1;
+                const ts = mat.textureScaleX ?? mat.textureScaleY ?? defaultScale;
+                const isCustom = mat.textureScaleX != null || mat.textureScaleY != null;
+                const label = activeSector !== null ? `Панель №${activeSector + 1}` : 'Все панели';
+                return (
+                  <div className="mt-3 space-y-1.5 border-t border-gray-100 pt-3">
+                    <div className="flex justify-between items-center">
+                      <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Масштаб рисунка</p>
+                      <span className="text-[9px] font-mono text-gray-400">{label} · {ts}×</span>
+                    </div>
+                    <input type="range" min={1} max={20} step={1}
+                      value={ts}
+                      onChange={e => {
+                        const v = Number(e.target.value);
+                        pushHistory();
+                        if (activeSector !== null) {
+                          setSectorMaterials({ ...sectorMaterials, [activeSector]: { ...mat, textureScaleX: v, textureScaleY: v } });
+                        } else {
+                          // Apply to every textured panel in the current surface
+                          const updated = { ...sectorMaterials };
+                          for (const [k, m] of Object.entries(updated)) {
+                            if (m?.texture && !m?.textureStretch) updated[Number(k)] = { ...m, textureScaleX: v, textureScaleY: v };
+                          }
+                          setSectorMaterials(updated);
+                        }
+                      }}
+                      className="w-full h-1.5 accent-[#7ec662] cursor-pointer"
+                    />
+                    {isCustom && (
+                      <button
+                        onClick={() => {
+                          pushHistory();
+                          if (activeSector !== null) {
+                            setSectorMaterials({ ...sectorMaterials, [activeSector]: { ...mat, textureScaleX: undefined, textureScaleY: undefined } });
+                          } else {
+                            const updated = { ...sectorMaterials };
+                            for (const [k, m] of Object.entries(updated)) {
+                              if (m?.texture) updated[Number(k)] = { ...m, textureScaleX: undefined, textureScaleY: undefined };
+                            }
+                            setSectorMaterials(updated);
+                          }
+                        }}
+                        className="text-[8px] text-gray-400 hover:text-red-400 font-bold transition-colors"
+                      >
+                        ↺ Сбросить масштаб
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
 
-            {/* Vertical molding */}
-            {panelCount > 1 && (
-              <div className="bg-white rounded-2xl p-3.5 shadow-sm">
+            {/* Corner types — shown for wall-niche and column with 8+ points (TV builtin uses toggle, not corner types) */}
+            {(wallZone === 'wall-niche' || wallZone === 'column') && points.length >= 8 && (
+              <div className="bg-white rounded-2xl p-4 shadow-sm">
                 <div className="flex items-center gap-1.5 mb-2.5">
-                  <div className="w-0.5 h-3.5 bg-yellow-500 rounded-full"/>
-                  <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Молдинг верт.</span>
+                  <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Тип углов</span>
                 </div>
-                <MoldingStyleRow value={moldingStyle} onChange={(v) => { setMoldingStyle(v); if (v !== 'none') setMoldingWidth(1); }} vertical={true}/>
-                {moldingStyle !== 'none' && (
-                  <div className="mt-2.5">
-                    <div className="flex justify-between mb-1">
-                      <span className="text-[9px] text-gray-400 font-bold uppercase">Толщина</span>
-                      <span className="text-[9px] font-bold">{moldingWidth}px</span>
+                <CornerTypeCheckboxes nJunctions={Math.min(2, Math.floor(points.length / 4) - 1)} cornerTypes={cornerTypes} setCornerTypes={(v) => { pushHistory(); setCornerTypes(v); }} wrapJunctions={wrapJunctions} setWrapJunctions={(v) => { pushHistory(); setWrapJunctions(v); }} />
+              </div>
+            )}
+
+            {/* Молдинги В + Г — ряд */}
+            <div className={`grid gap-1.5 ${panelCount > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+              {panelCount > 1 && (
+              <div className="bg-white rounded-2xl p-3 shadow-sm">
+                <div className="flex items-center gap-1 mb-2">
+                  <div className="w-0.5 h-3 bg-yellow-500 rounded-full"/>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Профиль вертик.</span>
+                </div>
+                <MoldingStyleRow value={moldingStyle} onChange={(v) => { pushHistory(); setMoldingStyle(v); if (v !== 'none') setMoldingWidth(1); }} vertical={true}/>
+                {/* Per-divider override: shown when user clicked a specific divider handle */}
+                {selectedDividerIdx !== null && selectedDividerIdx < panelCount - 1 && (
+                  <div className="mt-2 pt-2 border-t border-gray-100">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[9px] font-black text-blue-600 uppercase tracking-wide">
+                        Разделитель {selectedDividerIdx + 1}
+                      </span>
+                      {dividerStyleOverrides[selectedDividerIdx] != null && (
+                        <button
+                          className="text-[8px] text-gray-400 hover:text-red-500 font-bold transition-colors"
+                          onClick={() => {
+                            const upd = { ...dividerStyleOverrides };
+                            delete upd[selectedDividerIdx];
+                            setDividerStyleOverrides(upd);
+                          }}
+                        >
+                          ↺ Общий
+                        </button>
+                      )}
                     </div>
-                    <input type="range" min="1" max="4" value={moldingWidth}
-                      onChange={(e) => setMoldingWidth(parseInt(e.target.value))}
+                    <MoldingStyleRow
+                      value={dividerStyleOverrides[selectedDividerIdx] ?? moldingStyle}
+                      onChange={(v) => {
+                        pushHistory();
+                        setDividerStyleOverrides({ ...dividerStyleOverrides, [selectedDividerIdx]: v });
+                      }}
+                      vertical={true}
+                    />
+                  </div>
+                )}
+                {panelCount >= 2 && (() => {
+                  const hasNoMetalAdj = Array.from({ length: panelCount - 1 }, (_, j) => j).some(j => {
+                    const l = sectorMaterials[j], r = sectorMaterials[j + 1];
+                    return l && r && noMetallicJoint(l, r);
+                  });
+                  return hasNoMetalAdj ? (
+                    <p className="text-[9px] text-amber-600 font-bold mt-1 leading-relaxed">Стыки без профиля — в КП исключены.</p>
+                  ) : null;
+                })()}
+                {moldingStyle !== 'none' && (
+                  <div className="mt-2 space-y-1.5">
+                    <div>
+                      <div className="flex justify-between mb-1">
+                        <span className="text-[9px] text-gray-400 font-bold">Толщина</span>
+                        <span className="text-[9px] font-bold">{moldingWidth}px</span>
+                      </div>
+                      <input type="range" min="1" max="4" value={moldingWidth}
+                        onPointerDown={pushHistory}
+                        onChange={(e) => setMoldingWidth(parseInt(e.target.value))}
+                        className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
+                    </div>
+
+                  </div>
+                )}
+              </div>
+              )}
+              <div className="bg-white rounded-2xl p-3 shadow-sm">
+                <div className="flex items-center gap-1 mb-2">
+                  <div className="w-3 h-0.5 bg-yellow-500 rounded-full"/>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Профиль горизонт.</span>
+                </div>
+                <MoldingStyleRow value={hMoldingStyle} onChange={(v) => { pushHistory(); setHMoldingStyle(v); if (v !== 'none') setHMoldingWidth(1); }} vertical={false}/>
+                {/* Per-hMolding override: shown when user clicked a specific horizontal handle */}
+                {selectedHMoldingIdx !== null && selectedHMoldingIdx < hMoldingPositions.length && (
+                  <div className="mt-2 pt-2 border-t border-gray-100">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[9px] font-black text-blue-600 uppercase tracking-wide">
+                        Профиль {selectedHMoldingIdx + 1}
+                      </span>
+                      {hMoldingStyleOverrides[selectedHMoldingIdx] != null && (
+                        <button
+                          className="text-[8px] text-gray-400 hover:text-red-500 font-bold transition-colors"
+                          onClick={() => {
+                            const upd = { ...hMoldingStyleOverrides };
+                            delete upd[selectedHMoldingIdx];
+                            setHMoldingStyleOverrides(upd);
+                          }}
+                        >
+                          ↺ Общий
+                        </button>
+                      )}
+                    </div>
+                    <MoldingStyleRow
+                      value={hMoldingStyleOverrides[selectedHMoldingIdx] ?? hMoldingStyle}
+                      onChange={(v) => {
+                        pushHistory();
+                        setHMoldingStyleOverrides({ ...hMoldingStyleOverrides, [selectedHMoldingIdx]: v });
+                      }}
+                      vertical={false}
+                    />
+                  </div>
+                )}
+                {hMoldingStyle !== 'none' && (
+                  <div className="mt-2 space-y-1.5">
+                    <div>
+                      <div className="flex justify-between mb-1">
+                        <span className="text-[9px] text-gray-400 font-bold">Кол-во</span>
+                        <span className="text-[9px] font-bold">{hMoldingPositions.length}</span>
+                      </div>
+                      <input type="range" min="0" max="5" value={hMoldingCount}
+                        onPointerDown={pushHistory}
+                        onChange={(e) => {
+                          const n = parseInt(e.target.value);
+                          setHMoldingCount(n);
+                          setHMoldingPositions(n === 0 ? [] : Array.from({length:n},(_,i)=>(i+1)/(n+1)));
+                        }}
+                        className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
+                      <button onClick={() => setHMoldingPositions(Array.from({length:hMoldingCount},(_,i)=>(i+1)/(hMoldingCount+1)))}
+                        className="w-full mt-1 py-0.5 text-[8px] font-bold text-gray-300 hover:text-black flex items-center justify-center gap-1 transition-colors">
+                        <Undo2 size={8}/> Выровнять
+                      </button>
+                    </div>
+                    <div>
+                      <div className="flex justify-between mb-1">
+                        <span className="text-[9px] text-gray-400 font-bold">Толщина</span>
+                        <span className="text-[9px] font-bold">{hMoldingWidth}px</span>
+                      </div>
+                      <input type="range" min="1" max="4" value={hMoldingWidth}
+                        onChange={(e) => setHMoldingWidth(parseInt(e.target.value))}
+                        className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Vertical decorative profile — wall-niche side walls only */}
+            {wallZone === 'wall-niche' && activeSurface > 0 && (
+              <div className="bg-white rounded-2xl p-3 shadow-sm">
+                <div className="flex items-center gap-1 mb-2">
+                  <div className="w-0.5 h-3 bg-yellow-500 rounded-full"/>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Профиль вертик. (внешний)</span>
+                </div>
+                <MoldingStyleRow value={vProfileStyle} onChange={(v) => { pushHistory(); setVProfileStyle(v); }} vertical={true}/>
+                {vProfileStyle !== 'none' && (
+                  <div className="mt-2">
+                    <div className="flex justify-between mb-1">
+                      <span className="text-[9px] text-gray-400 font-bold">Толщина</span>
+                      <span className="text-[9px] font-bold">{vProfileWidth}px</span>
+                    </div>
+                    <input type="range" min="1" max="6" value={vProfileWidth}
+                      onPointerDown={pushHistory}
+                      onChange={(e) => { setVProfileWidth(parseInt(e.target.value)); }}
                       className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
                   </div>
                 )}
               </div>
             )}
 
-            {/* Horizontal molding */}
-            <div className="bg-white rounded-2xl p-3.5 shadow-sm">
-              <div className="flex items-center gap-1.5 mb-2.5">
-                <div className="w-3.5 h-0.5 bg-yellow-500 rounded-full"/>
-                <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Молдинг гориз.</span>
-              </div>
-              <MoldingStyleRow value={hMoldingStyle} onChange={(v) => { setHMoldingStyle(v); if (v !== 'none') setHMoldingWidth(1); }} vertical={false}/>
-              {hMoldingStyle !== 'none' && (
-                <div className="mt-2.5 space-y-2.5">
-                  <div>
-                    <div className="flex justify-between mb-1">
-                      <span className="text-[9px] text-gray-400 font-bold uppercase">Количество</span>
-                      <span className="text-[9px] font-bold">{hMoldingPositions.length}</span>
-                    </div>
-                    <input type="range" min="1" max="5" value={hMoldingCount}
-                      onChange={(e) => {
-                        const n = parseInt(e.target.value);
-                        setHMoldingCount(n);
-                        setHMoldingPositions(Array.from({length:n},(_,i)=>(i+1)/(n+1)));
-                      }}
-                      className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
-                    <button onClick={() => setHMoldingPositions(Array.from({length:hMoldingCount},(_,i)=>(i+1)/(hMoldingCount+1)))}
-                      className="w-full mt-1.5 py-1 text-[8px] font-bold text-gray-300 hover:text-black flex items-center justify-center gap-1 transition-colors">
-                      <Undo2 size={9}/> Выровнять
-                    </button>
-                  </div>
-                  <div>
-                    <div className="flex justify-between mb-1">
-                      <span className="text-[9px] text-gray-400 font-bold uppercase">Толщина</span>
-                      <span className="text-[9px] font-bold">{hMoldingWidth}px</span>
-                    </div>
-                    <input type="range" min="1" max="4" value={hMoldingWidth}
-                      onChange={(e) => setHMoldingWidth(parseInt(e.target.value))}
-                      className="w-full h-0.5 bg-gray-100 rounded-full appearance-none accent-black"/>
-                  </div>
+            {/* Торцевой профиль + Освещение — ряд */}
+            <div className="grid grid-cols-2 gap-1.5">
+              <div className="bg-white rounded-2xl p-3 shadow-sm">
+                <div className="flex items-center gap-1 mb-2">
+                  <div className="w-3 h-3 border-[2px] border-gray-400 rounded-sm"/>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Профиль торц.</span>
                 </div>
-              )}
+                <div className="grid grid-cols-2 gap-1 mb-2">
+                  {([['top', 'Верх'], ['bottom', 'Низ'], ['left', 'Лево'], ['right', 'Право']] as const).map(([side, label]) => (
+                    <button key={side}
+                      onClick={() => { pushHistory(); setEdgeProfileSides(prev => ({ ...prev, [side]: !prev[side] })); }}
+                      className={`py-2 rounded-lg text-[9px] font-bold uppercase transition-all active:scale-95 ${edgeProfileSides[side] ? 'bg-black text-white' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {/* Edge profile colour picker — colours only, no modifiers */}
+                {(() => {
+                  const EDGE_COLOR_BAR: Record<string, React.CSSProperties> = {
+                    black:    { background: 'linear-gradient(to bottom, #000 0%, #0c0c0c 20%, #1e1e1e 50%, #0c0c0c 80%, #000 100%)' },
+                    metallic: { background: 'linear-gradient(to bottom, #5a5a5a 0%, #9a9a9a 20%, #e8e8e8 45%, #fff 50%, #e0e0e0 55%, #9a9a9a 80%, #4a4a4a 100%)' },
+                    bronze:   { background: 'linear-gradient(to bottom, #1a0a00 0%, #5a2e0a 20%, #a0602a 45%, #c8844a 50%, #a0602a 55%, #5a2e0a 80%, #1a0a00 100%)' },
+                    gold:     { background: 'linear-gradient(to bottom, #5a3d00 0%, #b8860b 20%, #ffd700 45%, #fff8c0 50%, #ffd700 55%, #b8860b 80%, #5a3d00 100%)' },
+                  };
+                  const EDGE_COLOR_OPTS = [
+                    { id: 'black'    as const, label: 'Чрн'  },
+                    { id: 'metallic' as const, label: 'Мтл'  },
+                    { id: 'bronze'   as const, label: 'Брнз' },
+                    { id: 'gold'     as const, label: 'Злт'  },
+                  ];
+                  return (
+                    <div className="grid grid-cols-4 gap-1 mb-2">
+                      {EDGE_COLOR_OPTS.map(o => {
+                        const active = edgeProfileColor === o.id;
+                        return (
+                          <button key={o.id}
+                            onClick={() => { pushHistory(); setEdgeProfileColor(o.id); }}
+                            className="flex flex-col items-center gap-1 transition-all">
+                            <div className={`w-full h-5 rounded-sm border-2 transition-all ${active ? 'border-gray-800 shadow-md' : 'border-transparent opacity-55'}`}
+                              style={EDGE_COLOR_BAR[o.id]}/>
+                            <span className={`text-[7px] font-bold uppercase leading-none ${active ? 'text-gray-800' : 'text-gray-400'}`}>{o.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+                {Object.values(edgeProfileSides).some(Boolean) && (
+                  (() => {
+                    const totalMm =
+                      (edgeProfileSides.top    ? wallWidthMm  : 0) +
+                      (edgeProfileSides.bottom ? wallWidthMm  : 0) +
+                      (edgeProfileSides.left   ? wallHeightMm : 0) +
+                      (edgeProfileSides.right  ? wallHeightMm : 0);
+                    if (totalMm === 0) return <p className="text-[8px] text-amber-500">Укажите размеры</p>;
+                    const pieces = Math.ceil(totalMm / 3000);
+                    return <p className="text-[9px] font-bold text-[#5a9c3e]">≈ {(totalMm / 1000).toFixed(1).replace('.', ',')} м → {pieces} шт.</p>;
+                  })()
+                )}
+              </div>
+              <div className="bg-white rounded-2xl p-3 shadow-sm">
+                <div className="flex items-center gap-1 mb-2">
+                  <Sun size={10} className="text-gray-400"/>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Свет</span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  {([
+                    { key: 'off',     label: 'Выкл',  icon: null },
+                    { key: 'morning', label: 'Утро',  icon: 'sun'  },
+                    { key: 'evening', label: 'Вечер', icon: 'moon' },
+                  ] as const).map(({ key, label, icon }) => (
+                    <button key={key} onClick={() => setLightMode(key)}
+                      className={`py-1.5 rounded-lg text-[9px] font-bold flex items-center justify-center gap-1 transition-all active:scale-95 ${
+                        lightMode === key
+                          ? key === 'morning' ? 'bg-blue-50 text-blue-600 ring-2 ring-blue-300'
+                            : key === 'evening' ? 'bg-amber-50 text-amber-600 ring-2 ring-amber-300'
+                            : 'bg-gray-100 text-gray-700 ring-2 ring-gray-300'
+                          : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
+                      }`}>
+                      {icon === 'sun'  && <Sun  size={11}/>}
+                      {icon === 'moon' && <Moon size={11}/>}
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {wallZone === 'column' && columnShape === 'round' && (
+                  <div className="mt-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[8px] font-black uppercase text-gray-400">Блик</span>
+                      <span className="text-[8px] text-gray-400">{cylHighlightPos < 0.45 ? '◀' : cylHighlightPos > 0.55 ? '▶' : '·'}</span>
+                    </div>
+                    <input type="range" min={0.1} max={0.9} step={0.01}
+                      value={cylHighlightPos}
+                      onChange={e => setCylHighlightPos(parseFloat(e.target.value))}
+                      className="w-full accent-black"/>
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Light mode */}
-            <div className="bg-white rounded-2xl p-3.5 shadow-sm">
-              <div className="flex items-center gap-1.5 mb-2.5">
-                <Sun size={12} className="text-gray-400"/>
-                <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Освещение</span>
+            {/* Surface selector — per-surface editing (hidden for TV zone and wall-niche — those use their own placement) */}
+            {points.length >= 8 && wallZone !== 'tv' && wallZone !== 'wall-niche' && (
+              <div className="bg-white rounded-2xl p-4 shadow-sm">
+                <div className="flex items-center gap-1.5 mb-2.5">
+                  <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Поверхность</span>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  {Array.from({ length: Math.min(3, Math.floor(points.length / 4)) }, (_, i) => i).map(i => (
+                    <button key={i} onClick={() => switchSurface(i)}
+                      className={`w-full py-2 px-3 text-left text-[10px] font-bold rounded-xl border transition-all active:scale-95 ${activeSurface === i ? 'bg-[#7ec662] text-white border-[#7ec662]' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
+                      {(wallZone === 'column' ? COLUMN_SURFACE_LABELS : wallZone === 'window' ? (windowType === 'panoramic' ? WINDOW_PAN_LABELS : WINDOW_STD_LABELS) : wallZone === 'tv' ? TV_ZONE_LABELS : wallZone === 'door' ? ['Стена с дверью'] : SURFACE_LABELS)[i]}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[8px] text-gray-400 mt-2 leading-relaxed">Кликните по плоскости на фото или выберите здесь. Панели, количество и профили настраиваются для каждой поверхности отдельно.</p>
               </div>
-              <div className="grid grid-cols-3 gap-1.5">
-                {([
-                  { key: 'off',     label: 'Выкл',  icon: null },
-                  { key: 'morning', label: 'Утро',  icon: 'sun'  },
-                  { key: 'evening', label: 'Вечер', icon: 'moon' },
-                ] as const).map(({ key, label, icon }) => (
-                  <button key={key} onClick={() => setLightMode(key)}
-                    className={`py-2 rounded-xl text-[9px] font-bold flex flex-col items-center gap-1 transition-all active:scale-95 ${
-                      lightMode === key
-                        ? key === 'morning' ? 'bg-blue-50 text-blue-600 ring-2 ring-blue-300'
-                          : key === 'evening' ? 'bg-amber-50 text-amber-600 ring-2 ring-amber-300'
-                          : 'bg-gray-100 text-gray-700 ring-2 ring-gray-300'
-                        : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
-                    }`}>
-                    {icon === 'sun'  && <Sun  size={14}/>}
-                    {icon === 'moon' && <Moon size={14}/>}
-                    {!icon && <span className="text-[10px]">○</span>}
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
+            )}
 
-            {/* Save */}
-            <button onClick={handleSave}
-              className="w-full flex items-center justify-center gap-2 bg-black text-white text-xs font-bold py-3 rounded-2xl hover:bg-gray-800 transition-all active:scale-95 mt-1 shadow-sm">
-              <Download size={13} /> Сохранить PNG
-            </button>
+            {/* Column shape & dimensions */}
+            {wallZone === 'column' && (
+              <div className="bg-white rounded-2xl p-4 shadow-sm">
+                <div className="flex items-center gap-1.5 mb-2.5">
+                  <Columns size={12} className="text-gray-400"/>
+                  <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Колонна · форма и размеры</span>
+                </div>
+                <div className="grid grid-cols-3 gap-1.5 mb-2.5">
+                  {(['rect', 'round', 'triangle'] as ColumnShape[]).map(sh => (
+                    <button key={sh}
+                      onClick={() => { pushHistory(); setColumnShape(sh); setColumnSides([0, 0, 0, 0]); }}
+                      className={`py-2 rounded-xl text-[8px] font-bold uppercase tracking-wide transition-all active:scale-95 ${columnShape === sh ? 'bg-black text-white' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}>
+                      {sh === 'rect' ? 'Прямоуг.' : sh === 'round' ? 'Круг/овал' : 'Треуг.'}
+                    </button>
+                  ))}
+                </div>
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  {(columnShape === 'rect'
+                    ? ['Сторона A, см', 'Сторона B, см', 'Сторона C, см', 'Сторона D, см']
+                    : columnShape === 'round'
+                    ? ['Диаметр 1, см', 'Диаметр 2, см (овал)']
+                    : ['Сторона A, см', 'Сторона B, см', 'Сторона C, см']
+                  ).map((label, idx) => (
+                    <label key={label} className="block">
+                      <span className="text-[10px] font-bold text-gray-400 uppercase">{label}</span>
+                      <MeterInput placeholder="40"
+                        valueMm={columnSides[idx]}
+                        onChangeMm={(v) => setColumnSides(prev => { const next = [...prev]; next[idx] = v; return next; })} />
+                    </label>
+                  ))}
+                  <label className="block">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase">Высота, см</span>
+                    <MeterInput placeholder="напр. 270" valueMm={columnHeightMm} onChangeMm={setColumnHeightMm} />
+                  </label>
+                </div>
+                <p className="text-[8px] text-gray-400 mb-1.5">Панель загибается вокруг колонны — расчёт по полному периметру (включая заднюю грань). Панель: 280 × 122 см.</p>
+                {(() => {
+                  const perMm = columnPerimeterMm(columnShape, columnSides);
+                  if (perMm <= 0) return null;
+                  const perRow = Math.ceil(perMm / PANEL_W_MM);
+                  const opt = optimizedPanelCalc(perRow, columnHeightMm);
+                  const areaM2 = columnHeightMm > 0 ? (perMm / 1000) * (columnHeightMm / 1000) : 0;
+                  return (
+                    <div className="space-y-1">
+                      <p className="text-[9px] font-bold text-gray-600">Периметр: {Math.round(perMm / 10)} см{areaM2 > 0 ? ` · площадь: ${areaM2.toFixed(2).replace('.', ',')} м²` : ''}</p>
+                      <p className="text-[9px] font-bold text-[#5a9c3e]">Панелей всего: {opt.needed} (по периметру {perRow}, периметр ÷ 122 см, округление вверх)</p>
+                      {opt.donorPanels > 0 && columnHeightMm > PANEL_H_MM && (
+                        <p className="text-[9px] font-bold text-amber-600">⚠ Высота больше 2,8 м — {opt.fullRows} {rowsWord(opt.fullRows)} по высоте, всего {opt.needed} {panelsWord(opt.needed)} (в расчёте КП учтено)</p>
+                      )}
+                    </div>
+                  );
+                })()}
+                {(() => {
+                  // Panels on INVISIBLE faces — offer the panels the client already picked on the visualization
+                  const usedIds = new Set<string>();
+                  Object.values(sectorMaterials).forEach(m => m && usedIds.add(m.id));
+                  surfacesRef.current.forEach((s, q) => { if (q !== activeSurface) Object.values(s.sectorMaterials).forEach(m => m && usedIds.add(m.id)); });
+                  const used = catalogPanelsRef.current.filter(p => usedIds.has(p.id));
+                  if (used.length === 0) return null;
+                  return (
+                    <div className="mt-2.5 pt-2.5 border-t border-gray-100">
+                      <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Панели на невидимых сторонах</p>
+                      <p className="text-[8px] text-gray-400 mb-1.5">Отметьте, какие панели идут на стороны, не видимые на фото (из уже выбранных). Если ничего не отмечено — считаем по средней цене видимых.</p>
+                      {used.map(p => (
+                        <label key={p.id} className="flex items-center gap-2 py-1 cursor-pointer">
+                          <input type="checkbox" className="accent-[#7ec662]"
+                            checked={hiddenFaceMats.includes(p.id)}
+                            onChange={(e) => setHiddenFaceMats(prev => e.target.checked ? [...prev, p.id] : prev.filter(id => id !== p.id))} />
+                          <span className="w-4 h-4 rounded border border-gray-200 shrink-0" style={{ backgroundColor: p.color }} />
+                          <span className="text-[9px] font-bold text-gray-600">{p.name} <span className="text-gray-300 font-mono">{p.article}</span></span>
+                        </label>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* Standard window: dimensions + joint preference */}
+            {wallZone === 'window' && (windowType === 'standard' || windowType === 'panoramic') && (
+              <div className="bg-white rounded-2xl p-4 shadow-sm">
+                <div className="flex items-center gap-1.5 mb-2.5">
+                  <Columns size={12} className="text-gray-400"/>
+                  <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Окно · размеры и стыковка</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  <label className="block">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase">Ширина окна, см</span>
+                    <MeterInput placeholder="напр. 140" valueMm={winWidthMm} onChangeMm={(v) => { pushHistory(); setWinWidthMm(v); }} />
+                  </label>
+                  <label className="block">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase">Высота окна, см</span>
+                    <MeterInput placeholder="напр. 150" valueMm={winHeightMm} onChangeMm={(v) => { pushHistory(); setWinHeightMm(v); }} />
+                  </label>
+                  <label className="block">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase">Глубина откоса, см</span>
+                    <MeterInput placeholder="напр. 25" valueMm={winSlopeDepthMm} onChangeMm={(v) => { pushHistory(); setWinSlopeDepthMm(v); }} />
+                  </label>
+                  
+                </div>
+                <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Соединение на углах откосов</p>
+                <div className="grid grid-cols-2 gap-1.5 mb-2">
+                  {([['profile', 'Через профиль'], ['bend', 'Загиб панели']] as const).map(([id, label]) => (
+                    <button key={id}
+                      onClick={() => { pushHistory(); setWinJoint(id); }}
+                      className={`py-2 rounded-xl text-[8px] font-bold uppercase tracking-wide transition-all active:scale-95 ${winJoint === id ? 'bg-black text-white' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[8px] text-gray-400 mb-1.5">{winJoint === 'profile'
+                  ? 'На наружных углах откосов ставится профиль: 2 вертикальных (высота окна) + 1 горизонтальный (ширина окна). Хлысты 3 м, раскрой оптимизирован.'
+                  : 'Панель загибается на углах — профили не требуются.'}</p>
+                {(() => {
+                  const pieces = windowStdPieces(winSlopeDepthMm, winWidthMm, winHeightMm, 0, 0);
+                  if (pieces.length === 0) return (
+                    <p className="text-[8px] text-gray-400">В расчёте: 3 откоса (2 вертикальных по высоте окна + верхний по ширине) и 1 подоконник. Обрезки панелей используются повторно.</p>
+                  );
+                  const cut = packWindowPieces(pieces);
+                  return (
+                    <div className="space-y-1">
+                      <p className="text-[9px] font-bold text-gray-600">Деталей: {cut.pieces.length} ({winSlopeDepthMm > 0 ? '3 откоса' : 'откосы не заданы'})</p>
+                      <p className="text-[9px] font-bold text-[#5a9c3e]">Панелей: {cut.panels} — обрезки полос используются повторно</p>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* Door zone: reveal settings remain available after starting the fitting. */}
+            {wallZone === 'door' && points.length >= 4 && (
+              <div className="bg-white rounded-2xl p-4 shadow-sm">
+                <div className="flex items-center gap-1.5 mb-2.5">
+                  <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Дверной проём · откосы</span>
+                </div>
+                <div className="grid grid-cols-3 gap-1.5 mb-2">
+                  {([
+                    ['left', 'Левый'],
+                    ['right', 'Правый'],
+                    ['top', 'Верхний'],
+                  ] as const).map(([zone, label]) => (
+                    <button key={zone} onClick={() => setDoorSelectedReveal(zone)}
+                      className={`py-2 rounded-lg text-[8px] font-bold transition-all ${doorSelectedReveal === zone ? 'bg-[#7ec662] text-white' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <div className="grid grid-cols-3 gap-1.5 mb-3">
+                  {([
+                    ['widthMm', 'Ширина, см'],
+                    ['heightMm', doorSelectedReveal === 'top' && doorType === 'with-transom' ? 'Фрамуга, см' : 'Высота, см'],
+                    ['depthMm', 'Глубина, см'],
+                  ] as const).map(([key, label]) => (
+                    <label key={key} className="min-w-0">
+                      <span className="block text-[7px] font-bold text-gray-400 uppercase mb-0.5">{label}</span>
+                      <MeterInput placeholder="10" valueMm={doorRevealSizes[doorSelectedReveal][key]}
+                        onChangeMm={(v) => { pushHistory(); updateDoorRevealSize(doorSelectedReveal, key, v); }} />
+                    </label>
+                  ))}
+                </div>
+                <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Соединение на углах откосов</p>
+                <div className="grid grid-cols-2 gap-1.5 mb-2">
+                  {([['profile', 'Через профиль'], ['bend', 'Загиб панели']] as const).map(([id, label]) => (
+                    <button key={id}
+                      onClick={() => { pushHistory(); setDoorJoint(id); }}
+                      className={`py-2 rounded-xl text-[8px] font-bold uppercase tracking-wide transition-all active:scale-95 ${doorJoint === id ? 'bg-black text-white' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[8px] text-gray-400 mb-2">{doorJoint === 'profile'
+                  ? 'На углах откосов ставится профиль по индивидуальным длинам левого, правого и верхнего откоса. Хлысты 3 м, раскрой оптимизирован.'
+                  : 'Панель загибается на углах — профили не требуются.'}</p>
+                {(() => {
+                  const { left, right, top } = doorRevealSizes;
+                  if (left.depthMm <= 0 || left.heightMm <= 0 || right.depthMm <= 0 || right.heightMm <= 0 || top.depthMm <= 0 || top.widthMm <= 0) return null;
+                  const pieces: import('./lib/panelCalc').WindowPiece[] = [
+                    { wMm: left.depthMm, lMm: left.heightMm },
+                    { wMm: right.depthMm, lMm: right.heightMm },
+                    { wMm: top.depthMm, lMm: top.widthMm },
+                  ];
+                  if (doorType === 'with-transom' && top.heightMm > 0) {
+                    pieces.push({ wMm: top.widthMm, lMm: top.heightMm });
+                  }
+                  const cut = packWindowPieces(pieces);
+                  return (
+                    <div className="space-y-1 mt-1">
+                      <p className="text-[9px] font-bold text-gray-600">Деталей: {cut.pieces.length} (откосы ×3{doorType === 'with-transom' && top.heightMm > 0 ? ' + фальшфрамуга' : ''})</p>
+                      <p className="text-[9px] font-bold text-[#5a9c3e]">Панелей (откос): {cut.panels} — обрезки используются повторно</p>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
+
+            {/* Light mode — перенесено в строку с Торцевым профилем выше */}
+
+            {/* Save + КП — side by side, compact so both fit on screen without scrolling */}
+            {/* Next-step guidance: КП is the final goal — it lights up once a material is chosen */}
+            <div className="flex gap-1.5 mt-1">
+              <button onClick={handleSave}
+                className={`flex-1 min-w-0 flex items-center justify-center gap-1 text-[10px] font-bold py-2 px-1.5 rounded-xl transition-all active:scale-95 shadow-sm ${
+                  Object.keys(sectorMaterials).length > 0
+                    ? 'bg-black text-white hover:bg-gray-800'
+                    : 'bg-gray-100 text-gray-400'
+                }`}>
+                <Download size={11} className="shrink-0" /> Сохранить PNG
+              </button>
+              <button onClick={handleGenerateKP}
+                className={`flex-1 min-w-0 flex items-center justify-center gap-1 text-[10px] font-bold py-2 px-1.5 rounded-xl transition-all active:scale-95 ${
+                  Object.keys(sectorMaterials).length > 0
+                    ? 'bg-[#7ec662] text-white hover:bg-[#6db453] shadow-md ring-2 ring-[#7ec662] ring-offset-1'
+                    : 'bg-[#c8e0be] text-white/70 shadow-sm'
+                }`}>
+                <FileText size={11} className="shrink-0" /> Рассчитать КП
+              </button>
+            </div>
 
           </>)}
         </div>
@@ -1542,19 +6181,15 @@ const BambooStudio = () => {
       {/* ══════════════════════════════════════════
           FOOTER — allwall.ru style
       ══════════════════════════════════════════ */}
-      <footer className="bg-[#1c1c1c] text-white pt-14 pb-8 px-6">
+      <footer className="bg-[#2d2a27] text-[#fff9f4] pt-14 pb-8 px-6">
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-10 pb-10 border-b border-white/10">
             {/* Brand */}
             <div className="md:col-span-1">
-              <div className="flex items-center gap-2.5 mb-4">
-                <img src="/favicon.jpg" alt="ALL WALL" className="h-8 w-8 object-contain rounded"/>
-                <div>
-                  <div className="font-black text-sm tracking-widest">ALL WALL</div>
-                  <div className="text-[8px] text-gray-500 tracking-widest uppercase">Технология быстрого монтажа</div>
-                </div>
+              <div className="flex items-center mb-0">
+                <img src={`${BASE}logo-footer.webp`} alt="ALL WALL" className="h-28 object-contain"/>
               </div>
-              <p className="text-gray-400 text-xs leading-relaxed">
+              <p className="text-gray-400 text-xs leading-relaxed -mt-2">
                 Стеновые панели нового поколения. Быстрый монтаж. Премиальный результат.
               </p>
             </div>
@@ -1596,7 +6231,7 @@ const BambooStudio = () => {
               <div className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-4">Контакты</div>
               <div className="space-y-3 text-sm text-gray-400">
                 <div>
-                  <a href="tel:+74951510946" className="text-white font-bold text-base hover:text-[#7ec662] transition-colors">+7 (495) 151-09-46</a>
+                  <a href="tel:+74951510946" className="text-[#fff9f4] font-normal text-base hover:text-[#7ec662] transition-colors" style={{fontFamily:'Manrope, sans-serif'}}>+7 (495) 151-09-46</a>
                 </div>
                 <div>
                   <a href="mailto:info@allwall.ru" className="hover:text-white transition-colors">info@allwall.ru</a>
@@ -1610,11 +6245,82 @@ const BambooStudio = () => {
 
           {/* Bottom bar */}
           <div className="pt-6 flex flex-col md:flex-row justify-between items-center gap-3 text-xs text-gray-600">
-            <span>© 2024 ALL WALL. Все права защищены.</span>
+            <span>
+              <span
+                onClick={() => {
+                  copyrightClickCount.current += 1;
+                  if (copyrightClickTimer.current) clearTimeout(copyrightClickTimer.current);
+                  copyrightClickTimer.current = setTimeout(() => {
+                    const n = copyrightClickCount.current;
+                    copyrightClickCount.current = 0;
+                    if (n >= 3) {
+                      setManagerPanelMode('admin');
+                    } else {
+                      setManagerPanelMode('user');
+                    }
+                    setShowManagerPanel(true);
+                  }, 400);
+                }}
+                className="cursor-default select-none"
+                title=""
+              >©</span>{' '}2024 ALL WALL. Все права защищены.
+            </span>
             <a href="https://allwall.ru/privacy/" target="_blank" rel="noopener noreferrer" className="hover:text-gray-400 transition-colors">Политика конфиденциальности</a>
           </div>
         </div>
       </footer>
+
+      {/* Manager panel drawer */}
+      {showManagerPanel && (
+        <ManagerPanel
+          panelOverrides={panelOverrides}
+          moldingOverrides={moldingOverrides}
+          seriesNameOverrides={seriesNameOverrides}
+          moldingNameOverrides={moldingNameOverrides}
+          customSeries={customSeries}
+          customMoldings={customMoldings}
+          hiddenSeriesIds={hiddenSeriesIds}
+          hiddenMoldingIds={hiddenMoldingIds}
+          hiddenExtrasIds={hiddenExtrasIds}
+          seriesDefinitions={seriesDefinitions}
+          onUpdatePanel={setPanelPrice}
+          onUpdateMolding={setMoldingPrice}
+          onUpdateSeriesName={setSeriesName}
+          onUpdateMoldingName={setMoldingName}
+          onAddSeries={addCustomSeries}
+          onDeleteSeries={deleteCustomSeries}
+          onUpdateCustomSeries={updateCustomSeries}
+          onAddMolding={addCustomMolding}
+          onDeleteMolding={deleteCustomMolding}
+          onUpdateCustomMolding={updateCustomMolding}
+          onHideSeries={hideDefaultSeries}
+          onHideMolding={hideDefaultMolding}
+          onHideExtra={hideDefaultExtra}
+          onReset={resetPrices}
+          extrasOverrides={extrasOverrides}
+          onUpdateExtras={setExtrasPrice}
+          customExtras={customExtras}
+          onAddExtra={addCustomExtra}
+          onDeleteExtra={deleteCustomExtra}
+          onUpdateCustomExtra={updateCustomExtra}
+          dbSaveStatus={dbSaveStatus}
+          onSettingsChange={reloadSettings}
+          mode={managerPanelMode}
+          onClose={() => setShowManagerPanel(false)}
+          onPhotoChange={() => {
+            fetch('/api/products')
+              .then(r => r.ok ? r.json() : [])
+              .then((products: ApiProduct[]) => {
+                const map: Record<string, string> = {};
+                products.forEach(p => { if (p.photoUrl) map[p.article] = p.photoUrl; });
+                setDbPhotoMap(map);
+                const built = buildCatalogSeries(products);
+                if (built.length > 0) setCatalogSeries(built);
+              })
+              .catch(() => {});
+          }}
+        />
+      )}
 
     </div>
   );

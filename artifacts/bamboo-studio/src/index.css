@@ -2,6 +2,21 @@
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
 
+/* allwall.ru brand fonts — mirrors the Tilda CSS variables */
+:root {
+  --t-headline-font: 'Unbounded', sans-serif;
+  --t-text-font: 'Manrope', sans-serif;
+}
+body {
+  font-family: var(--t-text-font);
+}
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--t-headline-font);
+}
+.font-black, .font-extrabold, .font-bold {
+  font-family: var(--t-text-font);
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -335,4 +350,22 @@
   .border.hover-elevate:not(.no-hover-interaction-elevate)::after {
     inset: -1px;
   }
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+@keyframes slideInUp {
+  from { transform: translateY(32px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%       { transform: translateX(-6px); }
+  40%       { transform: translateX(6px); }
+  60%       { transform: translateX(-4px); }
+  80%       { transform: translateX(4px); }
 }
