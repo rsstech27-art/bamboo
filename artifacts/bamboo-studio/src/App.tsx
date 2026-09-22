@@ -2051,18 +2051,18 @@ const BambooStudio = () => {
           }
         };
         // Wide far scatter (3000K: deep amber fading to transparent)
-        drawEdgeGlow(80,  'rgba(255, 150, 35, 0.50)', 'rgba(255, 105, 10, 0.22)', 'rgba(200, 70, 0, 0)');
+        drawEdgeGlow(80,  'rgba(255, 150, 35, 0.25)', 'rgba(255, 105, 10, 0.11)', 'rgba(200, 70, 0, 0)');
         // Mid bloom
-        drawEdgeGlow(38,  'rgba(255, 185, 75, 0.70)', 'rgba(255, 140, 35, 0.32)', 'rgba(255, 90, 0, 0)');
+        drawEdgeGlow(38,  'rgba(255, 185, 75, 0.35)', 'rgba(255, 140, 35, 0.16)', 'rgba(255, 90, 0, 0)');
         // Tight near-edge bright seam
-        drawEdgeGlow(11,  'rgba(255, 228, 155, 0.90)', 'rgba(255, 195, 100, 0.50)', 'rgba(255, 160, 55, 0)');
+        drawEdgeGlow(11,  'rgba(255, 228, 155, 0.45)', 'rgba(255, 195, 100, 0.25)', 'rgba(255, 160, 55, 0)');
 
         // Corner radial patches — fill the gap where adjacent edge strips don't meet
         for (let i = 0; i < 4; i++) {
           const c = facePts[i];
           const rg = gCtx.createRadialGradient(c.x, c.y, 0, c.x, c.y, 70);
-          rg.addColorStop(0,    'rgba(255, 195, 80, 0.70)');
-          rg.addColorStop(0.3,  'rgba(255, 140, 30, 0.35)');
+          rg.addColorStop(0,    'rgba(255, 195, 80, 0.35)');
+          rg.addColorStop(0.3,  'rgba(255, 140, 30, 0.18)');
           rg.addColorStop(1,    'rgba(200, 80, 0, 0)');
           gCtx.beginPath();
           gCtx.arc(c.x, c.y, 70, 0, Math.PI * 2);
