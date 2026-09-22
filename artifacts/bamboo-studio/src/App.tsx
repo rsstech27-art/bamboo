@@ -5533,7 +5533,7 @@ const BambooStudio = () => {
                 <input type="range" min="1" max="15" value={panelCount}
                   onChange={(e) => handleChangePanelCount(parseInt(e.target.value))}
                   className="w-full h-1 bg-gray-100 rounded-full appearance-none accent-black"/>
-                {wallZone === 'tv' && !(tvType === 'builtin' && activeSurface === 0) && (
+                {((wallZone === 'tv' && !(tvType === 'builtin' && activeSurface === 0)) || wallZone === 'wall-niche') && (
                   <div className="flex gap-1 mt-2">
                     {(['vertical', 'horizontal'] as const).map(ori => (
                       <button key={ori} onClick={() => { pushHistory(); setPanelOrientation(ori); }}
