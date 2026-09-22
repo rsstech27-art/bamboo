@@ -5080,6 +5080,16 @@ const BambooStudio = () => {
               })()}
             </div>
 
+            {/* Corner types — shown for wall-niche and column with 8+ points (TV builtin uses toggle, not corner types) */}
+            {(wallZone === 'wall-niche' || wallZone === 'column') && points.length >= 8 && (
+              <div className="bg-white rounded-2xl p-4 shadow-sm">
+                <div className="flex items-center gap-1.5 mb-2.5">
+                  <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Тип углов</span>
+                </div>
+                <CornerTypeCheckboxes nJunctions={Math.min(2, Math.floor(points.length / 4) - 1)} cornerTypes={cornerTypes} setCornerTypes={(v) => { pushHistory(); setCornerTypes(v); }} wrapJunctions={wrapJunctions} setWrapJunctions={(v) => { pushHistory(); setWrapJunctions(v); }} />
+              </div>
+            )}
+
             {/* Молдинги В + Г — ряд */}
             <div className={`grid gap-1.5 ${panelCount > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
               {panelCount > 1 && (
@@ -5330,17 +5340,6 @@ const BambooStudio = () => {
                 <p className="text-[8px] text-gray-400 mt-2 leading-relaxed">Кликните по плоскости на фото или выберите здесь. Панели, количество и профили настраиваются для каждой поверхности отдельно.</p>
               </div>
             )}
-
-            {/* Corner types — shown for wall-niche and column with 8+ points (TV builtin uses toggle, not corner types) */}
-            {(wallZone === 'wall-niche' || wallZone === 'column') && points.length >= 8 && (
-              <div className="bg-white rounded-2xl p-4 shadow-sm">
-                <div className="flex items-center gap-1.5 mb-2.5">
-                  <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Тип углов</span>
-                </div>
-                <CornerTypeCheckboxes nJunctions={Math.min(2, Math.floor(points.length / 4) - 1)} cornerTypes={cornerTypes} setCornerTypes={(v) => { pushHistory(); setCornerTypes(v); }} wrapJunctions={wrapJunctions} setWrapJunctions={(v) => { pushHistory(); setWrapJunctions(v); }} />
-              </div>
-            )}
-
 
             {/* Column shape & dimensions */}
             {wallZone === 'column' && (
