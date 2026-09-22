@@ -364,8 +364,9 @@ function makeEqualDividers(count: number): number[] {
   return dividers;
 }
 
-type MoldingStyle = 'none' | 'gold' | 'black' | 'metallic' | 'brass' | 'bronze' | 'gap' | 'light'
-  | 'black_gap' | 'black_light' | 'metallic_gap' | 'metallic_light' | 'bronze_gap' | 'bronze_light';
+type MoldingStyle = 'none' | 'gold' | 'black' | 'metallic' | 'bronze' | 'gap' | 'light'
+  | 'black_gap' | 'black_light' | 'metallic_gap' | 'metallic_light' | 'bronze_gap' | 'bronze_light'
+  | 'gold_gap' | 'gold_light';
 type SurfaceConfig = {
   panelCount: number;
   dividerPositions: number[];
@@ -378,7 +379,7 @@ type SurfaceConfig = {
   hMoldingPositions: number[];
   wallWidthMm: number;   // 0 = not specified
   wallHeightMm: number;  // 0 = not specified
-  panelOrientation: 'vertical' | 'horizontal';
+  panelOrientation: 'vertical' | 'horizontal' | 'lengthwise';
   jointProfilePosition: ('bottom' | 'top')[];
   dividerStyleOverrides?: Record<number, MoldingStyle>; // per-divider style override
   hMoldingStyleOverrides?: Record<number, MoldingStyle>; // per-hMolding style override
@@ -455,15 +456,16 @@ const MOLDING_INFO: Record<string, { article: string; name: string; price: numbe
   black:    { article: 'PR-BLACK',  name: 'Профиль чёрный',         price: 890  },
   metallic: { article: 'PR-METAL',  name: 'Профиль металлик',       price: 940  },
   bronze:   { article: 'PR-BRONZE', name: 'Профиль бронза',         price: 990  },
-  // legacy (kept for backward compat with saved configs)
   gold:     { article: 'PR-GOLD',   name: 'Профиль золото',         price: 990  },
-  brass:    { article: 'PR-BRASS',  name: 'Профиль латунь',         price: 990  },
   gap:      { article: 'PR-GAP',    name: 'Профиль с разрывом',     price: 1090 },
   light:    { article: 'PR-LIGHT',  name: 'Профиль с подсветкой',   price: 1490 },
-  edge:          { article: 'PR-EDGE',     name: 'Профиль торцевой',            price: 790  },
-  edge_black:    { article: 'PR-EDGE-BLK', name: 'Профиль торцевой чёрный',    price: 790  },
-  edge_metallic: { article: 'PR-EDGE-MTL', name: 'Профиль торцевой металлик',  price: 790  },
-  edge_bronze:   { article: 'PR-EDGE-BRZ', name: 'Профиль торцевой бронза',    price: 790  },
+  gold_gap:   { article: 'PR-GOLD-GAP',   name: 'Профиль золото с разрывом',    price: 1090 },
+  gold_light: { article: 'PR-GOLD-LGT',   name: 'Профиль золото с подсветкой',  price: 1490 },
+  edge:          { article: 'PR-EDGE',     name: 'Профиль торцевой',             price: 790  },
+  edge_black:    { article: 'PR-EDGE-BLK', name: 'Профиль торцевой чёрный',     price: 790  },
+  edge_metallic: { article: 'PR-EDGE-MTL', name: 'Профиль торцевой металлик',   price: 790  },
+  edge_bronze:   { article: 'PR-EDGE-BRZ', name: 'Профиль торцевой бронза',     price: 790  },
+  edge_gold:     { article: 'PR-EDGE-GLD', name: 'Профиль торцевой золото',     price: 790  },
 };
 
 // Meter input that keeps its own text while typing — a controlled type="number"
@@ -552,7 +554,7 @@ const BambooStudio = () => {
   const [tvCutoutHeightMm, setTvCutoutHeightMm] = useState(0);
   const [tvCutoutDepthMm, setTvCutoutDepthMm] = useState(0);
   const [tvCutoutJoint, setTvCutoutJoint] = useState<'bend' | 'profile'>('profile');
-  const [tvCutoutJointColor, setTvCutoutJointColor] = useState<'black' | 'gold' | 'metallic' | 'brass' | 'bronze'>('black');
+  const [tvCutoutJointColor, setTvCutoutJointColor] = useState<'black' | 'gold' | 'metallic' | 'bronze'>('black');
   const [tvCutoutInputMode, setTvCutoutInputMode] = useState<'size' | 'inches'>('size');
   const [tvCutoutPresetInches, setTvCutoutPresetInches] = useState<50 | 55 | 65 | null>(null);
 
@@ -565,7 +567,7 @@ const BambooStudio = () => {
   const [tvSurfaceSideDepthMm, setTvSurfaceSideDepthMm] = useState(0);
   const [tvSurfaceTopBottomDepthMm, setTvSurfaceTopBottomDepthMm] = useState(0);
   const [tvSurfaceJoint, setTvSurfaceJoint] = useState<'bend' | 'profile'>('profile');
-  const [tvSurfaceJointColor, setTvSurfaceJointColor] = useState<'black' | 'gold' | 'metallic' | 'brass' | 'bronze'>('black');
+  const [tvSurfaceJointColor, setTvSurfaceJointColor] = useState<'black' | 'gold' | 'metallic' | 'bronze'>('black');
   // TV zone: main wall behind the TV box + LED backlight
   const [tvMainWallWidthMm, setTvMainWallWidthMm] = useState(0);
   const [tvMainWallHeightMm, setTvMainWallHeightMm] = useState(0);
@@ -620,8 +622,8 @@ const BambooStudio = () => {
   const [moldingWidth, setMoldingWidth] = useState(1);
   const [hMoldingStyle, setHMoldingStyle] = useState<MoldingStyle>('black');
   const [edgeProfileSides, setEdgeProfileSides] = useState({ top: false, bottom: false, left: false, right: false });
-  const [edgeProfileColor, setEdgeProfileColor] = useState<'black' | 'metallic' | 'bronze'>('black');
-  const edgeProfileColorRef = useRef<'black' | 'metallic' | 'bronze'>('black');
+  const [edgeProfileColor, setEdgeProfileColor] = useState<'black' | 'metallic' | 'bronze' | 'gold'>('black');
+  const edgeProfileColorRef = useRef<'black' | 'metallic' | 'bronze' | 'gold'>('black');
   const [hMoldingCount, setHMoldingCount] = useState(0);
   const [hMoldingWidth, setHMoldingWidth] = useState(1);
   const [hMoldingPositions, setHMoldingPositions] = useState<number[]>([]);
@@ -710,8 +712,8 @@ const BambooStudio = () => {
   // TV surface zone refs (used in drawFullScene)
   const tvTypeRef = useRef<'builtin' | 'surface' | null>(null);
   const tvBacklightEnabledRef = useRef(false);
-  const [panelOrientation, setPanelOrientation] = useState<'vertical' | 'horizontal'>('vertical');
-  const panelOrientationRef = useRef<'vertical' | 'horizontal'>('vertical');
+  const [panelOrientation, setPanelOrientation] = useState<'vertical' | 'horizontal' | 'lengthwise'>('vertical');
+  const panelOrientationRef = useRef<'vertical' | 'horizontal' | 'lengthwise'>('vertical');
   const [dividerStyleOverrides, setDividerStyleOverrides] = useState<Record<number, MoldingStyle>>({});
   const dividerStyleOverridesRef = useRef<Record<number, MoldingStyle>>({});
   const [selectedDividerIdx, setSelectedDividerIdx] = useState<number | null>(null);
@@ -746,9 +748,9 @@ const BambooStudio = () => {
     hMoldingCount: number;
     hMoldingWidth: number;
     hMoldingPositions: number[];
-    panelOrientation: 'vertical' | 'horizontal';
+    panelOrientation: 'vertical' | 'horizontal' | 'lengthwise';
     edgeProfileSides: { top: boolean; bottom: boolean; left: boolean; right: boolean };
-    edgeProfileColor: 'black' | 'metallic' | 'bronze';
+    edgeProfileColor: 'black' | 'metallic' | 'bronze' | 'gold';
     jointProfilePosition: ('bottom' | 'top')[];
     dividerStyleOverrides: Record<number, MoldingStyle>;
     hMoldingStyleOverrides: Record<number, MoldingStyle>;
@@ -1211,10 +1213,6 @@ const BambooStudio = () => {
               g.addColorStop(0, '#000000'); g.addColorStop(0.2, '#0c0c0c'); g.addColorStop(0.45, '#181818');
               g.addColorStop(0.5, '#1e1e1e'); g.addColorStop(0.55, '#181818'); g.addColorStop(0.8, '#0c0c0c'); g.addColorStop(1, '#000000');
               break;
-            case 'brass':
-              g.addColorStop(0, '#2c1f00'); g.addColorStop(0.15, '#7a5918'); g.addColorStop(0.35, '#c49a27');
-              g.addColorStop(0.5, '#e8c95a'); g.addColorStop(0.65, '#c49a27'); g.addColorStop(0.85, '#7a5918'); g.addColorStop(1, '#2c1f00');
-              break;
             case 'bronze':
               g.addColorStop(0, '#1a0a00'); g.addColorStop(0.15, '#5a2e0a'); g.addColorStop(0.35, '#a0602a');
               g.addColorStop(0.5, '#c8844a'); g.addColorStop(0.65, '#a0602a'); g.addColorStop(0.85, '#5a2e0a'); g.addColorStop(1, '#1a0a00');
@@ -1271,22 +1269,30 @@ const BambooStudio = () => {
       const renderQuad = (qp: Point[], cfg: SurfaceConfig, isActive: boolean, overrideFirstMaterial?: Panel) => {
         const bounds = getSectorBounds(cfg.dividerPositions, cfg.panelCount);
         const isHoriz = cfg.panelOrientation === 'horizontal';
+        // 'lengthwise': horizontal rows like isHoriz but texture NOT rotated —
+        // each row shows a vertical slice of the texture for a seamless unified sheet.
+        const isLengthwise = cfg.panelOrientation === 'lengthwise';
+        const dividesHoriz = isHoriz || isLengthwise;
+        // Top Y of the full quad — used to anchor the tiled pattern consistently
+        // across all rows in lengthwise mode so pattern doesn't reset per row.
+        const fullQMinY = isLengthwise
+          ? Math.min(qp[0].y, qp[1].y, qp[2].y, qp[3].y) : 0;
 
       for (let i = 0; i < cfg.panelCount; i++) {
         const { start: rStart, end: rEnd } = bounds[i];
 
         // Vertical: divide along top (qp[0]→qp[1]) and bottom (qp[3]→qp[2]) edges
-        // Horizontal: divide along left (qp[0]→qp[3]) and right (qp[1]→qp[2]) edges
-        const p1 = isHoriz
+        // Horizontal/Lengthwise: divide along left (qp[0]→qp[3]) and right (qp[1]→qp[2]) edges
+        const p1 = dividesHoriz
           ? { x: qp[0].x + (qp[3].x - qp[0].x) * rStart, y: qp[0].y + (qp[3].y - qp[0].y) * rStart }
           : { x: qp[0].x + (qp[1].x - qp[0].x) * rStart, y: qp[0].y + (qp[1].y - qp[0].y) * rStart };
-        const p2 = isHoriz
+        const p2 = dividesHoriz
           ? { x: qp[1].x + (qp[2].x - qp[1].x) * rStart, y: qp[1].y + (qp[2].y - qp[1].y) * rStart }
           : { x: qp[0].x + (qp[1].x - qp[0].x) * rEnd,   y: qp[0].y + (qp[1].y - qp[0].y) * rEnd };
-        const p3 = isHoriz
+        const p3 = dividesHoriz
           ? { x: qp[1].x + (qp[2].x - qp[1].x) * rEnd,   y: qp[1].y + (qp[2].y - qp[1].y) * rEnd }
           : { x: qp[3].x + (qp[2].x - qp[3].x) * rEnd,   y: qp[3].y + (qp[2].y - qp[3].y) * rEnd };
-        const p4 = isHoriz
+        const p4 = dividesHoriz
           ? { x: qp[0].x + (qp[3].x - qp[0].x) * rEnd,   y: qp[0].y + (qp[3].y - qp[0].y) * rEnd }
           : { x: qp[3].x + (qp[2].x - qp[3].x) * rStart, y: qp[3].y + (qp[2].y - qp[3].y) * rStart };
 
@@ -1326,45 +1332,45 @@ const BambooStudio = () => {
         const cachedTex = textureCacheRef.current[material.id];
         if (cachedTex) {
           if (material.textureStretch) {
-            // For horizontal panels: each row draws only its proportional slice of the texture
-            // (rStart..rEnd fraction of texture width) so all rows together form one continuous
-            // canvas. For vertical panels the full texture is stretched per-column (unchanged).
+            // Source-rect slicing for seamless unified sheet:
+            // • isHoriz: context is rotated 90°, so slice texture width per row
+            //   (rStart..rEnd of tex.width → consecutive columns in rotated space)
+            // • isLengthwise: no rotation, slice texture height per row
+            //   (rStart..rEnd of tex.height → consecutive vertical strips in screen space)
+            // • vertical: full texture stretched per column (unchanged)
             const texSrcX = isHoriz ? rStart * cachedTex.width : 0;
             const texSrcW = isHoriz ? (rEnd - rStart) * cachedTex.width : cachedTex.width;
+            const texSrcY = isLengthwise ? rStart * cachedTex.height : 0;
+            const texSrcH = isLengthwise ? (rEnd - rStart) * cachedTex.height : cachedTex.height;
+            const drawTex = (ctx: CanvasRenderingContext2D) => {
+              ctx.drawImage(cachedTex, texSrcX, texSrcY, texSrcW, texSrcH, dX, dY, dW, dH);
+            };
             if (material.slatOverlay) {
-              // Slat panels: stretch texture to fill the panel
-              tCtx.drawImage(cachedTex, texSrcX, 0, texSrcW, cachedTex.height, dX, dY, dW, dH);
-              // Also draw to woodCanvas for extra opacity boost
+              drawTex(tCtx);
               wCtx.save();
               wCtx.beginPath();
               wCtx.moveTo(p1.x, p1.y); wCtx.lineTo(p2.x, p2.y);
               wCtx.lineTo(p3.x, p3.y); wCtx.lineTo(p4.x, p4.y);
               wCtx.closePath(); wCtx.clip();
               if (isHoriz) { wCtx.translate(cx, cy); wCtx.rotate(Math.PI / 2); wCtx.translate(-cx, -cy); }
-              wCtx.drawImage(cachedTex, texSrcX, 0, texSrcW, cachedTex.height, dX, dY, dW, dH);
+              drawTex(wCtx);
               wCtx.restore();
             } else {
-              // Wood panels: stretch to fill panel seamlessly
-              tCtx.drawImage(cachedTex, texSrcX, 0, texSrcW, cachedTex.height, dX, dY, dW, dH);
-              // Also draw to woodCanvas for extra opacity boost
+              drawTex(tCtx);
               wCtx.save();
               wCtx.beginPath();
               wCtx.moveTo(p1.x, p1.y); wCtx.lineTo(p2.x, p2.y);
               wCtx.lineTo(p3.x, p3.y); wCtx.lineTo(p4.x, p4.y);
               wCtx.closePath(); wCtx.clip();
               if (isHoriz) { wCtx.translate(cx, cy); wCtx.rotate(Math.PI / 2); wCtx.translate(-cx, -cy); }
-              wCtx.drawImage(cachedTex, texSrcX, 0, texSrcW, cachedTex.height, dX, dY, dW, dH);
+              drawTex(wCtx);
               wCtx.restore();
             }
           } else {
-            // Always scale so the texture covers the full panel height (no visible seam).
-            // User-controlled textureScaleX/Y sliders override per-axis below.
+            // Tiled/repeat pattern. Scale base covers full row height.
             const baseScale = isHoriz
               ? dW / cachedTex.width
               : dH / cachedTex.height;
-            // textureScaleX/Y are user-controlled per-axis scale (screen-space X=horiz, Y=vert).
-            // For horizontal panels the draw context is rotated -90°, so draw-X maps to
-            // screen-vertical and draw-Y maps to screen-horizontal — swap accordingly.
             const tsX = material.textureScaleX;
             const tsY = material.textureScaleY;
             const drawScaleX = isHoriz
@@ -1377,7 +1383,10 @@ const BambooStudio = () => {
             if (pattern) {
               const m = new DOMMatrix();
               m.scaleSelf(drawScaleX, drawScaleY);
-              m.translateSelf(dX / drawScaleX, dY / drawScaleY);
+              // For lengthwise: anchor pattern at top of full quad (fullQMinY)
+              // so tiles align consistently across all rows instead of resetting per row.
+              const anchorY = isLengthwise ? fullQMinY : dY;
+              m.translateSelf(dX / drawScaleX, anchorY / drawScaleY);
               pattern.setTransform(m);
               tCtx.fillStyle = pattern;
             } else {
@@ -1492,7 +1501,7 @@ const BambooStudio = () => {
           tCtx.font = 'bold 10px sans-serif';
           tCtx.textAlign = 'center';
           tCtx.textBaseline = 'middle';
-          tCtx.fillText(isHoriz ? '⇕' : '⇔', midX, midY);
+          tCtx.fillText(dividesHoriz ? '⇕' : '⇔', midX, midY);
           tCtx.restore();
 
         });
@@ -1521,7 +1530,7 @@ const BambooStudio = () => {
       // Vertical panels: one column = panel width (default 1220 mm, or custom from product).
       // Horizontal TV panels: one column = panel height (default 2800 mm, or custom from product).
       {
-        const isHorizTvV = wallZoneRef.current === 'tv' && isHoriz;
+        const isHorizTvV = wallZoneRef.current === 'tv' && (isHoriz || isLengthwise);
         const autoVStyle: Exclude<MoldingStyle, 'none'> =
           curMoldingStyle !== 'none' ? curMoldingStyle as Exclude<MoldingStyle, 'none'> : 'black';
         const autoVWidth = curMoldingStyle !== 'none' ? curMoldingWidth : 2;
@@ -1646,7 +1655,7 @@ const BambooStudio = () => {
       // Vertical panels: row height = panel height (default 2800 mm, or custom from product).
       // Horizontal TV panels: row height = panel width (default 1220 mm, or custom from product).
       {
-        const isHorizTvH = wallZoneRef.current === 'tv' && isHoriz;
+        const isHorizTvH = wallZoneRef.current === 'tv' && (isHoriz || isLengthwise);
         const primaryMatH = cfg.sectorMaterials[0];
         const singleRowH = isHorizTvH
           ? (primaryMatH?.panelWidthMm ?? PANEL_W_MM)
@@ -2138,7 +2147,7 @@ const BambooStudio = () => {
     const pts = pointsRef.current;
     const dividers = dividerPositionsRef.current;
     if (pts.length < 4) return -1;
-    const isHoriz = panelOrientationRef.current === 'horizontal';
+    const isHoriz = panelOrientationRef.current === 'horizontal' || panelOrientationRef.current === 'lengthwise';
 
     for (let d = 0; d < dividers.length; d++) {
       const ratio = dividers[d];
@@ -2256,7 +2265,7 @@ const BambooStudio = () => {
 
   // Return the panel row-height (mm) for the active surface: custom per-material or standard 2800.
   const getActiveSingleRowH = useCallback((): number => {
-    const isHorizTv = wallZoneRef.current === 'tv' && panelOrientationRef.current === 'horizontal';
+    const isHorizTv = wallZoneRef.current === 'tv' && (panelOrientationRef.current === 'horizontal' || panelOrientationRef.current === 'lengthwise');
     const mat = sectorMaterialsRef.current[0];
     return isHorizTv
       ? (mat?.panelWidthMm ?? PANEL_W_MM)
@@ -2485,7 +2494,7 @@ const BambooStudio = () => {
     // Dragging a divider (vertical or horizontal depending on orientation)
     if (!isErasing && draggingDividerIndexRef.current !== null) {
       const idx = draggingDividerIndexRef.current;
-      const newRatio = panelOrientationRef.current === 'horizontal'
+      const newRatio = (panelOrientationRef.current === 'horizontal' || panelOrientationRef.current === 'lengthwise')
         ? canvasYToWallRatio(x, y)
         : canvasXToWallRatio(x, y);
       setDividerPositions(prev => {
@@ -2524,7 +2533,7 @@ const BambooStudio = () => {
       if (findNearHMolding(x, y) !== -1) {
         mainCanvasRef.current.style.cursor = 'ns-resize';
       } else if (findNearDivider(x, y) !== -1) {
-        mainCanvasRef.current.style.cursor = panelOrientationRef.current === 'horizontal' ? 'ns-resize' : 'ew-resize';
+        mainCanvasRef.current.style.cursor = (panelOrientationRef.current === 'horizontal' || panelOrientationRef.current === 'lengthwise') ? 'ns-resize' : 'ew-resize';
       } else {
         mainCanvasRef.current.style.cursor = 'pointer';
       }
@@ -2567,7 +2576,7 @@ const BambooStudio = () => {
         return;
       }
       // Determine which sector was clicked using divider positions
-      const ratio = panelOrientationRef.current === 'horizontal'
+      const ratio = (panelOrientationRef.current === 'horizontal' || panelOrientationRef.current === 'lengthwise')
         ? canvasYToWallRatio(x, y)
         : canvasXToWallRatio(x, y);
       const bounds = getSectorBounds(dividerPositionsRef.current, panelCountRef.current);
@@ -2846,7 +2855,7 @@ const BambooStudio = () => {
       // Profiles are always VERTICAL (top-to-bottom), so run length = hMm regardless
       // of panel orientation. For horizontal TV panels one panel covers PANEL_H_MM (2800)
       // of wall width, so mandatory-joint column count uses that step instead of PANEL_W_MM.
-      const isHorizTv = wallZone === 'tv' && cfg.panelOrientation === 'horizontal';
+      const isHorizTv = wallZone === 'tv' && (cfg.panelOrientation === 'horizontal' || cfg.panelOrientation === 'lengthwise');
       if (cfg.moldingStyle !== 'none') {
         if (cfg.moldingStyle === 'metallic') {
           // Metallic: outer wall-edge profiles count normally; internal joints between
@@ -2860,7 +2869,7 @@ const BambooStudio = () => {
           }
           addRuns('metallic', hMm, outerEdges + internalCount);
         } else {
-          // Non-metallic chosen style (gold, black, brass): wood-family rule does not apply
+          // Non-metallic chosen style (gold, black): wood-family rule does not apply
           const vQty = Math.max(0, cfg.panelCount + 1 - (wrapLeft ? 1 : 0) - (wrapRight ? 1 : 0));
           addRuns(cfg.moldingStyle, hMm, vQty);
         }
@@ -3170,7 +3179,7 @@ const BambooStudio = () => {
       .map(({ cfg, q }) => {
         // Horizontal TV panels: the long dimension (PANEL_H_MM = 2800) covers wall width,
         // the short dimension (PANEL_W_MM = 1220) covers wall height — swap for calculations.
-        const isHorizTv = wallZone === 'tv' && cfg.panelOrientation === 'horizontal';
+        const isHorizTv = wallZone === 'tv' && (cfg.panelOrientation === 'horizontal' || cfg.panelOrientation === 'lengthwise');
         // Индивидуальные размеры панели из карточки товара (или стандарт 1220×2800)
         const primaryMat = cfg.sectorMaterials[0] ?? BAMBOO_PANELS[0];
         const pW = primaryMat.panelWidthMm ?? PANEL_W_MM;
@@ -3989,6 +3998,7 @@ const BambooStudio = () => {
       black:    { background: 'linear-gradient(to bottom, #111 0%, #2a2a2a 18%, #4a4a4a 35%, #5a5a5a 50%, #3a3a3a 65%, #1a1a1a 82%, #080808 100%)' },
       metallic: { background: 'linear-gradient(to bottom, #5a5a5a 0%, #9e9e9e 18%, #d8d8d8 35%, #ffffff 50%, #d0d0d0 65%, #8a8a8a 82%, #4a4a4a 100%)' },
       bronze:   { background: 'linear-gradient(to bottom, #2e1400 0%, #7a3c10 18%, #be6e2e 35%, #e09050 50%, #b86020 65%, #6e3008 82%, #1e0800 100%)' },
+      gold:     { background: 'linear-gradient(to bottom, #5a3d00 0%, #b8860b 18%, #ffd700 35%, #fff8c0 50%, #ffd700 65%, #b8860b 82%, #5a3d00 100%)' },
     };
 
     const colorOpts: Array<{ id: string; label: string }> = [
@@ -3996,6 +4006,7 @@ const BambooStudio = () => {
       { id: 'black',    label: 'Чрн'  },
       { id: 'metallic', label: 'Мтл'  },
       { id: 'bronze',   label: 'Брнз' },
+      { id: 'gold',     label: 'Злт'  },
     ];
     const modOpts: Array<{ id: 'normal' | 'gap' | 'light'; label: string }> = [
       { id: 'normal', label: 'Обычный' },
@@ -4006,7 +4017,7 @@ const BambooStudio = () => {
     return (
       <div className="flex flex-col gap-1.5">
         {/* colour row */}
-        <div className="grid grid-cols-4 gap-1">
+        <div className="grid grid-cols-5 gap-1">
           {colorOpts.map(o => {
             const active = curColor === o.id;
             return (
@@ -4690,7 +4701,7 @@ const BambooStudio = () => {
                       </div>
                       {tvSurfaceJoint === 'profile' && (
                         <div className="flex gap-1 flex-wrap mb-2">
-                          {([['black','#222','Чёрный'],['gold','#c8a040','Золото'],['metallic','#b0b0b0','Металл'],['brass','#b09050','Латунь'],['bronze','#8b6040','Бронза']] as const).map(([c,hex,lbl]) => (
+                          {([['black','#222','Чёрный'],['gold','#c8a040','Золото'],['metallic','#b0b0b0','Металл'],['bronze','#8b6040','Бронза']] as const).map(([c,hex,lbl]) => (
                             <button key={c} onClick={() => { pushHistory(); setTvSurfaceJointColor(c); }}
                               className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[8px] font-bold border transition-all active:scale-95 ${tvSurfaceJointColor === c ? 'border-gray-600 bg-gray-100' : 'border-gray-100 bg-white hover:border-gray-300'}`}>
                               <span className="w-2.5 h-2.5 rounded-full border border-gray-200 shrink-0" style={{ background: hex }}/>
@@ -4829,8 +4840,8 @@ const BambooStudio = () => {
                         const pMat = sectorMaterials[0];
                         const pW = pMat?.panelWidthMm ?? PANEL_W_MM;
                         const pH = pMat?.panelHeightMm ?? PANEL_H_MM;
-                        const isHorizBox = panelOrientation === 'horizontal';
-                        // For horizontal panels, single row height = panel WIDTH
+                        const isHorizBox = panelOrientation === 'horizontal' || panelOrientation === 'lengthwise';
+                        // For horizontal/lengthwise panels, single row height = panel WIDTH
                         const singleRowH = isHorizBox ? pW : pH;
                         const areaM2 = (wallWidthMm / 1000) * (wallHeightMm / 1000);
                         const tooTall = wallHeightMm > singleRowH;
@@ -4952,7 +4963,7 @@ const BambooStudio = () => {
                           </div>
                           {tvCutoutJoint === 'profile' && (
                             <div className="flex gap-1 flex-wrap">
-                              {([['black','#222','Чёрный'],['gold','#c8a040','Золото'],['metallic','#b0b0b0','Металл'],['brass','#b09050','Латунь'],['bronze','#8b6040','Бронза']] as const).map(([c,hex,lbl]) => (
+                              {([['black','#222','Чёрный'],['gold','#c8a040','Золото'],['metallic','#b0b0b0','Металл'],['bronze','#8b6040','Бронза']] as const).map(([c,hex,lbl]) => (
                                 <button key={c} onClick={() => { pushHistory(); setTvCutoutJointColor(c); }}
                                   className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[8px] font-bold border transition-all active:scale-95 ${tvCutoutJointColor === c ? 'border-gray-600 bg-gray-100' : 'border-gray-100 bg-white hover:border-gray-300'}`}>
                                   <span className="w-2.5 h-2.5 rounded-full border border-gray-200 shrink-0" style={{ background: hex }}/>
@@ -5161,10 +5172,10 @@ const BambooStudio = () => {
                   className="w-full h-1 bg-gray-100 rounded-full appearance-none accent-black"/>
                 {wallZone === 'tv' && !(tvType === 'builtin' && activeSurface === 0) && (
                   <div className="flex gap-1 mt-2">
-                    {(['vertical', 'horizontal'] as const).map(ori => (
+                    {(['vertical', 'horizontal', 'lengthwise'] as const).map(ori => (
                       <button key={ori} onClick={() => { pushHistory(); setPanelOrientation(ori); }}
                         className={`flex-1 py-1 rounded-lg text-[8px] font-bold border transition-all active:scale-95 ${panelOrientation === ori ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-500 border-gray-200'}`}>
-                        {ori === 'vertical' ? 'Верт.' : 'Гориз.'}
+                        {ori === 'vertical' ? 'Верт.' : ori === 'horizontal' ? 'Гориз.' : 'В длину'}
                       </button>
                     ))}
                   </div>
@@ -5482,14 +5493,16 @@ const BambooStudio = () => {
                     black:    { background: 'linear-gradient(to bottom, #000 0%, #0c0c0c 20%, #1e1e1e 50%, #0c0c0c 80%, #000 100%)' },
                     metallic: { background: 'linear-gradient(to bottom, #5a5a5a 0%, #9a9a9a 20%, #e8e8e8 45%, #fff 50%, #e0e0e0 55%, #9a9a9a 80%, #4a4a4a 100%)' },
                     bronze:   { background: 'linear-gradient(to bottom, #1a0a00 0%, #5a2e0a 20%, #a0602a 45%, #c8844a 50%, #a0602a 55%, #5a2e0a 80%, #1a0a00 100%)' },
+                    gold:     { background: 'linear-gradient(to bottom, #5a3d00 0%, #b8860b 20%, #ffd700 45%, #fff8c0 50%, #ffd700 55%, #b8860b 80%, #5a3d00 100%)' },
                   };
                   const EDGE_COLOR_OPTS = [
                     { id: 'black'    as const, label: 'Чрн'  },
                     { id: 'metallic' as const, label: 'Мтл'  },
                     { id: 'bronze'   as const, label: 'Брнз' },
+                    { id: 'gold'     as const, label: 'Злт'  },
                   ];
                   return (
-                    <div className="grid grid-cols-3 gap-1 mb-2">
+                    <div className="grid grid-cols-4 gap-1 mb-2">
                       {EDGE_COLOR_OPTS.map(o => {
                         const active = edgeProfileColor === o.id;
                         return (
