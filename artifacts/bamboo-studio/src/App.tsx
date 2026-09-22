@@ -1226,12 +1226,7 @@ const BambooStudio = () => {
             tCtx.lineTo(x2 + ppx * offset * sign, y2 + ppy * offset * sign);
             tCtx.stroke();
           }
-          // Glowing white centre strip between the two rails
-          tCtx.shadowColor = 'rgba(255, 255, 255, 1)';
-          tCtx.shadowBlur  = lw * 8;
-          tCtx.strokeStyle = '#ffffff';
-          tCtx.lineWidth   = Math.max(lw * 0.5, 2);
-          tCtx.beginPath(); tCtx.moveTo(x1, y1); tCtx.lineTo(x2, y2); tCtx.stroke();
+          // (no white centre strip — removed)
         } else {
           // Normal single stripe
           tCtx.strokeStyle = buildGrad(mmx, mmy, lw / 2);
@@ -1803,11 +1798,11 @@ const BambooStudio = () => {
         // Wrap (загиб): texture simply continues around the corner — no seam/highlight drawn
         if (jWrap) continue;
         if (jExternal) {
-          cGrad.addColorStop(0,   'rgba(0,0,0,0.50)');
-          cGrad.addColorStop(0.3, 'rgba(255,255,255,0.65)');
-          cGrad.addColorStop(0.5, 'rgba(255,255,255,0.90)');
-          cGrad.addColorStop(0.7, 'rgba(255,255,255,0.65)');
-          cGrad.addColorStop(1,   'rgba(0,0,0,0.50)');
+          cGrad.addColorStop(0,   'rgba(0,0,0,0.40)');
+          cGrad.addColorStop(0.4, 'rgba(0,0,0,0.10)');
+          cGrad.addColorStop(0.5, 'rgba(0,0,0,0.0)');
+          cGrad.addColorStop(0.6, 'rgba(0,0,0,0.10)');
+          cGrad.addColorStop(1,   'rgba(0,0,0,0.40)');
         } else {
           cGrad.addColorStop(0,    'rgba(0,0,0,0.0)');
           cGrad.addColorStop(0.35, 'rgba(0,0,0,0.55)');
