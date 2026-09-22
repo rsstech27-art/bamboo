@@ -468,6 +468,20 @@ const MOLDING_INFO: Record<string, { article: string; name: string; price: numbe
   edge_gold:     { article: 'PR-EDGE-GLD', name: 'Профиль торцевой золото',     price: 790  },
 };
 
+// Shared rectangular metallic-shine swatches for profile colour pickers (угловые/торцевые соединения)
+const PROFILE_COLOR_BAR: Record<'black' | 'metallic' | 'bronze' | 'gold', React.CSSProperties> = {
+  black:    { background: 'linear-gradient(to bottom, #000 0%, #0c0c0c 20%, #1e1e1e 50%, #0c0c0c 80%, #000 100%)' },
+  metallic: { background: 'linear-gradient(to bottom, #5a5a5a 0%, #9a9a9a 20%, #e8e8e8 45%, #fff 50%, #e0e0e0 55%, #9a9a9a 80%, #4a4a4a 100%)' },
+  bronze:   { background: 'linear-gradient(to bottom, #1a0a00 0%, #5a2e0a 20%, #a0602a 45%, #c8844a 50%, #a0602a 55%, #5a2e0a 80%, #1a0a00 100%)' },
+  gold:     { background: 'linear-gradient(to bottom, #5a3d00 0%, #b8860b 20%, #ffd700 45%, #fff8c0 50%, #ffd700 55%, #b8860b 80%, #5a3d00 100%)' },
+};
+const PROFILE_COLOR_OPTS: Array<{ id: 'black' | 'gold' | 'metallic' | 'bronze'; label: string }> = [
+  { id: 'black',    label: 'Чрн'  },
+  { id: 'gold',     label: 'Злт'  },
+  { id: 'metallic', label: 'Мтл'  },
+  { id: 'bronze',   label: 'Брнз' },
+];
+
 // Meter input that keeps its own text while typing — a controlled type="number"
 // bound to parseFloat eats the leading «0» of values like «0,5» mid-typing
 const MeterInput = ({ valueMm, onChangeMm, placeholder }: {
@@ -4720,14 +4734,18 @@ const BambooStudio = () => {
                         ))}
                       </div>
                       {tvSurfaceJoint === 'profile' && (
-                        <div className="flex gap-1 flex-wrap mb-2">
-                          {([['black','#222','Чёрный'],['gold','#c8a040','Золото'],['metallic','#b0b0b0','Металл'],['bronze','#8b6040','Бронза']] as const).map(([c,hex,lbl]) => (
-                            <button key={c} onClick={() => { pushHistory(); setTvSurfaceJointColor(c); }}
-                              className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[8px] font-bold border transition-all active:scale-95 ${tvSurfaceJointColor === c ? 'border-gray-600 bg-gray-100' : 'border-gray-100 bg-white hover:border-gray-300'}`}>
-                              <span className="w-2.5 h-2.5 rounded-full border border-gray-200 shrink-0" style={{ background: hex }}/>
-                              {lbl}
-                            </button>
-                          ))}
+                        <div className="grid grid-cols-4 gap-1 mb-2">
+                          {PROFILE_COLOR_OPTS.map(o => {
+                            const active = tvSurfaceJointColor === o.id;
+                            return (
+                              <button key={o.id} onClick={() => { pushHistory(); setTvSurfaceJointColor(o.id); }}
+                                className="flex flex-col items-center gap-1 transition-all">
+                                <div className={`w-full h-5 rounded-sm border-2 transition-all ${active ? 'border-gray-800 shadow-md' : 'border-transparent opacity-55'}`}
+                                  style={PROFILE_COLOR_BAR[o.id]}/>
+                                <span className={`text-[7px] font-bold uppercase leading-none ${active ? 'text-gray-800' : 'text-gray-400'}`}>{o.label}</span>
+                              </button>
+                            );
+                          })}
                         </div>
                       )}
                       <button
@@ -4982,14 +5000,18 @@ const BambooStudio = () => {
                             ))}
                           </div>
                           {tvCutoutJoint === 'profile' && (
-                            <div className="flex gap-1 flex-wrap">
-                              {([['black','#222','Чёрный'],['gold','#c8a040','Золото'],['metallic','#b0b0b0','Металл'],['bronze','#8b6040','Бронза']] as const).map(([c,hex,lbl]) => (
-                                <button key={c} onClick={() => { pushHistory(); setTvCutoutJointColor(c); }}
-                                  className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[8px] font-bold border transition-all active:scale-95 ${tvCutoutJointColor === c ? 'border-gray-600 bg-gray-100' : 'border-gray-100 bg-white hover:border-gray-300'}`}>
-                                  <span className="w-2.5 h-2.5 rounded-full border border-gray-200 shrink-0" style={{ background: hex }}/>
-                                  {lbl}
-                                </button>
-                              ))}
+                            <div className="grid grid-cols-4 gap-1">
+                              {PROFILE_COLOR_OPTS.map(o => {
+                                const active = tvCutoutJointColor === o.id;
+                                return (
+                                  <button key={o.id} onClick={() => { pushHistory(); setTvCutoutJointColor(o.id); }}
+                                    className="flex flex-col items-center gap-1 transition-all">
+                                    <div className={`w-full h-5 rounded-sm border-2 transition-all ${active ? 'border-gray-800 shadow-md' : 'border-transparent opacity-55'}`}
+                                      style={PROFILE_COLOR_BAR[o.id]}/>
+                                    <span className={`text-[7px] font-bold uppercase leading-none ${active ? 'text-gray-800' : 'text-gray-400'}`}>{o.label}</span>
+                                  </button>
+                                );
+                              })}
                             </div>
                           )}
                         </div>
