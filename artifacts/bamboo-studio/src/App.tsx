@@ -4919,6 +4919,49 @@ const BambooStudio = () => {
                   </p>
                 );
               })()}
+              {/* Wall-niche: принудительный профиль всегда виден (не зависит от размеров поверхности) */}
+              {wallZone === 'wall-niche' && (
+                <div className="mt-2 mb-2 bg-amber-50 border border-amber-200 rounded-xl p-2.5 space-y-1">
+                  <p className="text-[9px] font-black text-amber-700 uppercase tracking-wide">Стыковочный профиль</p>
+                  {(['bottom', 'top'] as const).map(pos => {
+                    const label = pos === 'bottom' ? 'Снизу' : 'Сверху';
+                    const checked = jointProfilePosition.includes(pos);
+                    return (
+                      <label key={pos} className="flex items-center gap-2 cursor-pointer group">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => {
+                            pushHistory();
+                            const current = adoptedSeamCurrentRef.current;
+                            if (current.size > 0) {
+                              const filtered = hMoldingPositionsRef.current.filter(p => !current.has(p));
+                              hMoldingPositionsRef.current = filtered;
+                              setHMoldingPositions(filtered);
+                              adoptedSeamOriginalsRef.current = new Set();
+                              adoptedSeamCurrentRef.current = new Set();
+                              hMoldingCompanionMapRef.current = new Map();
+                            }
+                            const newJpp: ('bottom' | 'top')[] = jointProfilePosition.includes(pos)
+                              ? jointProfilePosition.filter(p => p !== pos)
+                              : [...jointProfilePosition, pos];
+                            setJointProfilePosition(newJpp);
+                            // Propagate to all surfaces of the niche
+                            const nSurfaces = Math.floor(points.length / 4);
+                            for (let s = 0; s < nSurfaces; s++) {
+                              if (s === activeSurface) continue;
+                              const existing = surfacesRef.current[s] ?? defaultSurfaceConfig();
+                              surfacesRef.current[s] = { ...existing, jointProfilePosition: newJpp };
+                            }
+                          }}
+                          className="w-3 h-3 accent-amber-600 cursor-pointer"
+                        />
+                        <span className="text-[9px] font-bold text-amber-800 group-hover:text-amber-900">{label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
               {wallWidthMm > 0 && wallHeightMm > 0 && (() => {
                 const pMat = sectorMaterials[0];
                 const pW = pMat?.panelWidthMm ?? PANEL_W_MM;
@@ -4947,6 +4990,8 @@ const BambooStudio = () => {
                         <p className="text-[9px] font-bold text-amber-600">
                           {`⚠ Высота стены больше 2,8 м — ${opt.fullRows} ${rowsWord(opt.fullRows)} по высоте, всего ${opt.needed} ${panelsWord(opt.needed)} (в расчёте КП учтено)`}
                         </p>
+                        {/* wall-niche: joint profile shown above (always visible), skip duplicate */}
+                        {wallZone !== 'wall-niche' && (
                         <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 space-y-1">
                           <p className="text-[9px] font-black text-amber-700 uppercase tracking-wide">Стыковочный профиль</p>
                           {(['bottom', 'top'] as const).map(pos => {
@@ -4973,16 +5018,6 @@ const BambooStudio = () => {
                                       ? jointProfilePosition.filter(p => p !== pos)
                                       : [...jointProfilePosition, pos];
                                     setJointProfilePosition(newJpp);
-                                    // wall-niche: propagate seam position to all other surfaces
-                                    // so the forced profile applies uniformly across every wall.
-                                    if (wallZone === 'wall-niche') {
-                                      const nSurfaces = Math.floor(points.length / 4);
-                                      for (let s = 0; s < nSurfaces; s++) {
-                                        if (s === activeSurface) continue;
-                                        const existing = surfacesRef.current[s] ?? defaultSurfaceConfig();
-                                        surfacesRef.current[s] = { ...existing, jointProfilePosition: newJpp };
-                                      }
-                                    }
                                   }}
                                   className="w-3 h-3 accent-amber-600 cursor-pointer"
                                 />
@@ -4991,6 +5026,7 @@ const BambooStudio = () => {
                             );
                           })}
                         </div>
+                        )}
                       </div>
                     )}
                     <p className="text-[8px] text-gray-400">Ширина панели в проекте: {Math.round(wallWidthMm / panelCount / 10)} см (макс. 122 см)</p>
