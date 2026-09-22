@@ -2662,14 +2662,7 @@ const BambooStudio = () => {
         }
         return inside;
       };
-      let clickedQuad = -1;
-      for (let qi = 0; qi < nQuads; qi++) {
-        if (inQuad(pts.slice(qi * 4, qi * 4 + 4))) { clickedQuad = qi; break; }
-      }
-      if (clickedQuad !== -1 && clickedQuad !== activeSurfaceRef.current) {
-        switchSurface(clickedQuad);
-        return;
-      }
+      // Surface switching is button-only — canvas clicks never change the active quad.
       // Determine which sector was clicked using divider positions
       const ratio = (panelOrientationRef.current === 'horizontal' || panelOrientationRef.current === 'lengthwise')
         ? canvasYToWallRatio(x, y)
