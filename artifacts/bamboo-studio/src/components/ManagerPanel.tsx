@@ -2001,6 +2001,9 @@ function OrderCard({ order, expanded, onToggle }: {
   );
   const [afterUploading, setAfterUploading] = useState(false);
   const afterInputRef = useRef<HTMLInputElement>(null);
+  const [localPdfPath, setLocalPdfPath] = useState<string | null>(order.pdfPath);
+  const [pdfUploading, setPdfUploading] = useState(false);
+  const pdfInputRef = useRef<HTMLInputElement>(null);
 
   const date = new Date(order.createdAt).toLocaleDateString('ru-RU', {
     day: 'numeric', month: 'long', year: 'numeric',
@@ -2029,6 +2032,32 @@ function OrderCard({ order, expanded, onToggle }: {
     } catch { /* ignore */ } finally {
       setAfterUploading(false);
       if (afterInputRef.current) afterInputRef.current.value = '';
+    }
+  };
+
+  const handlePdfSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPdfUploading(true);
+    try {
+      const urlResp = await fetch(`/api/orders/${order.id}/pdf-upload-url`, { method: 'POST' });
+      if (!urlResp.ok) throw new Error('Не удалось получить URL загрузки');
+      const { uploadURL, objectPath } = await urlResp.json() as { uploadURL: string; objectPath: string };
+      const uploadResp = await fetch(uploadURL, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/pdf' },
+        body: file,
+      });
+      if (!uploadResp.ok) throw new Error('Ошибка загрузки файла');
+      const patchResp = await managerFetch(`/api/orders/${order.id}/pdf`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ objectPath }),
+      });
+      if (patchResp.ok) setLocalPdfPath(objectPath);
+    } catch { /* ignore */ } finally {
+      setPdfUploading(false);
+      if (pdfInputRef.current) pdfInputRef.current.value = '';
     }
   };
 
@@ -2136,6 +2165,54 @@ function OrderCard({ order, expanded, onToggle }: {
               </div>
             </div>
           )}
+          {/* PDF КП */}
+          <div className="mt-3 mb-1">
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="text-xs font-medium text-gray-400 uppercase tracking-wider">КП (PDF)</div>
+              {localPdfPath && (
+                <a href={`/api/orders/${order.id}/pdf`} target="_blank" rel="noreferrer"
+                  onClick={e => e.stopPropagation()}
+                  className="flex items-center gap-1 text-[10px] font-bold text-gray-400 hover:text-[#7ec662] transition-colors">
+                  <DownloadIcon /> Открыть
+                </a>
+              )}
+            </div>
+            {localPdfPath
+              ? (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-50 border border-gray-100">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-red-400 shrink-0">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="9" y1="13" x2="15" y2="13"/>
+                    <line x1="9" y1="17" x2="13" y2="17"/>
+                  </svg>
+                  <span className="text-xs text-gray-500 flex-1">PDF сохранён</span>
+                  <button
+                    onClick={e => { e.stopPropagation(); pdfInputRef.current?.click(); }}
+                    disabled={pdfUploading}
+                    className="text-[10px] font-bold text-gray-400 hover:text-black transition-colors disabled:opacity-40">
+                    Заменить
+                  </button>
+                </div>
+              )
+              : (
+                <button
+                  onClick={e => { e.stopPropagation(); pdfInputRef.current?.click(); }}
+                  disabled={pdfUploading}
+                  className="w-full h-16 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center gap-2 text-gray-300 hover:border-gray-400 hover:text-gray-400 transition-colors disabled:opacity-40">
+                  {pdfUploading
+                    ? <Loader2 size={16} className="animate-spin" />
+                    : <Upload size={16} />}
+                  <span className="text-[10px] font-bold uppercase tracking-wide">
+                    {pdfUploading ? 'Загрузка...' : 'Загрузить PDF'}
+                  </span>
+                </button>
+              )
+            }
+            <input ref={pdfInputRef} type="file" accept="application/pdf" className="hidden"
+              onChange={handlePdfSelect} />
+          </div>
+
           {items.length > 0 && (
             <table className="w-full text-xs mt-3">
               <thead>
