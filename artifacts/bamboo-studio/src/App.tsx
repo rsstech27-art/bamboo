@@ -2134,11 +2134,11 @@ const BambooStudio = () => {
       ctx.restore();
 
       // Overlay original photo with 'multiply' blend to preserve room shadows & lighting
-      ctx.save();
-      ctx.globalAlpha = 0.25;
-      ctx.globalCompositeOperation = 'multiply';
-      ctx.drawImage(img, 0, 0, width, height);
-      ctx.restore();
+      // ctx.save();
+      // ctx.globalAlpha = 0.25;
+      // ctx.globalCompositeOperation = 'multiply';
+      // ctx.drawImage(img, 0, 0, width, height);
+      // ctx.restore();
 
       // Semi-transparent ALL WALL watermark — only on exported images (PNG / КП)
       if (forExportRef.current) {
