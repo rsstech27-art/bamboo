@@ -2123,7 +2123,7 @@ const BambooStudio = () => {
       }
 
       ctx.save();
-      ctx.globalAlpha = 0.95;
+      ctx.globalAlpha = 0.98;
       ctx.drawImage(tempCanvas, 0, 0);
       ctx.restore();
 
