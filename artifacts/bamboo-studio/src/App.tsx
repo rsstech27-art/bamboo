@@ -1806,8 +1806,11 @@ const BambooStudio = () => {
       const quadCfgs: SurfaceConfig[] = [];
       for (let q = 0; q < nQuads; q++) {
         const base = q === curActiveSurf ? liveCfg : (surfacesRef.current[q] ?? defaultSurfaceConfig());
-        // wall-niche: panels are always vertical (no UI toggle exposed for this zone)
-        quadCfgs.push(wallZoneRef.current === 'wall-niche' ? { ...base, panelOrientation: 'vertical' } : base);
+        // wall-niche: always vertical. Surface TV wall (q===0): always vertical.
+        const forceVertical =
+          wallZoneRef.current === 'wall-niche' ||
+          (wallZoneRef.current === 'tv' && tvTypeRef.current === 'surface' && q === 0);
+        quadCfgs.push(forceVertical ? { ...base, panelOrientation: 'vertical' } : base);
       }
       // Door zone: draw a grey silhouette for the door opening BEFORE panel quads
       // so panels always render on top. Opening = area between inner edges of side strips.
@@ -5537,7 +5540,8 @@ const BambooStudio = () => {
                   className="w-full h-1 bg-gray-100 rounded-full appearance-none accent-black"/>
                 {wallZone === 'tv' && !(tvType === 'builtin' && activeSurface === 0) && (
                   <div className="flex gap-1 mt-2">
-                    {(['vertical', 'horizontal'] as const).map(ori => (
+                    {/* Surface TV + wall (activeSurface===0): vertical only; all other cases: vertical + horizontal */}
+                    {(['vertical', ...(tvType === 'surface' && activeSurface === 0 ? [] : ['horizontal' as const])] as const).map(ori => (
                       <button key={ori} onClick={() => { pushHistory(); setPanelOrientation(ori); }}
                         className={`flex-1 py-1 rounded-lg text-[8px] font-bold border transition-all active:scale-95 ${(panelOrientation === ori || (ori === 'horizontal' && panelOrientation === 'lengthwise')) ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-500 border-gray-200'}`}>
                         {ori === 'vertical' ? 'Верт.' : 'Гориз.'}
