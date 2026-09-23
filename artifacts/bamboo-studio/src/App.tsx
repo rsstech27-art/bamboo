@@ -4686,10 +4686,10 @@ const BambooStudio = () => {
                 <div className="flex items-center gap-1.5 mb-2.5">
                   <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Поверхность</span>
                 </div>
-                <div className="flex flex-col gap-1.5">
+                <div className="flex flex-wrap gap-1">
                   {Array.from({ length: Math.min(3, Math.floor(points.length / 4)) }, (_, i) => i).map(i => (
                     <button key={i} onClick={() => switchSurface(i)}
-                      className={`w-full py-2 px-3 text-left text-[10px] font-bold rounded-xl border transition-all active:scale-95 ${activeSurface === i ? 'bg-[#7ec662] text-white border-[#7ec662]' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
+                      className={`py-1 px-2 text-[9px] font-bold rounded-lg border transition-all active:scale-95 ${activeSurface === i ? 'bg-[#7ec662] text-white border-[#7ec662]' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
                       {SURFACE_LABELS[i]}
                     </button>
                   ))}
@@ -5545,10 +5545,10 @@ const BambooStudio = () => {
                 <div className="flex items-center gap-1.5 mb-2.5">
                   <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Поверхность</span>
                 </div>
-                <div className="flex flex-col gap-1.5">
+                <div className="flex flex-wrap gap-1">
                   {Array.from({ length: Math.min(3, Math.floor(points.length / 4)) }, (_, i) => i).map(i => (
                     <button key={i} onClick={() => switchSurface(i)}
-                      className={`w-full py-2 px-3 text-left text-[10px] font-bold rounded-xl border transition-all active:scale-95 ${activeSurface === i ? 'bg-[#7ec662] text-white border-[#7ec662]' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
+                      className={`py-1 px-2 text-[9px] font-bold rounded-lg border transition-all active:scale-95 ${activeSurface === i ? 'bg-[#7ec662] text-white border-[#7ec662]' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
                       {(wallZone === 'column' ? COLUMN_SURFACE_LABELS : wallZone === 'window' ? (windowType === 'panoramic' ? WINDOW_PAN_LABELS : WINDOW_STD_LABELS) : wallZone === 'tv' ? TV_ZONE_LABELS : wallZone === 'door' ? ['Стена с дверью'] : SURFACE_LABELS)[i]}
                     </button>
                   ))}
