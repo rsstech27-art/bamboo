@@ -4914,29 +4914,37 @@ const BambooStudio = () => {
                           </div>
                         );
                       })()}
-                      <button
-                        onClick={() => { pushHistory(); setTvBacklightEnabled(v => !v); }}
-                        className={`w-full py-1.5 rounded-lg text-[9px] font-bold border transition-all active:scale-95 flex items-center justify-center gap-1.5 ${tvBacklightEnabled ? 'bg-amber-50 text-amber-700 border-amber-300' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
-                        {tvBacklightEnabled ? '✦ Подсветка включена' : '✦ Подсветка вокруг короба'}
-                      </button>
-                      {tvBacklightEnabled && (() => {
-                        const blBtn = (i: 0|1|2|3, lbl: string) => (
-                          <button onClick={() => { pushHistory(); setTvBacklightEdges(e => { const n=[...e] as [boolean,boolean,boolean,boolean]; n[i]=!n[i]; return n; }); }}
-                            className={`py-1 rounded text-[8px] font-bold border transition-all active:scale-95 ${tvBacklightEdges[i] ? 'bg-amber-400 text-white border-amber-500' : 'bg-gray-50 text-gray-400 border-gray-200 hover:border-gray-300'}`}>{lbl}</button>
-                        );
-                        return (
-                          <div className="mt-2">
-                            <p className="text-[9px] font-bold text-gray-400 uppercase mb-1.5">Грани с подсветкой</p>
-                            <div className="grid grid-cols-3 gap-1">
-                              <div/>{blBtn(0,'↑ Верх')}<div/>
-                              {blBtn(3,'← Лево')}
-                              <div className="rounded bg-gray-50 flex items-center justify-center"><span className="text-[7px] text-gray-300">✦</span></div>
-                              {blBtn(1,'Право →')}
-                              <div/>{blBtn(2,'↓ Низ')}<div/>
+                      {/* LED backlight — pill toggle + TV-frame edge picker */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <Sun size={9} className={tvBacklightEnabled ? 'text-amber-400' : 'text-gray-300'}/>
+                          <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">LED</span>
+                        </div>
+                        <button
+                          onClick={() => { pushHistory(); setTvBacklightEnabled(v => !v); }}
+                          className={`relative w-8 h-[18px] rounded-full transition-all duration-200 active:scale-95 ${tvBacklightEnabled ? 'bg-amber-400' : 'bg-gray-200'}`}>
+                          <div className={`absolute top-[3px] w-3 h-3 bg-white rounded-full shadow-sm transition-all duration-200 ${tvBacklightEnabled ? 'left-[calc(100%-15px)]' : 'left-[3px]'}`}/>
+                        </button>
+                      </div>
+                      {tvBacklightEnabled && (
+                        <div className="flex justify-center mt-2">
+                          <div className="flex flex-col items-center gap-[3px]">
+                            <button onClick={() => { pushHistory(); setTvBacklightEdges(e => { const n=[...e] as [boolean,boolean,boolean,boolean]; n[0]=!n[0]; return n; }); }}
+                              className={`w-[72px] h-[5px] rounded-full transition-all duration-150 ${tvBacklightEdges[0] ? 'bg-amber-400 shadow-sm shadow-amber-200' : 'bg-gray-200 hover:bg-amber-200'}`}/>
+                            <div className="flex items-center gap-[3px]">
+                              <button onClick={() => { pushHistory(); setTvBacklightEdges(e => { const n=[...e] as [boolean,boolean,boolean,boolean]; n[3]=!n[3]; return n; }); }}
+                                className={`w-[5px] h-9 rounded-full transition-all duration-150 ${tvBacklightEdges[3] ? 'bg-amber-400 shadow-sm shadow-amber-200' : 'bg-gray-200 hover:bg-amber-200'}`}/>
+                              <div className="w-[72px] h-9 rounded bg-gray-900 flex items-center justify-center">
+                                <span className="text-[8px] font-black tracking-[0.2em] text-gray-600">TV</span>
+                              </div>
+                              <button onClick={() => { pushHistory(); setTvBacklightEdges(e => { const n=[...e] as [boolean,boolean,boolean,boolean]; n[1]=!n[1]; return n; }); }}
+                                className={`w-[5px] h-9 rounded-full transition-all duration-150 ${tvBacklightEdges[1] ? 'bg-amber-400 shadow-sm shadow-amber-200' : 'bg-gray-200 hover:bg-amber-200'}`}/>
                             </div>
+                            <button onClick={() => { pushHistory(); setTvBacklightEdges(e => { const n=[...e] as [boolean,boolean,boolean,boolean]; n[2]=!n[2]; return n; }); }}
+                              className={`w-[72px] h-[5px] rounded-full transition-all duration-150 ${tvBacklightEdges[2] ? 'bg-amber-400 shadow-sm shadow-amber-200' : 'bg-gray-200 hover:bg-amber-200'}`}/>
                           </div>
-                        );
-                      })()}
+                        </div>
+                      )}
                     </div>
                   )}
                   {/* Короб mode — Глубина граней короба */}
@@ -5186,29 +5194,37 @@ const BambooStudio = () => {
                           </div>
                         );
                       })()}
-                      <button
-                        onClick={() => { pushHistory(); setTvBacklightEnabled(v => !v); }}
-                        className={`w-full py-1.5 rounded-lg text-[9px] font-bold border transition-all active:scale-95 flex items-center justify-center gap-1.5 ${tvBacklightEnabled ? 'bg-amber-50 text-amber-700 border-amber-300' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
-                        {tvBacklightEnabled ? '✦ Подсветка включена' : '✦ Подсветка вокруг короба'}
-                      </button>
-                      {tvBacklightEnabled && (() => {
-                        const blBtn = (i: 0|1|2|3, lbl: string) => (
-                          <button onClick={() => { pushHistory(); setTvBacklightEdges(e => { const n=[...e] as [boolean,boolean,boolean,boolean]; n[i]=!n[i]; return n; }); }}
-                            className={`py-1 rounded text-[8px] font-bold border transition-all active:scale-95 ${tvBacklightEdges[i] ? 'bg-amber-400 text-white border-amber-500' : 'bg-gray-50 text-gray-400 border-gray-200 hover:border-gray-300'}`}>{lbl}</button>
-                        );
-                        return (
-                          <div className="mt-2">
-                            <p className="text-[9px] font-bold text-gray-400 uppercase mb-1.5">Грани с подсветкой</p>
-                            <div className="grid grid-cols-3 gap-1">
-                              <div/>{blBtn(0,'↑ Верх')}<div/>
-                              {blBtn(3,'← Лево')}
-                              <div className="rounded bg-gray-50 flex items-center justify-center"><span className="text-[7px] text-gray-300">✦</span></div>
-                              {blBtn(1,'Право →')}
-                              <div/>{blBtn(2,'↓ Низ')}<div/>
+                      {/* LED backlight — pill toggle + TV-frame edge picker */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <Sun size={9} className={tvBacklightEnabled ? 'text-amber-400' : 'text-gray-300'}/>
+                          <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">LED</span>
+                        </div>
+                        <button
+                          onClick={() => { pushHistory(); setTvBacklightEnabled(v => !v); }}
+                          className={`relative w-8 h-[18px] rounded-full transition-all duration-200 active:scale-95 ${tvBacklightEnabled ? 'bg-amber-400' : 'bg-gray-200'}`}>
+                          <div className={`absolute top-[3px] w-3 h-3 bg-white rounded-full shadow-sm transition-all duration-200 ${tvBacklightEnabled ? 'left-[calc(100%-15px)]' : 'left-[3px]'}`}/>
+                        </button>
+                      </div>
+                      {tvBacklightEnabled && (
+                        <div className="flex justify-center mt-2">
+                          <div className="flex flex-col items-center gap-[3px]">
+                            <button onClick={() => { pushHistory(); setTvBacklightEdges(e => { const n=[...e] as [boolean,boolean,boolean,boolean]; n[0]=!n[0]; return n; }); }}
+                              className={`w-[72px] h-[5px] rounded-full transition-all duration-150 ${tvBacklightEdges[0] ? 'bg-amber-400 shadow-sm shadow-amber-200' : 'bg-gray-200 hover:bg-amber-200'}`}/>
+                            <div className="flex items-center gap-[3px]">
+                              <button onClick={() => { pushHistory(); setTvBacklightEdges(e => { const n=[...e] as [boolean,boolean,boolean,boolean]; n[3]=!n[3]; return n; }); }}
+                                className={`w-[5px] h-9 rounded-full transition-all duration-150 ${tvBacklightEdges[3] ? 'bg-amber-400 shadow-sm shadow-amber-200' : 'bg-gray-200 hover:bg-amber-200'}`}/>
+                              <div className="w-[72px] h-9 rounded bg-gray-900 flex items-center justify-center">
+                                <span className="text-[8px] font-black tracking-[0.2em] text-gray-600">TV</span>
+                              </div>
+                              <button onClick={() => { pushHistory(); setTvBacklightEdges(e => { const n=[...e] as [boolean,boolean,boolean,boolean]; n[1]=!n[1]; return n; }); }}
+                                className={`w-[5px] h-9 rounded-full transition-all duration-150 ${tvBacklightEdges[1] ? 'bg-amber-400 shadow-sm shadow-amber-200' : 'bg-gray-200 hover:bg-amber-200'}`}/>
                             </div>
+                            <button onClick={() => { pushHistory(); setTvBacklightEdges(e => { const n=[...e] as [boolean,boolean,boolean,boolean]; n[2]=!n[2]; return n; }); }}
+                              className={`w-[72px] h-[5px] rounded-full transition-all duration-150 ${tvBacklightEdges[2] ? 'bg-amber-400 shadow-sm shadow-amber-200' : 'bg-gray-200 hover:bg-amber-200'}`}/>
                           </div>
-                        );
-                      })()}
+                        </div>
+                      )}
                     </div>
                   )}
                   {/* Короб mode — глубина короба (грани стены 2) */}
