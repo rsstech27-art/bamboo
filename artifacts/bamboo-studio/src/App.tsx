@@ -5957,6 +5957,24 @@ const BambooStudio = () => {
               </div>
             </div>
 
+            {/* Surface selector — per-surface editing (hidden for TV zone and wall-niche — those use their own placement) */}
+            {points.length >= 8 && wallZone !== 'tv' && wallZone !== 'wall-niche' && (
+              <div className="bg-white rounded-2xl p-4 shadow-sm">
+                <div className="flex items-center gap-1.5 mb-2.5">
+                  <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Поверхность</span>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  {Array.from({ length: Math.min(3, Math.floor(points.length / 4)) }, (_, i) => i).map(i => (
+                    <button key={i} onClick={() => switchSurface(i)}
+                      className={`w-full py-2 px-3 text-left text-[10px] font-bold rounded-xl border transition-all active:scale-95 ${activeSurface === i ? 'bg-[#7ec662] text-white border-[#7ec662]' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
+                      {(wallZone === 'column' ? COLUMN_SURFACE_LABELS : wallZone === 'window' ? (windowType === 'panoramic' ? WINDOW_PAN_LABELS : WINDOW_STD_LABELS) : wallZone === 'tv' ? TV_ZONE_LABELS : wallZone === 'door' ? ['Стена с дверью'] : SURFACE_LABELS)[i]}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[8px] text-gray-400 mt-2 leading-relaxed">Кликните по плоскости на фото или выберите здесь. Панели, количество и профили настраиваются для каждой поверхности отдельно.</p>
+              </div>
+            )}
+
             {/* Column shape & dimensions */}
             {wallZone === 'column' && (
               <div className="bg-white rounded-2xl p-4 shadow-sm">
@@ -6032,24 +6050,6 @@ const BambooStudio = () => {
                     </div>
                   );
                 })()}
-              </div>
-            )}
-
-            {/* Surface selector — per-surface editing (hidden for TV zone and wall-niche — those use their own placement) */}
-            {points.length >= 8 && wallZone !== 'tv' && wallZone !== 'wall-niche' && (
-              <div className="bg-white rounded-2xl p-4 shadow-sm">
-                <div className="flex items-center gap-1.5 mb-2.5">
-                  <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Поверхность</span>
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  {Array.from({ length: Math.min(3, Math.floor(points.length / 4)) }, (_, i) => i).map(i => (
-                    <button key={i} onClick={() => switchSurface(i)}
-                      className={`w-full py-2 px-3 text-left text-[10px] font-bold rounded-xl border transition-all active:scale-95 ${activeSurface === i ? 'bg-[#7ec662] text-white border-[#7ec662]' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
-                      {(wallZone === 'column' ? COLUMN_SURFACE_LABELS : wallZone === 'window' ? (windowType === 'panoramic' ? WINDOW_PAN_LABELS : WINDOW_STD_LABELS) : wallZone === 'tv' ? TV_ZONE_LABELS : wallZone === 'door' ? ['Стена с дверью'] : SURFACE_LABELS)[i]}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-[8px] text-gray-400 mt-2 leading-relaxed">Кликните по плоскости на фото или выберите здесь. Панели, количество и профили настраиваются для каждой поверхности отдельно.</p>
               </div>
             )}
 
