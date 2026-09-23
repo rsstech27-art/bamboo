@@ -5539,6 +5539,102 @@ const BambooStudio = () => {
             </div>
             )}
 
+            {/* Surface selector — per-surface editing (hidden for TV zone and wall-niche — those use their own placement) */}
+            {points.length >= 8 && wallZone !== 'tv' && wallZone !== 'wall-niche' && (
+              <div className="bg-white rounded-2xl p-4 shadow-sm">
+                <div className="flex items-center gap-1.5 mb-2.5">
+                  <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Поверхность</span>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  {Array.from({ length: Math.min(3, Math.floor(points.length / 4)) }, (_, i) => i).map(i => (
+                    <button key={i} onClick={() => switchSurface(i)}
+                      className={`w-full py-2 px-3 text-left text-[10px] font-bold rounded-xl border transition-all active:scale-95 ${activeSurface === i ? 'bg-[#7ec662] text-white border-[#7ec662]' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
+                      {(wallZone === 'column' ? COLUMN_SURFACE_LABELS : wallZone === 'window' ? (windowType === 'panoramic' ? WINDOW_PAN_LABELS : WINDOW_STD_LABELS) : wallZone === 'tv' ? TV_ZONE_LABELS : wallZone === 'door' ? ['Стена с дверью'] : SURFACE_LABELS)[i]}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[8px] text-gray-400 mt-2 leading-relaxed">Кликните по плоскости на фото или выберите здесь. Панели, количество и профили настраиваются для каждой поверхности отдельно.</p>
+              </div>
+            )}
+
+            {/* Column shape & dimensions */}
+            {wallZone === 'column' && (
+              <div className="bg-white rounded-2xl p-4 shadow-sm">
+                <div className="flex items-center gap-1.5 mb-2.5">
+                  <Columns size={12} className="text-gray-400"/>
+                  <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Колонна · форма и размеры</span>
+                </div>
+                <div className="grid grid-cols-3 gap-1.5 mb-2.5">
+                  {(['rect', 'round', 'triangle'] as ColumnShape[]).map(sh => (
+                    <button key={sh}
+                      onClick={() => { pushHistory(); setColumnShape(sh); setColumnSides([0, 0, 0, 0]); }}
+                      className={`py-2 rounded-xl text-[8px] font-bold uppercase tracking-wide transition-all active:scale-95 ${columnShape === sh ? 'bg-black text-white' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}>
+                      {sh === 'rect' ? 'Прямоуг.' : sh === 'round' ? 'Круг/овал' : 'Треуг.'}
+                    </button>
+                  ))}
+                </div>
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  {(columnShape === 'rect'
+                    ? ['Сторона A, см', 'Сторона B, см', 'Сторона C, см', 'Сторона D, см']
+                    : columnShape === 'round'
+                    ? ['Диаметр 1, см', 'Диаметр 2, см (овал)']
+                    : ['Сторона A, см', 'Сторона B, см', 'Сторона C, см']
+                  ).map((label, idx) => (
+                    <label key={label} className="block">
+                      <span className="text-[10px] font-bold text-gray-400 uppercase">{label}</span>
+                      <MeterInput placeholder="40"
+                        valueMm={columnSides[idx]}
+                        onChangeMm={(v) => setColumnSides(prev => { const next = [...prev]; next[idx] = v; return next; })} />
+                    </label>
+                  ))}
+                  <label className="block">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase">Высота, см</span>
+                    <MeterInput placeholder="напр. 270" valueMm={columnHeightMm} onChangeMm={setColumnHeightMm} />
+                  </label>
+                </div>
+                <p className="text-[8px] text-gray-400 mb-1.5">Панель загибается вокруг колонны — расчёт по полному периметру (включая заднюю грань). Панель: 280 × 122 см.</p>
+                {(() => {
+                  const perMm = columnPerimeterMm(columnShape, columnSides);
+                  if (perMm <= 0) return null;
+                  const perRow = Math.ceil(perMm / PANEL_W_MM);
+                  const opt = optimizedPanelCalc(perRow, columnHeightMm);
+                  const areaM2 = columnHeightMm > 0 ? (perMm / 1000) * (columnHeightMm / 1000) : 0;
+                  return (
+                    <div className="space-y-1">
+                      <p className="text-[9px] font-bold text-gray-600">Периметр: {Math.round(perMm / 10)} см{areaM2 > 0 ? ` · площадь: ${areaM2.toFixed(2).replace('.', ',')} м²` : ''}</p>
+                      <p className="text-[9px] font-bold text-[#5a9c3e]">Панелей всего: {opt.needed} (по периметру {perRow}, периметр ÷ 122 см, округление вверх)</p>
+                      {opt.donorPanels > 0 && columnHeightMm > PANEL_H_MM && (
+                        <p className="text-[9px] font-bold text-amber-600">⚠ Высота больше 2,8 м — {opt.fullRows} {rowsWord(opt.fullRows)} по высоте, всего {opt.needed} {panelsWord(opt.needed)} (в расчёте КП учтено)</p>
+                      )}
+                    </div>
+                  );
+                })()}
+                {(() => {
+                  // Panels on INVISIBLE faces — offer the panels the client already picked on the visualization
+                  const usedIds = new Set<string>();
+                  Object.values(sectorMaterials).forEach(m => m && usedIds.add(m.id));
+                  surfacesRef.current.forEach((s, q) => { if (q !== activeSurface) Object.values(s.sectorMaterials).forEach(m => m && usedIds.add(m.id)); });
+                  const used = catalogPanelsRef.current.filter(p => usedIds.has(p.id));
+                  if (used.length === 0) return null;
+                  return (
+                    <div className="mt-2.5 pt-2.5 border-t border-gray-100">
+                      <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Панели на невидимых сторонах</p>
+                      <p className="text-[8px] text-gray-400 mb-1.5">Отметьте, какие панели идут на стороны, не видимые на фото (из уже выбранных). Если ничего не отмечено — считаем по средней цене видимых.</p>
+                      {used.map(p => (
+                        <label key={p.id} className="flex items-center gap-2 py-1 cursor-pointer">
+                          <input type="checkbox" className="accent-[#7ec662]"
+                            checked={hiddenFaceMats.includes(p.id)}
+                            onChange={(e) => setHiddenFaceMats(prev => e.target.checked ? [...prev, p.id] : prev.filter(id => id !== p.id))} />
+                          <span className="w-4 h-4 rounded border border-gray-200 shrink-0" style={{ backgroundColor: p.color }} />
+                          <span className="text-[9px] font-bold text-gray-600">{p.name} <span className="text-gray-300 font-mono">{p.article}</span></span>
+                        </label>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
             {/* Панели + Ластик — компактный ряд */}
             <div className={`grid gap-1.5 ${wallZone !== 'door' ? 'grid-cols-2' : 'grid-cols-1'}`}>
               <div className="bg-white rounded-2xl p-3 shadow-sm">
@@ -5956,102 +6052,6 @@ const BambooStudio = () => {
                 )}
               </div>
             </div>
-
-            {/* Surface selector — per-surface editing (hidden for TV zone and wall-niche — those use their own placement) */}
-            {points.length >= 8 && wallZone !== 'tv' && wallZone !== 'wall-niche' && (
-              <div className="bg-white rounded-2xl p-4 shadow-sm">
-                <div className="flex items-center gap-1.5 mb-2.5">
-                  <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Поверхность</span>
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  {Array.from({ length: Math.min(3, Math.floor(points.length / 4)) }, (_, i) => i).map(i => (
-                    <button key={i} onClick={() => switchSurface(i)}
-                      className={`w-full py-2 px-3 text-left text-[10px] font-bold rounded-xl border transition-all active:scale-95 ${activeSurface === i ? 'bg-[#7ec662] text-white border-[#7ec662]' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
-                      {(wallZone === 'column' ? COLUMN_SURFACE_LABELS : wallZone === 'window' ? (windowType === 'panoramic' ? WINDOW_PAN_LABELS : WINDOW_STD_LABELS) : wallZone === 'tv' ? TV_ZONE_LABELS : wallZone === 'door' ? ['Стена с дверью'] : SURFACE_LABELS)[i]}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-[8px] text-gray-400 mt-2 leading-relaxed">Кликните по плоскости на фото или выберите здесь. Панели, количество и профили настраиваются для каждой поверхности отдельно.</p>
-              </div>
-            )}
-
-            {/* Column shape & dimensions */}
-            {wallZone === 'column' && (
-              <div className="bg-white rounded-2xl p-4 shadow-sm">
-                <div className="flex items-center gap-1.5 mb-2.5">
-                  <Columns size={12} className="text-gray-400"/>
-                  <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Колонна · форма и размеры</span>
-                </div>
-                <div className="grid grid-cols-3 gap-1.5 mb-2.5">
-                  {(['rect', 'round', 'triangle'] as ColumnShape[]).map(sh => (
-                    <button key={sh}
-                      onClick={() => { pushHistory(); setColumnShape(sh); setColumnSides([0, 0, 0, 0]); }}
-                      className={`py-2 rounded-xl text-[8px] font-bold uppercase tracking-wide transition-all active:scale-95 ${columnShape === sh ? 'bg-black text-white' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}>
-                      {sh === 'rect' ? 'Прямоуг.' : sh === 'round' ? 'Круг/овал' : 'Треуг.'}
-                    </button>
-                  ))}
-                </div>
-                <div className="grid grid-cols-2 gap-2 mb-2">
-                  {(columnShape === 'rect'
-                    ? ['Сторона A, см', 'Сторона B, см', 'Сторона C, см', 'Сторона D, см']
-                    : columnShape === 'round'
-                    ? ['Диаметр 1, см', 'Диаметр 2, см (овал)']
-                    : ['Сторона A, см', 'Сторона B, см', 'Сторона C, см']
-                  ).map((label, idx) => (
-                    <label key={label} className="block">
-                      <span className="text-[10px] font-bold text-gray-400 uppercase">{label}</span>
-                      <MeterInput placeholder="40"
-                        valueMm={columnSides[idx]}
-                        onChangeMm={(v) => setColumnSides(prev => { const next = [...prev]; next[idx] = v; return next; })} />
-                    </label>
-                  ))}
-                  <label className="block">
-                    <span className="text-[10px] font-bold text-gray-400 uppercase">Высота, см</span>
-                    <MeterInput placeholder="напр. 270" valueMm={columnHeightMm} onChangeMm={setColumnHeightMm} />
-                  </label>
-                </div>
-                <p className="text-[8px] text-gray-400 mb-1.5">Панель загибается вокруг колонны — расчёт по полному периметру (включая заднюю грань). Панель: 280 × 122 см.</p>
-                {(() => {
-                  const perMm = columnPerimeterMm(columnShape, columnSides);
-                  if (perMm <= 0) return null;
-                  const perRow = Math.ceil(perMm / PANEL_W_MM);
-                  const opt = optimizedPanelCalc(perRow, columnHeightMm);
-                  const areaM2 = columnHeightMm > 0 ? (perMm / 1000) * (columnHeightMm / 1000) : 0;
-                  return (
-                    <div className="space-y-1">
-                      <p className="text-[9px] font-bold text-gray-600">Периметр: {Math.round(perMm / 10)} см{areaM2 > 0 ? ` · площадь: ${areaM2.toFixed(2).replace('.', ',')} м²` : ''}</p>
-                      <p className="text-[9px] font-bold text-[#5a9c3e]">Панелей всего: {opt.needed} (по периметру {perRow}, периметр ÷ 122 см, округление вверх)</p>
-                      {opt.donorPanels > 0 && columnHeightMm > PANEL_H_MM && (
-                        <p className="text-[9px] font-bold text-amber-600">⚠ Высота больше 2,8 м — {opt.fullRows} {rowsWord(opt.fullRows)} по высоте, всего {opt.needed} {panelsWord(opt.needed)} (в расчёте КП учтено)</p>
-                      )}
-                    </div>
-                  );
-                })()}
-                {(() => {
-                  // Panels on INVISIBLE faces — offer the panels the client already picked on the visualization
-                  const usedIds = new Set<string>();
-                  Object.values(sectorMaterials).forEach(m => m && usedIds.add(m.id));
-                  surfacesRef.current.forEach((s, q) => { if (q !== activeSurface) Object.values(s.sectorMaterials).forEach(m => m && usedIds.add(m.id)); });
-                  const used = catalogPanelsRef.current.filter(p => usedIds.has(p.id));
-                  if (used.length === 0) return null;
-                  return (
-                    <div className="mt-2.5 pt-2.5 border-t border-gray-100">
-                      <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Панели на невидимых сторонах</p>
-                      <p className="text-[8px] text-gray-400 mb-1.5">Отметьте, какие панели идут на стороны, не видимые на фото (из уже выбранных). Если ничего не отмечено — считаем по средней цене видимых.</p>
-                      {used.map(p => (
-                        <label key={p.id} className="flex items-center gap-2 py-1 cursor-pointer">
-                          <input type="checkbox" className="accent-[#7ec662]"
-                            checked={hiddenFaceMats.includes(p.id)}
-                            onChange={(e) => setHiddenFaceMats(prev => e.target.checked ? [...prev, p.id] : prev.filter(id => id !== p.id))} />
-                          <span className="w-4 h-4 rounded border border-gray-200 shrink-0" style={{ backgroundColor: p.color }} />
-                          <span className="text-[9px] font-bold text-gray-600">{p.name} <span className="text-gray-300 font-mono">{p.article}</span></span>
-                        </label>
-                      ))}
-                    </div>
-                  );
-                })()}
-              </div>
-            )}
 
             {/* Standard window: dimensions + joint preference */}
             {wallZone === 'window' && (windowType === 'standard' || windowType === 'panoramic') && (
