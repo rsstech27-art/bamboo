@@ -4686,14 +4686,25 @@ const BambooStudio = () => {
                 <div className="flex items-center gap-1.5 mb-2.5">
                   <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Поверхность</span>
                 </div>
-                <div className="flex flex-wrap gap-1">
-                  {Array.from({ length: Math.min(3, Math.floor(points.length / 4)) }, (_, i) => i).map(i => (
-                    <button key={i} onClick={() => switchSurface(i)}
-                      className={`py-1 px-2 text-[9px] font-bold rounded-lg border transition-all active:scale-95 ${activeSurface === i ? 'bg-[#7ec662] text-white border-[#7ec662]' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
-                      {SURFACE_LABELS[i]}
-                    </button>
-                  ))}
-                </div>
+                {(() => {
+                  const count = Math.min(3, Math.floor(points.length / 4));
+                  return (
+                    <div className="bg-gray-100 rounded-full p-0.5">
+                      <div className="relative flex overflow-hidden rounded-full">
+                        <div
+                          className="absolute inset-0 rounded-full bg-[#7ec662] pointer-events-none"
+                          style={{ width: `${100 / count}%`, left: `${activeSurface * (100 / count)}%`, transition: 'left 230ms ease' }}
+                        />
+                        {Array.from({ length: count }, (_, i) => (
+                          <button key={i} onClick={() => switchSurface(i)}
+                            className={`relative z-10 flex-1 py-1.5 text-center text-[9px] font-bold transition-colors duration-[180ms] select-none ${activeSurface === i ? 'text-white' : 'text-gray-500'}`}>
+                            {SURFACE_LABELS[i]}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
                 {/* Active wall badge */}
                 <div className="mt-2.5 flex items-center gap-1.5 px-2 py-1.5 bg-[#7ec662]/10 rounded-lg">
                   <div className="w-1.5 h-1.5 rounded-full bg-[#7ec662] shrink-0"/>
@@ -5545,14 +5556,26 @@ const BambooStudio = () => {
                 <div className="flex items-center gap-1.5 mb-2.5">
                   <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Поверхность</span>
                 </div>
-                <div className="flex flex-wrap gap-1">
-                  {Array.from({ length: Math.min(3, Math.floor(points.length / 4)) }, (_, i) => i).map(i => (
-                    <button key={i} onClick={() => switchSurface(i)}
-                      className={`py-1 px-2 text-[9px] font-bold rounded-lg border transition-all active:scale-95 ${activeSurface === i ? 'bg-[#7ec662] text-white border-[#7ec662]' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
-                      {(wallZone === 'column' ? COLUMN_SURFACE_LABELS : wallZone === 'window' ? (windowType === 'panoramic' ? WINDOW_PAN_LABELS : WINDOW_STD_LABELS) : wallZone === 'tv' ? TV_ZONE_LABELS : wallZone === 'door' ? ['Стена с дверью'] : SURFACE_LABELS)[i]}
-                    </button>
-                  ))}
-                </div>
+                {(() => {
+                  const count = Math.min(3, Math.floor(points.length / 4));
+                  const labels = wallZone === 'column' ? COLUMN_SURFACE_LABELS : wallZone === 'window' ? (windowType === 'panoramic' ? WINDOW_PAN_LABELS : WINDOW_STD_LABELS) : wallZone === 'door' ? ['Стена с дверью'] : SURFACE_LABELS;
+                  return (
+                    <div className="bg-gray-100 rounded-full p-0.5">
+                      <div className="relative flex overflow-hidden rounded-full">
+                        <div
+                          className="absolute inset-0 rounded-full bg-[#7ec662] pointer-events-none"
+                          style={{ width: `${100 / count}%`, left: `${activeSurface * (100 / count)}%`, transition: 'left 230ms ease' }}
+                        />
+                        {Array.from({ length: count }, (_, i) => (
+                          <button key={i} onClick={() => switchSurface(i)}
+                            className={`relative z-10 flex-1 py-1.5 text-center text-[9px] font-bold transition-colors duration-[180ms] select-none ${activeSurface === i ? 'text-white' : 'text-gray-500'}`}>
+                            {labels[i]}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
                 <p className="text-[8px] text-gray-400 mt-2 leading-relaxed">Кликните по плоскости на фото или выберите здесь. Панели, количество и профили настраиваются для каждой поверхности отдельно.</p>
               </div>
             )}
