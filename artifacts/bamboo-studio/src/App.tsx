@@ -4828,123 +4828,124 @@ const BambooStudio = () => {
                         <Columns size={12} className="text-gray-400"/>
                         <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Лицевая плоскость короба</span>
                       </div>
-                      <div className="grid grid-cols-2 gap-2 mb-2">
-                        <label className="block">
-                          <span className="text-[10px] font-bold text-gray-400 uppercase">Ширина, см</span>
-                          <MeterInput placeholder="напр. 360" valueMm={wallWidthMm} onChangeMm={(v) => { pushHistory(); setWallWidthMm(v); }} />
-                        </label>
-                        <label className="block">
-                          <span className="text-[10px] font-bold text-gray-400 uppercase">Высота, см</span>
-                          <MeterInput placeholder="напр. 270" valueMm={wallHeightMm} onChangeMm={(v) => { pushHistory(); setWallHeightMm(v); }} />
-                        </label>
-                      </div>
-                      {wallWidthMm > 0 && wallHeightMm > 0 && (() => {
-                        const pMat = sectorMaterials[0];
-                        const pW = pMat?.panelWidthMm ?? PANEL_W_MM;
-                        const pH = pMat?.panelHeightMm ?? PANEL_H_MM;
-                        const isHorizBox = panelOrientation === 'horizontal' || panelOrientation === 'lengthwise';
-                        const singleRowH = isHorizBox ? pW : pH;
-                        const areaM2 = (wallWidthMm / 1000) * (wallHeightMm / 1000);
-                        const tooTall = wallHeightMm > singleRowH;
-                        const opt = optimizedPanelCalc(
-                          isHorizBox ? Math.ceil(wallHeightMm / pW) : Math.ceil(wallWidthMm / pW),
-                          isHorizBox ? wallWidthMm : wallHeightMm,
-                          isHorizBox ? pW : pH
-                        );
-                        const colsNeeded = !isHorizBox ? Math.ceil(wallWidthMm / pW) : 0;
-                        const tooWide = !isHorizBox && wallWidthMm > pW;
-                        const seamCount = colsNeeded > 1 ? colsNeeded - 1 : 0;
-                        const seamProfileRuns = seamCount > 0 ? packProfileRuns(Array(seamCount).fill(wallHeightMm)) : 0;
-                        return (
-                          <div className="space-y-1 mb-1">
-                            <p className="text-[8px] text-gray-400">
-                              Панель: {(pH / 10).toFixed(0)} × {(pW / 10).toFixed(0)} см · {isHorizBox ? 'горизонт.' : 'вертик.'} · ряд = {(singleRowH / 10).toFixed(0)} см
-                            </p>
-                            <p className="text-[9px] font-bold text-gray-600">Площадь лицевой: {areaM2.toFixed(2).replace('.', ',')} м²</p>
-                            {tooTall && (
-                              <div className="space-y-1.5">
-                                <p className="text-[9px] font-bold text-amber-600">
-                                  {`⚠ ${isHorizBox ? 'Высота короба' : 'Высота'} > ${(singleRowH / 10).toFixed(0)} см — ${opt.fullRows} ${rowsWord(opt.fullRows)} по ${isHorizBox ? 'высоте' : 'вертикали'}, итого ${opt.needed} ${panelsWord(opt.needed)}`}
+                      <div className="flex gap-3 items-start">
+                        {/* Left: size inputs + calc */}
+                        <div className="flex-1 min-w-0 space-y-2">
+                          <label className="block">
+                            <span className="text-[10px] font-bold text-gray-400 uppercase">Ширина, см</span>
+                            <MeterInput placeholder="напр. 360" valueMm={wallWidthMm} onChangeMm={(v) => { pushHistory(); setWallWidthMm(v); }} />
+                          </label>
+                          <label className="block">
+                            <span className="text-[10px] font-bold text-gray-400 uppercase">Высота, см</span>
+                            <MeterInput placeholder="напр. 270" valueMm={wallHeightMm} onChangeMm={(v) => { pushHistory(); setWallHeightMm(v); }} />
+                          </label>
+                          {wallWidthMm > 0 && wallHeightMm > 0 && (() => {
+                            const pMat = sectorMaterials[0];
+                            const pW = pMat?.panelWidthMm ?? PANEL_W_MM;
+                            const pH = pMat?.panelHeightMm ?? PANEL_H_MM;
+                            const isHorizBox = panelOrientation === 'horizontal' || panelOrientation === 'lengthwise';
+                            const singleRowH = isHorizBox ? pW : pH;
+                            const areaM2 = (wallWidthMm / 1000) * (wallHeightMm / 1000);
+                            const tooTall = wallHeightMm > singleRowH;
+                            const opt = optimizedPanelCalc(
+                              isHorizBox ? Math.ceil(wallHeightMm / pW) : Math.ceil(wallWidthMm / pW),
+                              isHorizBox ? wallWidthMm : wallHeightMm,
+                              isHorizBox ? pW : pH
+                            );
+                            const colsNeeded = !isHorizBox ? Math.ceil(wallWidthMm / pW) : 0;
+                            const tooWide = !isHorizBox && wallWidthMm > pW;
+                            const seamCount = colsNeeded > 1 ? colsNeeded - 1 : 0;
+                            const seamProfileRuns = seamCount > 0 ? packProfileRuns(Array(seamCount).fill(wallHeightMm)) : 0;
+                            return (
+                              <div className="space-y-1">
+                                <p className="text-[8px] text-gray-400">
+                                  Панель: {(pH / 10).toFixed(0)} × {(pW / 10).toFixed(0)} см · {isHorizBox ? 'горизонт.' : 'вертик.'} · ряд = {(singleRowH / 10).toFixed(0)} см
                                 </p>
-                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 space-y-1">
-                                  <p className="text-[9px] font-black text-amber-700 uppercase tracking-wide">Стыковочный профиль (горизонт.)</p>
-                                  {(['bottom', 'top'] as const).map(pos => {
-                                    const label = pos === 'bottom' ? 'Снизу' : 'Сверху';
-                                    const checked = jointProfilePosition.includes(pos);
-                                    return (
-                                      <label key={pos} className="flex items-center gap-2 cursor-pointer group">
-                                        <input type="checkbox" checked={checked}
-                                          onChange={() => {
-                                            pushHistory();
-                                            const current = adoptedSeamCurrentRef.current;
-                                            if (current.size > 0) {
-                                              const filtered = hMoldingPositionsRef.current.filter(p => !current.has(p));
-                                              hMoldingPositionsRef.current = filtered;
-                                              setHMoldingPositions(filtered);
-                                              adoptedSeamOriginalsRef.current = new Set();
-                                              adoptedSeamCurrentRef.current = new Set();
-                                              hMoldingCompanionMapRef.current = new Map();
-                                            }
-                                            setJointProfilePosition(prev =>
-                                              prev.includes(pos) ? prev.filter(p => p !== pos) : [...prev, pos]
-                                            );
-                                          }}
-                                          className="w-3 h-3 accent-amber-600 cursor-pointer"
-                                        />
-                                        <span className="text-[9px] font-bold text-amber-800 group-hover:text-amber-900">{label}</span>
-                                      </label>
-                                    );
-                                  })}
-                                </div>
+                                <p className="text-[9px] font-bold text-gray-600">Площадь: {areaM2.toFixed(2).replace('.', ',')} м²</p>
+                                {tooTall && (
+                                  <div className="space-y-1.5">
+                                    <p className="text-[9px] font-bold text-amber-600">
+                                      {`⚠ ${isHorizBox ? 'Высота короба' : 'Высота'} > ${(singleRowH / 10).toFixed(0)} см — ${opt.fullRows} ${rowsWord(opt.fullRows)} по ${isHorizBox ? 'высоте' : 'вертикали'}, итого ${opt.needed} ${panelsWord(opt.needed)}`}
+                                    </p>
+                                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 space-y-1">
+                                      <p className="text-[9px] font-black text-amber-700 uppercase tracking-wide">Стыковочный профиль (горизонт.)</p>
+                                      {(['bottom', 'top'] as const).map(pos => {
+                                        const label = pos === 'bottom' ? 'Снизу' : 'Сверху';
+                                        const checked = jointProfilePosition.includes(pos);
+                                        return (
+                                          <label key={pos} className="flex items-center gap-2 cursor-pointer group">
+                                            <input type="checkbox" checked={checked}
+                                              onChange={() => {
+                                                pushHistory();
+                                                const current = adoptedSeamCurrentRef.current;
+                                                if (current.size > 0) {
+                                                  const filtered = hMoldingPositionsRef.current.filter(p => !current.has(p));
+                                                  hMoldingPositionsRef.current = filtered;
+                                                  setHMoldingPositions(filtered);
+                                                  adoptedSeamOriginalsRef.current = new Set();
+                                                  adoptedSeamCurrentRef.current = new Set();
+                                                  hMoldingCompanionMapRef.current = new Map();
+                                                }
+                                                setJointProfilePosition(prev =>
+                                                  prev.includes(pos) ? prev.filter(p => p !== pos) : [...prev, pos]
+                                                );
+                                              }}
+                                              className="w-3 h-3 accent-amber-600 cursor-pointer"
+                                            />
+                                            <span className="text-[9px] font-bold text-amber-800 group-hover:text-amber-900">{label}</span>
+                                          </label>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                                {tooWide && (
+                                  <div className="space-y-1.5">
+                                    <p className="text-[9px] font-bold text-amber-600">
+                                      {`⚠ Ширина ${Math.round(wallWidthMm / 10)} см > ${Math.round(pW / 10)} см — ${colsNeeded} кол., ${seamCount} верт. ${seamCount === 1 ? 'стык' : seamCount < 5 ? 'стыка' : 'стыков'} по ${Math.round(wallHeightMm / 10)} см`}
+                                    </p>
+                                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5">
+                                      <p className="text-[9px] font-black text-amber-700 uppercase tracking-wide mb-0.5">Стыковочный профиль (вертик.)</p>
+                                      <p className="text-[9px] text-amber-800">
+                                        {`${seamCount} ${seamCount === 1 ? 'стык' : seamCount < 5 ? 'стыка' : 'стыков'} × ${Math.round(wallHeightMm / 10)} см → ${seamProfileRuns} хл. 3 м`}
+                                      </p>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
-                            )}
-                            {tooWide && (
-                              <div className="space-y-1.5">
-                                <p className="text-[9px] font-bold text-amber-600">
-                                  {`⚠ Ширина ${Math.round(wallWidthMm / 10)} см > ${Math.round(pW / 10)} см — ${colsNeeded} кол., ${seamCount} верт. ${seamCount === 1 ? 'стык' : seamCount < 5 ? 'стыка' : 'стыков'} по ${Math.round(wallHeightMm / 10)} см`}
-                                </p>
-                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5">
-                                  <p className="text-[9px] font-black text-amber-700 uppercase tracking-wide mb-0.5">Стыковочный профиль (вертик.)</p>
-                                  <p className="text-[9px] text-amber-800">
-                                    {`${seamCount} ${seamCount === 1 ? 'стык' : seamCount < 5 ? 'стыка' : 'стыков'} × ${Math.round(wallHeightMm / 10)} см → ${seamProfileRuns} хл. 3 м`}
-                                  </p>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
-                      {/* LED backlight — pill toggle + TV-frame edge picker */}
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                          <Sun size={9} className={tvBacklightEnabled ? 'text-amber-400' : 'text-gray-300'}/>
-                          <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">LED</span>
+                            );
+                          })()}
                         </div>
-                        <button
-                          onClick={() => { pushHistory(); setTvBacklightEnabled(v => !v); }}
-                          className={`relative w-8 h-[18px] rounded-full transition-all duration-200 active:scale-95 ${tvBacklightEnabled ? 'bg-amber-400' : 'bg-gray-200'}`}>
-                          <div className={`absolute top-[3px] w-3 h-3 bg-white rounded-full shadow-sm transition-all duration-200 ${tvBacklightEnabled ? 'left-[calc(100%-15px)]' : 'left-[3px]'}`}/>
-                        </button>
-                      </div>
-                      {tvBacklightEnabled && (
-                        <div className="flex justify-center mt-2">
-                          <div className="flex flex-col items-center gap-[3px]">
-                            <button onClick={() => { pushHistory(); setTvBacklightEdges(e => { const n=[...e] as [boolean,boolean,boolean,boolean]; n[0]=!n[0]; return n; }); }}
-                              className={`w-[72px] h-[5px] rounded-full transition-all duration-150 ${tvBacklightEdges[0] ? 'bg-amber-400 shadow-sm shadow-amber-200' : 'bg-gray-200 hover:bg-amber-200'}`}/>
-                            <div className="flex items-center gap-[3px]">
-                              <button onClick={() => { pushHistory(); setTvBacklightEdges(e => { const n=[...e] as [boolean,boolean,boolean,boolean]; n[3]=!n[3]; return n; }); }}
-                                className={`w-[5px] h-9 rounded-full transition-all duration-150 ${tvBacklightEdges[3] ? 'bg-amber-400 shadow-sm shadow-amber-200' : 'bg-gray-200 hover:bg-amber-200'}`}/>
-                              <div className="w-[72px] h-9 rounded bg-gray-900 flex items-center justify-center">
-                                <span className="text-[8px] font-black tracking-[0.2em] text-gray-600">TV</span>
+                        {/* Right: LED toggle + TV frame */}
+                        <div className="shrink-0 flex flex-col items-center gap-1.5 pt-0.5">
+                          <div className="flex items-center gap-1.5">
+                            <Sun size={9} className={tvBacklightEnabled ? 'text-amber-400' : 'text-gray-300'}/>
+                            <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">LED</span>
+                            <button
+                              onClick={() => { pushHistory(); setTvBacklightEnabled(v => !v); }}
+                              className={`relative w-8 h-[18px] rounded-full transition-all duration-200 active:scale-95 ${tvBacklightEnabled ? 'bg-amber-400' : 'bg-gray-200'}`}>
+                              <div className={`absolute top-[3px] w-3 h-3 bg-white rounded-full shadow-sm transition-all duration-200 ${tvBacklightEnabled ? 'left-[calc(100%-15px)]' : 'left-[3px]'}`}/>
+                            </button>
+                          </div>
+                          {tvBacklightEnabled && (
+                            <div className="flex flex-col items-center gap-[3px]">
+                              <button onClick={() => { pushHistory(); setTvBacklightEdges(e => { const n=[...e] as [boolean,boolean,boolean,boolean]; n[0]=!n[0]; return n; }); }}
+                                className={`w-[60px] h-[4px] rounded-full transition-all duration-150 ${tvBacklightEdges[0] ? 'bg-amber-400 shadow-sm shadow-amber-200' : 'bg-gray-200 hover:bg-amber-200'}`}/>
+                              <div className="flex items-center gap-[3px]">
+                                <button onClick={() => { pushHistory(); setTvBacklightEdges(e => { const n=[...e] as [boolean,boolean,boolean,boolean]; n[3]=!n[3]; return n; }); }}
+                                  className={`w-[4px] h-8 rounded-full transition-all duration-150 ${tvBacklightEdges[3] ? 'bg-amber-400 shadow-sm shadow-amber-200' : 'bg-gray-200 hover:bg-amber-200'}`}/>
+                                <div className="w-[60px] h-8 rounded bg-gray-900 flex items-center justify-center">
+                                  <span className="text-[7px] font-black tracking-[0.2em] text-gray-600">TV</span>
+                                </div>
+                                <button onClick={() => { pushHistory(); setTvBacklightEdges(e => { const n=[...e] as [boolean,boolean,boolean,boolean]; n[1]=!n[1]; return n; }); }}
+                                  className={`w-[4px] h-8 rounded-full transition-all duration-150 ${tvBacklightEdges[1] ? 'bg-amber-400 shadow-sm shadow-amber-200' : 'bg-gray-200 hover:bg-amber-200'}`}/>
                               </div>
-                              <button onClick={() => { pushHistory(); setTvBacklightEdges(e => { const n=[...e] as [boolean,boolean,boolean,boolean]; n[1]=!n[1]; return n; }); }}
-                                className={`w-[5px] h-9 rounded-full transition-all duration-150 ${tvBacklightEdges[1] ? 'bg-amber-400 shadow-sm shadow-amber-200' : 'bg-gray-200 hover:bg-amber-200'}`}/>
+                              <button onClick={() => { pushHistory(); setTvBacklightEdges(e => { const n=[...e] as [boolean,boolean,boolean,boolean]; n[2]=!n[2]; return n; }); }}
+                                className={`w-[60px] h-[4px] rounded-full transition-all duration-150 ${tvBacklightEdges[2] ? 'bg-amber-400 shadow-sm shadow-amber-200' : 'bg-gray-200 hover:bg-amber-200'}`}/>
                             </div>
-                            <button onClick={() => { pushHistory(); setTvBacklightEdges(e => { const n=[...e] as [boolean,boolean,boolean,boolean]; n[2]=!n[2]; return n; }); }}
-                              className={`w-[72px] h-[5px] rounded-full transition-all duration-150 ${tvBacklightEdges[2] ? 'bg-amber-400 shadow-sm shadow-amber-200' : 'bg-gray-200 hover:bg-amber-200'}`}/>
-                          </div>
+                          )}
                         </div>
-                      )}
+                      </div>
                     </div>
                   )}
                   {/* Короб mode — Глубина граней короба */}
@@ -5099,132 +5100,133 @@ const BambooStudio = () => {
                         <Columns size={12} className="text-gray-400"/>
                         <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Лицевая плоскость короба</span>
                       </div>
-                      <div className="grid grid-cols-2 gap-2 mb-2">
-                        <label className="block">
-                          <span className="text-[10px] font-bold text-gray-400 uppercase">Ширина, см</span>
-                          <MeterInput placeholder="напр. 360" valueMm={wallWidthMm} onChangeMm={(v) => { pushHistory(); setWallWidthMm(v); }} />
-                        </label>
-                        <label className="block">
-                          <span className="text-[10px] font-bold text-gray-400 uppercase">Высота, см</span>
-                          <MeterInput placeholder="напр. 270" valueMm={wallHeightMm} onChangeMm={(v) => { pushHistory(); setWallHeightMm(v); }} />
-                        </label>
-                      </div>
-                      {wallWidthMm > 0 && wallHeightMm > 0 && (() => {
-                        const pMat = sectorMaterials[0];
-                        const pW = pMat?.panelWidthMm ?? PANEL_W_MM;
-                        const pH = pMat?.panelHeightMm ?? PANEL_H_MM;
-                        const isHorizBox = panelOrientation === 'horizontal' || panelOrientation === 'lengthwise';
-                        // For horizontal panels, single row height = panel WIDTH; for vertical = panel HEIGHT
-                        const singleRowH = isHorizBox ? pW : pH;
-                        const areaM2 = (wallWidthMm / 1000) * (wallHeightMm / 1000);
-                        // tooTall: height > single panel span → horizontal stacking seam needed
-                        const tooTall = wallHeightMm > singleRowH;
-                        const opt = optimizedPanelCalc(
-                          isHorizBox ? Math.ceil(wallHeightMm / pW) : Math.ceil(wallWidthMm / pW),
-                          isHorizBox ? wallWidthMm : wallHeightMm,
-                          isHorizBox ? pW : pH
-                        );
-                        // tooWide (vertical only): width > panel width → multiple columns → vertical seam profiles
-                        const colsNeeded = !isHorizBox ? Math.ceil(wallWidthMm / pW) : 0;
-                        const tooWide = !isHorizBox && wallWidthMm > pW;
-                        const seamCount = colsNeeded > 1 ? colsNeeded - 1 : 0;
-                        const seamProfileRuns = seamCount > 0
-                          ? packProfileRuns(Array(seamCount).fill(wallHeightMm))
-                          : 0;
-                        return (
-                          <div className="space-y-1 mb-1">
-                            <p className="text-[8px] text-gray-400">
-                              Панель: {(pH / 10).toFixed(0)} × {(pW / 10).toFixed(0)} см · {isHorizBox ? 'горизонт.' : 'вертик.'} · ряд = {(singleRowH / 10).toFixed(0)} см
-                            </p>
-                            <p className="text-[9px] font-bold text-gray-600">Площадь лицевой: {areaM2.toFixed(2).replace('.', ',')} м²</p>
-                            {tooTall && (
-                              <div className="space-y-1.5">
-                                <p className="text-[9px] font-bold text-amber-600">
-                                  {`⚠ ${isHorizBox ? 'Высота короба' : 'Высота'} > ${(singleRowH / 10).toFixed(0)} см — ${opt.fullRows} ${rowsWord(opt.fullRows)} по ${isHorizBox ? 'высоте' : 'вертикали'}, итого ${opt.needed} ${panelsWord(opt.needed)}`}
+                      <div className="flex gap-3 items-start">
+                        {/* Left: size inputs + calc */}
+                        <div className="flex-1 min-w-0 space-y-2">
+                          <label className="block">
+                            <span className="text-[10px] font-bold text-gray-400 uppercase">Ширина, см</span>
+                            <MeterInput placeholder="напр. 360" valueMm={wallWidthMm} onChangeMm={(v) => { pushHistory(); setWallWidthMm(v); }} />
+                          </label>
+                          <label className="block">
+                            <span className="text-[10px] font-bold text-gray-400 uppercase">Высота, см</span>
+                            <MeterInput placeholder="напр. 270" valueMm={wallHeightMm} onChangeMm={(v) => { pushHistory(); setWallHeightMm(v); }} />
+                          </label>
+                          {wallWidthMm > 0 && wallHeightMm > 0 && (() => {
+                            const pMat = sectorMaterials[0];
+                            const pW = pMat?.panelWidthMm ?? PANEL_W_MM;
+                            const pH = pMat?.panelHeightMm ?? PANEL_H_MM;
+                            const isHorizBox = panelOrientation === 'horizontal' || panelOrientation === 'lengthwise';
+                            // For horizontal panels, single row height = panel WIDTH; for vertical = panel HEIGHT
+                            const singleRowH = isHorizBox ? pW : pH;
+                            const areaM2 = (wallWidthMm / 1000) * (wallHeightMm / 1000);
+                            // tooTall: height > single panel span → horizontal stacking seam needed
+                            const tooTall = wallHeightMm > singleRowH;
+                            const opt = optimizedPanelCalc(
+                              isHorizBox ? Math.ceil(wallHeightMm / pW) : Math.ceil(wallWidthMm / pW),
+                              isHorizBox ? wallWidthMm : wallHeightMm,
+                              isHorizBox ? pW : pH
+                            );
+                            // tooWide (vertical only): width > panel width → multiple columns → vertical seam profiles
+                            const colsNeeded = !isHorizBox ? Math.ceil(wallWidthMm / pW) : 0;
+                            const tooWide = !isHorizBox && wallWidthMm > pW;
+                            const seamCount = colsNeeded > 1 ? colsNeeded - 1 : 0;
+                            const seamProfileRuns = seamCount > 0
+                              ? packProfileRuns(Array(seamCount).fill(wallHeightMm))
+                              : 0;
+                            return (
+                              <div className="space-y-1">
+                                <p className="text-[8px] text-gray-400">
+                                  Панель: {(pH / 10).toFixed(0)} × {(pW / 10).toFixed(0)} см · {isHorizBox ? 'горизонт.' : 'вертик.'} · ряд = {(singleRowH / 10).toFixed(0)} см
                                 </p>
-                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 space-y-1">
-                                  <p className="text-[9px] font-black text-amber-700 uppercase tracking-wide">Стыковочный профиль (горизонт.)</p>
-                                  {(['bottom', 'top'] as const).map(pos => {
-                                    const label = pos === 'bottom' ? 'Снизу' : 'Сверху';
-                                    const checked = jointProfilePosition.includes(pos);
-                                    return (
-                                      <label key={pos} className="flex items-center gap-2 cursor-pointer group">
-                                        <input
-                                          type="checkbox"
-                                          checked={checked}
-                                          onChange={() => {
-                                            pushHistory();
-                                            const current = adoptedSeamCurrentRef.current;
-                                            if (current.size > 0) {
-                                              const filtered = hMoldingPositionsRef.current.filter(p => !current.has(p));
-                                              hMoldingPositionsRef.current = filtered;
-                                              setHMoldingPositions(filtered);
-                                              adoptedSeamOriginalsRef.current = new Set();
-                                              adoptedSeamCurrentRef.current = new Set();
-                                              hMoldingCompanionMapRef.current = new Map();
-                                            }
-                                            setJointProfilePosition(prev =>
-                                              prev.includes(pos)
-                                                ? prev.filter(p => p !== pos)
-                                                : [...prev, pos]
-                                            );
-                                          }}
-                                          className="w-3 h-3 accent-amber-600 cursor-pointer"
-                                        />
-                                        <span className="text-[9px] font-bold text-amber-800 group-hover:text-amber-900">{label}</span>
-                                      </label>
-                                    );
-                                  })}
-                                </div>
+                                <p className="text-[9px] font-bold text-gray-600">Площадь: {areaM2.toFixed(2).replace('.', ',')} м²</p>
+                                {tooTall && (
+                                  <div className="space-y-1.5">
+                                    <p className="text-[9px] font-bold text-amber-600">
+                                      {`⚠ ${isHorizBox ? 'Высота короба' : 'Высота'} > ${(singleRowH / 10).toFixed(0)} см — ${opt.fullRows} ${rowsWord(opt.fullRows)} по ${isHorizBox ? 'высоте' : 'вертикали'}, итого ${opt.needed} ${panelsWord(opt.needed)}`}
+                                    </p>
+                                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 space-y-1">
+                                      <p className="text-[9px] font-black text-amber-700 uppercase tracking-wide">Стыковочный профиль (горизонт.)</p>
+                                      {(['bottom', 'top'] as const).map(pos => {
+                                        const label = pos === 'bottom' ? 'Снизу' : 'Сверху';
+                                        const checked = jointProfilePosition.includes(pos);
+                                        return (
+                                          <label key={pos} className="flex items-center gap-2 cursor-pointer group">
+                                            <input
+                                              type="checkbox"
+                                              checked={checked}
+                                              onChange={() => {
+                                                pushHistory();
+                                                const current = adoptedSeamCurrentRef.current;
+                                                if (current.size > 0) {
+                                                  const filtered = hMoldingPositionsRef.current.filter(p => !current.has(p));
+                                                  hMoldingPositionsRef.current = filtered;
+                                                  setHMoldingPositions(filtered);
+                                                  adoptedSeamOriginalsRef.current = new Set();
+                                                  adoptedSeamCurrentRef.current = new Set();
+                                                  hMoldingCompanionMapRef.current = new Map();
+                                                }
+                                                setJointProfilePosition(prev =>
+                                                  prev.includes(pos)
+                                                    ? prev.filter(p => p !== pos)
+                                                    : [...prev, pos]
+                                                );
+                                              }}
+                                              className="w-3 h-3 accent-amber-600 cursor-pointer"
+                                            />
+                                            <span className="text-[9px] font-bold text-amber-800 group-hover:text-amber-900">{label}</span>
+                                          </label>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                                {tooWide && (
+                                  <div className="space-y-1.5">
+                                    <p className="text-[9px] font-bold text-amber-600">
+                                      {`⚠ Ширина ${Math.round(wallWidthMm / 10)} см > ${Math.round(pW / 10)} см — ${colsNeeded} кол., ${seamCount} верт. ${seamCount === 1 ? 'стык' : seamCount < 5 ? 'стыка' : 'стыков'} по ${Math.round(wallHeightMm / 10)} см`}
+                                    </p>
+                                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5">
+                                      <p className="text-[9px] font-black text-amber-700 uppercase tracking-wide mb-0.5">Стыковочный профиль (вертик.)</p>
+                                      <p className="text-[9px] text-amber-800">
+                                        {`${seamCount} ${seamCount === 1 ? 'стык' : seamCount < 5 ? 'стыка' : 'стыков'} × ${Math.round(wallHeightMm / 10)} см → ${seamProfileRuns} хл. 3 м`}
+                                      </p>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
-                            )}
-                            {tooWide && (
-                              <div className="space-y-1.5">
-                                <p className="text-[9px] font-bold text-amber-600">
-                                  {`⚠ Ширина ${Math.round(wallWidthMm / 10)} см > ${Math.round(pW / 10)} см — ${colsNeeded} кол., ${seamCount} верт. ${seamCount === 1 ? 'стык' : seamCount < 5 ? 'стыка' : 'стыков'} по ${Math.round(wallHeightMm / 10)} см`}
-                                </p>
-                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5">
-                                  <p className="text-[9px] font-black text-amber-700 uppercase tracking-wide mb-0.5">Стыковочный профиль (вертик.)</p>
-                                  <p className="text-[9px] text-amber-800">
-                                    {`${seamCount} ${seamCount === 1 ? 'стык' : seamCount < 5 ? 'стыка' : 'стыков'} × ${Math.round(wallHeightMm / 10)} см → ${seamProfileRuns} хл. 3 м`}
-                                  </p>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
-                      {/* LED backlight — pill toggle + TV-frame edge picker */}
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                          <Sun size={9} className={tvBacklightEnabled ? 'text-amber-400' : 'text-gray-300'}/>
-                          <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">LED</span>
+                            );
+                          })()}
                         </div>
-                        <button
-                          onClick={() => { pushHistory(); setTvBacklightEnabled(v => !v); }}
-                          className={`relative w-8 h-[18px] rounded-full transition-all duration-200 active:scale-95 ${tvBacklightEnabled ? 'bg-amber-400' : 'bg-gray-200'}`}>
-                          <div className={`absolute top-[3px] w-3 h-3 bg-white rounded-full shadow-sm transition-all duration-200 ${tvBacklightEnabled ? 'left-[calc(100%-15px)]' : 'left-[3px]'}`}/>
-                        </button>
-                      </div>
-                      {tvBacklightEnabled && (
-                        <div className="flex justify-center mt-2">
-                          <div className="flex flex-col items-center gap-[3px]">
-                            <button onClick={() => { pushHistory(); setTvBacklightEdges(e => { const n=[...e] as [boolean,boolean,boolean,boolean]; n[0]=!n[0]; return n; }); }}
-                              className={`w-[72px] h-[5px] rounded-full transition-all duration-150 ${tvBacklightEdges[0] ? 'bg-amber-400 shadow-sm shadow-amber-200' : 'bg-gray-200 hover:bg-amber-200'}`}/>
-                            <div className="flex items-center gap-[3px]">
-                              <button onClick={() => { pushHistory(); setTvBacklightEdges(e => { const n=[...e] as [boolean,boolean,boolean,boolean]; n[3]=!n[3]; return n; }); }}
-                                className={`w-[5px] h-9 rounded-full transition-all duration-150 ${tvBacklightEdges[3] ? 'bg-amber-400 shadow-sm shadow-amber-200' : 'bg-gray-200 hover:bg-amber-200'}`}/>
-                              <div className="w-[72px] h-9 rounded bg-gray-900 flex items-center justify-center">
-                                <span className="text-[8px] font-black tracking-[0.2em] text-gray-600">TV</span>
+                        {/* Right: LED toggle + TV frame */}
+                        <div className="shrink-0 flex flex-col items-center gap-1.5 pt-0.5">
+                          <div className="flex items-center gap-1.5">
+                            <Sun size={9} className={tvBacklightEnabled ? 'text-amber-400' : 'text-gray-300'}/>
+                            <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">LED</span>
+                            <button
+                              onClick={() => { pushHistory(); setTvBacklightEnabled(v => !v); }}
+                              className={`relative w-8 h-[18px] rounded-full transition-all duration-200 active:scale-95 ${tvBacklightEnabled ? 'bg-amber-400' : 'bg-gray-200'}`}>
+                              <div className={`absolute top-[3px] w-3 h-3 bg-white rounded-full shadow-sm transition-all duration-200 ${tvBacklightEnabled ? 'left-[calc(100%-15px)]' : 'left-[3px]'}`}/>
+                            </button>
+                          </div>
+                          {tvBacklightEnabled && (
+                            <div className="flex flex-col items-center gap-[3px]">
+                              <button onClick={() => { pushHistory(); setTvBacklightEdges(e => { const n=[...e] as [boolean,boolean,boolean,boolean]; n[0]=!n[0]; return n; }); }}
+                                className={`w-[60px] h-[4px] rounded-full transition-all duration-150 ${tvBacklightEdges[0] ? 'bg-amber-400 shadow-sm shadow-amber-200' : 'bg-gray-200 hover:bg-amber-200'}`}/>
+                              <div className="flex items-center gap-[3px]">
+                                <button onClick={() => { pushHistory(); setTvBacklightEdges(e => { const n=[...e] as [boolean,boolean,boolean,boolean]; n[3]=!n[3]; return n; }); }}
+                                  className={`w-[4px] h-8 rounded-full transition-all duration-150 ${tvBacklightEdges[3] ? 'bg-amber-400 shadow-sm shadow-amber-200' : 'bg-gray-200 hover:bg-amber-200'}`}/>
+                                <div className="w-[60px] h-8 rounded bg-gray-900 flex items-center justify-center">
+                                  <span className="text-[7px] font-black tracking-[0.2em] text-gray-600">TV</span>
+                                </div>
+                                <button onClick={() => { pushHistory(); setTvBacklightEdges(e => { const n=[...e] as [boolean,boolean,boolean,boolean]; n[1]=!n[1]; return n; }); }}
+                                  className={`w-[4px] h-8 rounded-full transition-all duration-150 ${tvBacklightEdges[1] ? 'bg-amber-400 shadow-sm shadow-amber-200' : 'bg-gray-200 hover:bg-amber-200'}`}/>
                               </div>
-                              <button onClick={() => { pushHistory(); setTvBacklightEdges(e => { const n=[...e] as [boolean,boolean,boolean,boolean]; n[1]=!n[1]; return n; }); }}
-                                className={`w-[5px] h-9 rounded-full transition-all duration-150 ${tvBacklightEdges[1] ? 'bg-amber-400 shadow-sm shadow-amber-200' : 'bg-gray-200 hover:bg-amber-200'}`}/>
+                              <button onClick={() => { pushHistory(); setTvBacklightEdges(e => { const n=[...e] as [boolean,boolean,boolean,boolean]; n[2]=!n[2]; return n; }); }}
+                                className={`w-[60px] h-[4px] rounded-full transition-all duration-150 ${tvBacklightEdges[2] ? 'bg-amber-400 shadow-sm shadow-amber-200' : 'bg-gray-200 hover:bg-amber-200'}`}/>
                             </div>
-                            <button onClick={() => { pushHistory(); setTvBacklightEdges(e => { const n=[...e] as [boolean,boolean,boolean,boolean]; n[2]=!n[2]; return n; }); }}
-                              className={`w-[72px] h-[5px] rounded-full transition-all duration-150 ${tvBacklightEdges[2] ? 'bg-amber-400 shadow-sm shadow-amber-200' : 'bg-gray-200 hover:bg-amber-200'}`}/>
-                          </div>
+                          )}
                         </div>
-                      )}
+                      </div>
                     </div>
                   )}
                   {/* Короб mode — глубина короба (грани стены 2) */}
