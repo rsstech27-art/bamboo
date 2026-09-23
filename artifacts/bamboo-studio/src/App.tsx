@@ -5556,12 +5556,9 @@ const BambooStudio = () => {
                 <input type="range" min="1" max="15" value={panelCount}
                   onChange={(e) => handleChangePanelCount(parseInt(e.target.value))}
                   className="w-full h-1 bg-gray-100 rounded-full appearance-none accent-black"/>
-                {wallZone === 'tv' && !(tvType === 'builtin' && activeSurface === 0) && (
+                {wallZone === 'tv' && tvZoneView === 'box' && (
                   <div className="flex gap-1 mt-2">
-                    {(tvZoneView === 'box'
-                      ? (['vertical', 'horizontal'] as const)
-                      : (activeSurface !== 0 ? (['horizontal'] as const) : [])
-                    ).map(ori => (
+                    {(['vertical', 'horizontal'] as const).map(ori => (
                       <button key={ori} onClick={() => { pushHistory(); setPanelOrientation(ori); }}
                         className={`flex-1 py-1 rounded-lg text-[8px] font-bold border transition-all active:scale-95 ${(panelOrientation === ori || (ori === 'horizontal' && panelOrientation === 'lengthwise')) ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-500 border-gray-200'}`}>
                         {ori === 'vertical' ? 'Верт.' : 'Гориз.'}
