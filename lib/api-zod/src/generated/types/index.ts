@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './errorResponse';
 export * from './healthStatus';
 export * from './orderCreated';
 export * from './orderInput';
@@ -14,3 +15,8 @@ export * from './orderPdfAttachment';
 export * from './orderPdfPermission';
 export * from './orderPdfSaved';
 export * from './orderPdfUpload';
+export * from './profileCatalogEntry';
+export * from './profileCatalogImportResult';
+export * from './profileCatalogUpdate';
+export * from './profileColor';
+export * from './profileKind';

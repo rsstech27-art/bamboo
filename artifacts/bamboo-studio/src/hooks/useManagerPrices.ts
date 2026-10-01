@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { managerFetch } from '../lib/managerApi';
+import { managerFetch } from '../lib/managerApi.ts';
+import { resolveMoldingPrice } from '../lib/profileCatalog.ts';
 
 // ── Default prices (mirrors module-level constants in App.tsx) ───────────────
 export const DEFAULT_SERIES_PRICES: Array<{ id: string; name: string; defaultPrice: number }> = [
@@ -19,19 +20,23 @@ export const DEFAULT_SERIES_PRICES: Array<{ id: string; name: string; defaultPri
   { id: 'soft-touch',   name: 'Soft-touch / Кожа',     defaultPrice: 4700 },
 ];
 
-export const DEFAULT_MOLDING_PRICES: Array<{ id: string; name: string; article: string; defaultPrice: number }> = [
-  { id: 'black',    article: 'PR-BLACK',  name: 'Профиль чёрный',         defaultPrice: 890  },
-  { id: 'metallic', article: 'PR-METAL',  name: 'Профиль металлик',       defaultPrice: 940  },
-  { id: 'bronze',   article: 'PR-BRONZE', name: 'Профиль бронза',         defaultPrice: 990  },
+export const DEFAULT_MOLDING_PRICES: Array<{ id: string; name: string; defaultPrice: number }> = [
+  { id: 'black',    name: 'Профиль чёрный',         defaultPrice: 890  },
+  { id: 'metallic', name: 'Профиль металлик',       defaultPrice: 940  },
+  { id: 'bronze',   name: 'Профиль бронза',         defaultPrice: 990  },
+  { id: 'gold',     name: 'Профиль золото',         defaultPrice: 990  },
   // Соединительные: с разрывом и с подсветкой
-  { id: 'gap',      article: 'PR-GAP',    name: 'Профиль с разрывом',     defaultPrice: 1090 },
-  { id: 'light',    article: 'PR-LIGHT',  name: 'Профиль с подсветкой',   defaultPrice: 1490 },
+  { id: 'gap',      name: 'Профиль с разрывом',     defaultPrice: 1090 },
+  { id: 'light',    name: 'Профиль с подсветкой',   defaultPrice: 1490 },
+  { id: 'metallic_gap', name: 'Профиль металлик с разрывом', defaultPrice: 1090 },
+  { id: 'bronze_gap',   name: 'Профиль бронза с разрывом',   defaultPrice: 1090 },
+  { id: 'gold_gap',     name: 'Профиль золото с разрывом',   defaultPrice: 1090 },
   // Торцевой профиль — по цветам
-  { id: 'edge_black',    article: 'PR-EDGE-BLK', name: 'Профиль торцевой чёрный',    defaultPrice: 790  },
-  { id: 'edge_metallic', article: 'PR-EDGE-MTL', name: 'Профиль торцевой металлик',  defaultPrice: 790  },
-  { id: 'edge_bronze',   article: 'PR-EDGE-BRZ', name: 'Профиль торцевой бронза',    defaultPrice: 790  },
+  { id: 'edge_black',    name: 'Профиль торцевой чёрный',    defaultPrice: 790  },
+  { id: 'edge_metallic', name: 'Профиль торцевой металлик',  defaultPrice: 790  },
+  { id: 'edge_bronze',   name: 'Профиль торцевой бронза',    defaultPrice: 790  },
   // legacy — единый торец без цвета (обратная совместимость)
-  { id: 'edge',     article: 'PR-EDGE',   name: 'Профиль торцевой',       defaultPrice: 790  },
+  { id: 'edge',     name: 'Профиль торцевой',       defaultPrice: 790  },
 ];
 
 /** Дополнительные товары — не являются панелями или профилями */
@@ -566,7 +571,8 @@ export function useManagerPrices() {
 
   // Effective price lookup helpers (use refs so callbacks don't go stale)
   const effectivePanelPrice   = (seriesId: string, fallback: number) => panelOverridesRef.current[seriesId]   ?? fallback;
-  const effectiveMoldingPrice = (styleId:  string, fallback: number) => moldingOverridesRef.current[styleId]  ?? fallback;
+  const effectiveMoldingPrice = (styleId: string, fallback: number) =>
+    resolveMoldingPrice(styleId, moldingOverridesRef.current, {}, DEFAULT_MOLDING_PRICES, fallback);
 
   return {
     panelOverrides,

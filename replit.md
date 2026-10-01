@@ -86,7 +86,7 @@ Textures for Рейки: tex-443..tex-469 range (light blonde to near-black ebon
 
 ### Commercial proposal (КП) PDF
 - After «Сохранить PNG», a green «Рассчитать КП (PDF)» button appears
-- `handleGenerateKP`: re-renders a fresh export image (never stale), aggregates items across all surfaces (panels by article via sectorMaterials with BAMBOO_PANELS[0] fallback; vertical profiles = panelCount+1 if moldingStyle set; horizontal = hMoldingCount), prices from `SERIES_PRICES` (placeholder ₽/panel per series) + `MOLDING_INFO` (profile article/name/price)
+- КП re-renders a fresh export image, aggregates panels and optimized profile runs across surfaces, and uses editable manager prices. Connecting-profile articles and metadata come from `profile_catalog`; legacy edge profiles remain separate.
 - PDF built by drawing an A4 canvas (1240×1754, Cyrillic-safe via canvas text) and embedding into jsPDF as JPEG → `allwall-kp.pdf`
 
 ### Architecture (`src/App.tsx`, ~1900 lines)
@@ -124,3 +124,11 @@ Textures for Рейки: tex-443..tex-469 range (light blonde to near-black ebon
 - `pnpm --filter @workspace/api-server run dev` — run API server locally
 
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
+
+## Official connecting-profile catalog
+
+- `profile_catalog` stores the three official families: MC-06 (connector), MC-07 (connector with a gap), DL-01 (connector with lighting). Color remains part of the quote line name; the base article is used exactly as supplied, without a fabricated length suffix.
+- The official file specifies 3 m lengths and compatibility with 5/8 mm panels. DL-01 is black only. Compatibility is stored as metadata; automatic thickness matching is not yet part of panel selection.
+- Price editing remains in manager settings; the profile catalog contains metadata, not prices.
+- Managers can view/edit articles, names and available colors in the product catalog. The official import action adds missing families only and does not overwrite edits.
+- Apply schema changes to development only. For a published app, use the normal Publish schema flow; if its catalog is empty, use the manager's official-catalog import action, not a wholesale replacement of production data.

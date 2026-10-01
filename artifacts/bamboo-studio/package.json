@@ -9,7 +9,8 @@
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:calc": "node src/lib/panelCalc.test.ts",
-    "test:zones": "node src/lib/zones.test.ts"
+    "test:zones": "node src/lib/zones.test.ts",
+    "test:profiles": "node src/lib/profileCatalog.test.ts"
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",

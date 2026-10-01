@@ -7,6 +7,7 @@ import managerSessionRouter from "./managerSession";
 import backupRouter from "./backup";
 import externalRouter from "./external";
 import adminRouter from "./admin";
+import profileCatalogRouter from "./profileCatalog";
 
 const router: IRouter = Router();
 
@@ -16,6 +17,7 @@ router.use(adminRouter);
 router.use(productsRouter);
 router.use(ordersRouter);
 router.use(settingsRouter);
+router.use(profileCatalogRouter);
 router.use(backupRouter);
 router.use(externalRouter);
 

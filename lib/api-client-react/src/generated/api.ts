@@ -20,13 +20,18 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  ErrorResponse,
   HealthStatus,
   OrderCreated,
   OrderInput,
   OrderPdfAttachment,
   OrderPdfPermission,
   OrderPdfSaved,
-  OrderPdfUpload
+  OrderPdfUpload,
+  ProfileCatalogEntry,
+  ProfileCatalogImportResult,
+  ProfileCatalogUpdate,
+  ProfileKind
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -55,6 +60,248 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   }
   return result;
 };
+
+export const getListProfileCatalogUrl = () => {
+
+
+
+
+  return `/api/profile-catalog`
+}
+
+/**
+ * @summary List official profile metadata
+ */
+export const listProfileCatalog = async ( options?: Parameters<typeof customFetch>[1]): Promise<ProfileCatalogEntry[]> => {
+
+  return customFetch<ProfileCatalogEntry[]>(getListProfileCatalogUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListProfileCatalogQueryKey = () => {
+    return [
+    `/api/profile-catalog`
+    ] as const;
+    }
+
+
+export const getListProfileCatalogQueryOptions = <TData = Awaited<ReturnType<typeof listProfileCatalog>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listProfileCatalog>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListProfileCatalogQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listProfileCatalog>>> = ({ signal }) => listProfileCatalog({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listProfileCatalog>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListProfileCatalogQueryResult = NonNullable<Awaited<ReturnType<typeof listProfileCatalog>>>
+export type ListProfileCatalogQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List official profile metadata
+ */
+
+export function useListProfileCatalog<TData = Awaited<ReturnType<typeof listProfileCatalog>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listProfileCatalog>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListProfileCatalogQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateProfileCatalogUrl = (kind: ProfileKind,) => {
+
+
+
+
+  return `/api/profile-catalog/${kind}`
+}
+
+/**
+ * Article, name, and colors are editable. Profile length and panel thicknesses are fixed and read-only.
+ * @summary Update manager-editable profile metadata
+ */
+export const updateProfileCatalog = async (kind: ProfileKind,
+    profileCatalogUpdate: ProfileCatalogUpdate, options?: Parameters<typeof customFetch>[1]): Promise<ProfileCatalogEntry> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<ProfileCatalogEntry>(getUpdateProfileCatalogUrl(kind),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(profileCatalogUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateProfileCatalogMutationKey = () => ['updateProfileCatalog'] as const;
+
+export const getUpdateProfileCatalogMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateProfileCatalog>>, TError,UpdateProfileCatalogMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateProfileCatalog>>, TError,UpdateProfileCatalogMutationVariables, TContext> => {
+
+const mutationKey = getUpdateProfileCatalogMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateProfileCatalog>>, UpdateProfileCatalogMutationVariables> = (props) => {
+          const {kind,data} = props ?? {};
+
+          return  updateProfileCatalog(kind,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateProfileCatalogMutationResult = NonNullable<Awaited<ReturnType<typeof updateProfileCatalog>>>
+    export type UpdateProfileCatalogMutationBody = BodyType<ProfileCatalogUpdate>
+    export type UpdateProfileCatalogMutationError = ErrorType<ErrorResponse>
+    export type UpdateProfileCatalogMutationVariables = {kind: ProfileKind;data: BodyType<ProfileCatalogUpdate>}
+
+    /**
+ * @summary Update manager-editable profile metadata
+ */
+export const useUpdateProfileCatalog = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateProfileCatalog>>, TError,UpdateProfileCatalogMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateProfileCatalog>>,
+        TError,
+        UpdateProfileCatalogMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateProfileCatalogMutationOptions(options));
+    }
+
+export const getImportOfficialProfileCatalogUrl = () => {
+
+
+
+
+  return `/api/profile-catalog/import-official`
+}
+
+/**
+ * Inserts only missing kinds and never overwrites existing manager-edited rows.
+ * @summary Insert missing official profile metadata
+ */
+export const importOfficialProfileCatalog = async ( options?: Parameters<typeof customFetch>[1]): Promise<ProfileCatalogImportResult> => {
+
+  return customFetch<ProfileCatalogImportResult>(getImportOfficialProfileCatalogUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getImportOfficialProfileCatalogMutationKey = () => ['importOfficialProfileCatalog'] as const;
+
+export const getImportOfficialProfileCatalogMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importOfficialProfileCatalog>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof importOfficialProfileCatalog>>, TError,void, TContext> => {
+
+const mutationKey = getImportOfficialProfileCatalogMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof importOfficialProfileCatalog>>, void> = () => {
+
+
+          return  importOfficialProfileCatalog(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ImportOfficialProfileCatalogMutationResult = NonNullable<Awaited<ReturnType<typeof importOfficialProfileCatalog>>>
+
+    export type ImportOfficialProfileCatalogMutationError = ErrorType<ErrorResponse>
+
+
+    /**
+ * @summary Insert missing official profile metadata
+ */
+export const useImportOfficialProfileCatalog = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importOfficialProfileCatalog>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof importOfficialProfileCatalog>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getImportOfficialProfileCatalogMutationOptions(options));
+    }
 
 export const getCreateOrderUrl = () => {
 

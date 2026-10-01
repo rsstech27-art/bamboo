@@ -17,6 +17,9 @@ import {
   type DbSaveStatus,
 } from '../hooks/useManagerPrices';
 import { managerLogin, managerLogout, checkManagerSession, managerFetch, type ManagerSession } from '../lib/managerApi';
+import { useProfileCatalog } from '../hooks/useProfileCatalog';
+import { PROFILE_KIND_DETAILS, type ProfileCatalogRecord, type ProfileKind } from '../lib/profileCatalog';
+import { ProfileCatalogPanel } from './ProfileCatalogPanel';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -475,7 +478,7 @@ function TabAdmin({
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Editable-name + editable-price row for default (built-in) series/moldings */
-function EditableRow({ defaultName, defaultPrice, nameOverride, priceOverride, onNameChange, onPriceChange, unitLabel, onDelete }: {
+function EditableRow({ defaultName, defaultPrice, nameOverride, priceOverride, onNameChange, onPriceChange, unitLabel, onDelete, metaLabel }: {
   defaultName: string;
   defaultPrice: number;
   nameOverride?: string;
@@ -484,6 +487,7 @@ function EditableRow({ defaultName, defaultPrice, nameOverride, priceOverride, o
   onPriceChange: (v: number) => void;
   unitLabel?: string;
   onDelete?: () => void;
+  metaLabel?: string;
 }) {
   const effectiveName  = nameOverride  ?? defaultName;
   const effectivePrice = priceOverride ?? defaultPrice;
@@ -506,14 +510,17 @@ function EditableRow({ defaultName, defaultPrice, nameOverride, priceOverride, o
 
   return (
     <div className="flex items-center gap-2 py-2.5 border-b border-gray-100 last:border-0">
-      <input
-        value={nameText}
-        onChange={e => setNameText(e.target.value)}
-        onBlur={commitName}
-        onKeyDown={e => e.key === 'Enter' && commitName()}
-        title="Нажмите для редактирования названия"
-        className="flex-1 text-sm px-2 py-1.5 rounded-lg border border-transparent bg-transparent hover:border-gray-200 focus:border-black focus:bg-white text-gray-700 outline-none transition-colors min-w-0"
-      />
+      <div className="flex-1 min-w-0">
+        <input
+          value={nameText}
+          onChange={e => setNameText(e.target.value)}
+          onBlur={commitName}
+          onKeyDown={e => e.key === 'Enter' && commitName()}
+          title="Нажмите для редактирования названия"
+          className="w-full text-sm px-2 py-1.5 rounded-lg border border-transparent bg-transparent hover:border-gray-200 focus:border-black focus:bg-white text-gray-700 outline-none transition-colors"
+        />
+        {metaLabel && <div className="px-2 text-[9px] text-gray-400">{metaLabel}</div>}
+      </div>
       <div className="flex items-center gap-1 shrink-0">
         <input
           type="text" inputMode="numeric" value={priceText}
@@ -653,7 +660,7 @@ function AddItemForm({ onAdd, buttonLabel = 'Добавить серию', formT
 }
 
 function TabPrices({
-  panelOverrides, moldingOverrides, seriesNameOverrides, moldingNameOverrides,
+  panelOverrides, moldingOverrides, seriesNameOverrides, moldingNameOverrides, profileCatalogRecords,
   customSeries, customMoldings,
   hiddenSeriesIds, hiddenMoldingIds, hiddenExtrasIds,
   onUpdatePanel, onUpdateMolding, onUpdateSeriesName, onUpdateMoldingName,
@@ -668,6 +675,7 @@ function TabPrices({
   moldingOverrides: PriceMap;
   seriesNameOverrides: SeriesNames;
   moldingNameOverrides: SeriesNames;
+  profileCatalogRecords: ProfileCatalogRecord[] | null;
   customSeries: SeriesDefinition[];
   customMoldings: SeriesDefinition[];
   hiddenSeriesIds: string[];
@@ -702,6 +710,20 @@ function TabPrices({
   const visibleSeries   = DEFAULT_SERIES_PRICES.filter(s => !hiddenSeriesIds.includes(s.id));
   const visibleMoldings = DEFAULT_MOLDING_PRICES.filter(m => !hiddenMoldingIds.includes(m.id));
   const visibleExtras   = DEFAULT_EXTRAS.filter(e => !hiddenExtrasIds.includes(e.id));
+  const officialMetaFor = (id: string) => {
+    const kind: ProfileKind | null = id === 'gap' || id.endsWith('_gap')
+      ? 'gap'
+      : id === 'light' || id.endsWith('_light')
+        ? 'light'
+        : ['black', 'gold', 'bronze', 'metallic'].includes(id)
+          ? 'connector'
+          : null;
+    if (!kind) return undefined;
+    const record = profileCatalogRecords?.find(item => item.kind === kind);
+    return record
+      ? `${record.article} · ${PROFILE_KIND_DETAILS[kind].typeLabel}`
+      : `Официальный тип: ${PROFILE_KIND_DETAILS[kind].typeLabel}`;
+  };
 
   return (
     <div className="max-w-xl mx-auto space-y-6 py-6 px-4">
@@ -770,6 +792,7 @@ function TabPrices({
                   onNameChange={name => onUpdateMoldingName(m.id, name)}
                   onPriceChange={price => onUpdateMolding(m.id, price)}
                   onDelete={() => onHideMolding(m.id)}
+                  metaLabel={officialMetaFor(m.id)}
                 />
               ))}
               {customMoldings.map(m => (
@@ -1613,7 +1636,7 @@ function BackupSection({ onImportSuccess }: { onImportSuccess: () => void }) {
 const CATALOG_SIZE = 115;
 
 function TabProducts({
-  seriesOptions, onPhotoChange, onSettingsChange, extrasOverrides,
+  seriesOptions, onPhotoChange, onSettingsChange, extrasOverrides, canEditOfficialCatalog,
   moldingOverrides, moldingNameOverrides, customMoldings, hiddenMoldingIds,
   onUpdateMolding, onUpdateMoldingName, onDeleteMolding, onUpdateCustomMolding,
   onHideMolding, onAddMolding,
@@ -1621,6 +1644,7 @@ function TabProducts({
   customExtras, onAddExtra, onDeleteExtra, onUpdateCustomExtra,
 }: {
   seriesOptions: Array<{ name: string; price: number }>;
+  canEditOfficialCatalog: boolean;
   onPhotoChange?: () => void;
   onSettingsChange?: () => void;
   extrasOverrides?: PriceMap;
@@ -1777,6 +1801,10 @@ function TabProducts({
           onClose={() => setEditingMolding(null)}
         />
       )}
+
+      <div className="max-w-5xl mx-auto">
+        <ProfileCatalogPanel canEdit={canEditOfficialCatalog} />
+      </div>
 
       {/* ── Two-column grid ── */}
       <div className="flex gap-6 items-start max-w-5xl mx-auto">
@@ -2537,6 +2565,7 @@ export function ManagerPanel({
   const [managerLoginName, setManagerLoginName] = useState<string | null>(null);
   const [permissions, setPermissions] = useState<ManagerSession['permissions']>(null);
   const [showAdmin, setShowAdmin] = useState(false);
+  const { records: profileCatalogRecords } = useProfileCatalog();
 
   // On mount, check whether the browser already has a valid server session
   useEffect(() => {
@@ -2556,6 +2585,7 @@ export function ManagerPanel({
     name: s.name,
     price: s.price,
   }));
+  const canEditOfficialCatalog = isAdmin || (permissions?.products?.canEdit ?? false);
 
   const logout = async () => {
     await managerLogout();
@@ -2670,6 +2700,7 @@ export function ManagerPanel({
                   moldingOverrides={moldingOverrides}
                   seriesNameOverrides={seriesNameOverrides}
                   moldingNameOverrides={moldingNameOverrides}
+                  profileCatalogRecords={profileCatalogRecords}
                   customSeries={customSeries}
                   customMoldings={customMoldings}
                   hiddenSeriesIds={hiddenSeriesIds}
@@ -2701,6 +2732,7 @@ export function ManagerPanel({
               {tab === 'products' && (
                 <TabProducts
                   seriesOptions={seriesOptions}
+                  canEditOfficialCatalog={canEditOfficialCatalog}
                   onPhotoChange={onPhotoChange}
                   onSettingsChange={onSettingsChange}
                   extrasOverrides={extrasOverrides}

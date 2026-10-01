@@ -9,6 +9,85 @@ import * as zod from 'zod';
 
 
 /**
+ * @summary List official profile metadata
+ */
+
+
+
+export const ListProfileCatalogResponseItem = zod.object({
+  "kind": zod.enum(['connector', 'gap', 'light']),
+  "article": zod.string(),
+  "name": zod.string(),
+  "colors": zod.array(zod.enum(['black', 'gold', 'bronze', 'metallic'])).min(1),
+  "lengthMm": zod.literal(3000),
+  "panelThicknessesMm": zod.array(zod.number().int()),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListProfileCatalogResponse = zod.array(ListProfileCatalogResponseItem)
+
+
+/**
+ * Article, name, and colors are editable. Profile length and panel thicknesses are fixed and read-only.
+ * @summary Update manager-editable profile metadata
+ */
+export const UpdateProfileCatalogParams = zod.object({
+  "kind": zod.enum(['connector', 'gap', 'light'])
+})
+
+export const updateProfileCatalogBodyArticleMax = 100;
+
+export const updateProfileCatalogBodyNameMax = 200;
+
+
+
+
+export const UpdateProfileCatalogBody = zod.object({
+  "article": zod.string().min(1).max(updateProfileCatalogBodyArticleMax),
+  "name": zod.string().min(1).max(updateProfileCatalogBodyNameMax),
+  "colors": zod.array(zod.enum(['black', 'gold', 'bronze', 'metallic'])).min(1)
+})
+
+
+
+
+export const UpdateProfileCatalogResponse = zod.object({
+  "kind": zod.enum(['connector', 'gap', 'light']),
+  "article": zod.string(),
+  "name": zod.string(),
+  "colors": zod.array(zod.enum(['black', 'gold', 'bronze', 'metallic'])).min(1),
+  "lengthMm": zod.literal(3000),
+  "panelThicknessesMm": zod.array(zod.number().int()),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * Inserts only missing kinds and never overwrites existing manager-edited rows.
+ * @summary Insert missing official profile metadata
+ */
+export const importOfficialProfileCatalogResponseImportedMin = 0;
+
+
+
+
+export const ImportOfficialProfileCatalogResponse = zod.object({
+  "imported": zod.number().int().min(importOfficialProfileCatalogResponseImportedMin),
+  "profiles": zod.array(zod.object({
+  "kind": zod.enum(['connector', 'gap', 'light']),
+  "article": zod.string(),
+  "name": zod.string(),
+  "colors": zod.array(zod.enum(['black', 'gold', 'bronze', 'metallic'])).min(1),
+  "lengthMm": zod.literal(3000),
+  "panelThicknessesMm": zod.array(zod.number().int()),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}))
+})
+
+
+/**
  * @summary Create a client order with a temporary PDF-only permission
  */
 

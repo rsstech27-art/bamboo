@@ -5,6 +5,62 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export type ProfileKind = typeof ProfileKind[keyof typeof ProfileKind];
+
+
+export const ProfileKind = {
+  connector: 'connector',
+  gap: 'gap',
+  light: 'light',
+} as const;
+
+export type ProfileColor = typeof ProfileColor[keyof typeof ProfileColor];
+
+
+export const ProfileColor = {
+  black: 'black',
+  gold: 'gold',
+  bronze: 'bronze',
+  metallic: 'metallic',
+} as const;
+
+export interface ProfileCatalogEntry {
+  kind: ProfileKind;
+  article: string;
+  name: string;
+  /** @minItems 1 */
+  colors: ProfileColor[];
+  lengthMm: 3000;
+  panelThicknessesMm: [5,8];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProfileCatalogUpdate {
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  article: string;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  name: string;
+  /** @minItems 1 */
+  colors: ProfileColor[];
+}
+
+export interface ProfileCatalogImportResult {
+  /** @minimum 0 */
+  imported: number;
+  profiles: ProfileCatalogEntry[];
+}
+
+export interface ErrorResponse {
+  error: string;
+}
+
 export type OrderInputKpData = { [key: string]: unknown };
 
 export interface OrderInput {

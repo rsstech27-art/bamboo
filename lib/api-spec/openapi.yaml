@@ -10,7 +10,127 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: profile-catalog
+    description: Official profile metadata
 paths:
+  /profile-catalog:
+    get:
+      operationId: listProfileCatalog
+      tags: [profile-catalog]
+      summary: List official profile metadata
+      responses:
+        "200":
+          description: Profile metadata catalog
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProfileCatalogEntry"
+        "500":
+          description: Catalog could not be read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /profile-catalog/{kind}:
+    parameters:
+      - name: kind
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/ProfileKind"
+    put:
+      operationId: updateProfileCatalog
+      tags: [profile-catalog]
+      summary: Update manager-editable profile metadata
+      description: Article, name, and colors are editable. Profile length and panel thicknesses are fixed and read-only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProfileCatalogUpdate"
+      responses:
+        "200":
+          description: Updated profile metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileCatalogEntry"
+        "400":
+          description: Invalid kind, body, or read-only field
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Manager session required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Manager lacks products edit permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Profile kind not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Article is already assigned to another profile kind
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Catalog could not be updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /profile-catalog/import-official:
+    post:
+      operationId: importOfficialProfileCatalog
+      tags: [profile-catalog]
+      summary: Insert missing official profile metadata
+      description: Inserts only missing kinds and never overwrites existing manager-edited rows.
+      responses:
+        "200":
+          description: Official metadata import result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileCatalogImportResult"
+        "401":
+          description: Manager session required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Manager lacks products edit permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: An official article is already assigned to another profile kind
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Catalog could not be imported
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /orders:
     post:
       operationId: createOrder
@@ -134,6 +254,80 @@ components:
         type: integer
         minimum: 1
   schemas:
+    ProfileKind:
+      type: string
+      enum: [connector, gap, light]
+    ProfileColor:
+      type: string
+      enum: [black, gold, bronze, metallic]
+    ProfileCatalogEntry:
+      type: object
+      additionalProperties: false
+      required: [kind, article, name, colors, lengthMm, panelThicknessesMm, createdAt, updatedAt]
+      properties:
+        kind:
+          $ref: "#/components/schemas/ProfileKind"
+        article:
+          type: string
+        name:
+          type: string
+        colors:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/ProfileColor"
+        lengthMm:
+          type: integer
+          const: 3000
+        panelThicknessesMm:
+          type: array
+          const: [5, 8]
+          items:
+            type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ProfileCatalogUpdate:
+      type: object
+      additionalProperties: false
+      required: [article, name, colors]
+      properties:
+        article:
+          type: string
+          minLength: 1
+          maxLength: 100
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        colors:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/ProfileColor"
+    ProfileCatalogImportResult:
+      type: object
+      additionalProperties: false
+      required: [imported, profiles]
+      properties:
+        imported:
+          type: integer
+          minimum: 0
+        profiles:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProfileCatalogEntry"
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
     OrderInput:
       type: object
       required: [prefix, zoneLabel, kpData]

@@ -10,6 +10,18 @@ import {
   getEffectiveMoldingName,
   DEFAULT_EXTRAS,
 } from './hooks/useManagerPrices';
+import { useProfileCatalog } from './hooks/useProfileCatalog';
+import {
+  buildLegacyMoldingPriceMap,
+  makeOfficialProfileLabel,
+  resolveMoldingPrice,
+  resolveOfficialProfile,
+} from './lib/profileCatalog';
+import {
+  collectNicheVerticalProfileRuns,
+  distributeProfileStyleRuns,
+  needsFallbackCornerProfile,
+} from './lib/profileRuns';
 import { ManagerPanel } from './components/ManagerPanel';
 import { getAvailableZones, isReleaseZone, resolveAvailableZone, type ZoneId } from './lib/zones';
 
@@ -456,14 +468,6 @@ const getPanelPrice = (panelId: string) => SERIES_PRICES[PANEL_TO_SERIES[panelId
 // Panel cut-optimization math lives in lib/panelCalc.ts (unit-tested).
 
 const MOLDING_INFO: Record<string, { article: string; name: string; price: number }> = {
-  black:    { article: 'PR-BLACK',  name: 'Профиль чёрный',         price: 890  },
-  metallic: { article: 'PR-METAL',  name: 'Профиль металлик',       price: 940  },
-  bronze:   { article: 'PR-BRONZE', name: 'Профиль бронза',         price: 990  },
-  gold:     { article: 'PR-GOLD',   name: 'Профиль золото',         price: 990  },
-  gap:      { article: 'PR-GAP',    name: 'Профиль с разрывом',     price: 1090 },
-  light:    { article: 'PR-LIGHT',  name: 'Профиль с подсветкой',   price: 1490 },
-  gold_gap:   { article: 'PR-GOLD-GAP',   name: 'Профиль золото с разрывом',    price: 1090 },
-  gold_light: { article: 'PR-GOLD-LGT',   name: 'Профиль золото с подсветкой',  price: 1490 },
   edge:          { article: 'PR-EDGE',     name: 'Профиль торцевой',             price: 790  },
   edge_black:    { article: 'PR-EDGE-BLK', name: 'Профиль торцевой чёрный',     price: 790  },
   edge_metallic: { article: 'PR-EDGE-MTL', name: 'Профиль торцевой металлик',   price: 790  },
@@ -636,6 +640,11 @@ const BambooStudio = () => {
     customExtras, addCustomExtra, deleteCustomExtra, updateCustomExtra,
     reloadSettings, dbSaveStatus,
   } = useManagerPrices();
+  const {
+    records: profileCatalogRecords,
+    loading: profileCatalogLoading,
+    error: profileCatalogError,
+  } = useProfileCatalog();
   const [panelCount, setPanelCount] = useState(5);
   // dividerPositions: array of N-1 values in (0,1), sorted ascending
   const [dividerPositions, setDividerPositions] = useState<number[]>(makeEqualDividers(5));
@@ -1811,6 +1820,8 @@ const BambooStudio = () => {
         jointProfilePosition: jointProfilePositionRef.current,
         dividerStyleOverrides: dividerStyleOverridesRef.current,
         hMoldingStyleOverrides: hMoldingStyleOverridesRef.current,
+        vProfileStyle: vProfileStyleRef.current,
+        vProfileWidth: vProfileWidthRef.current,
       };
       const quadCfgs: SurfaceConfig[] = [];
       for (let q = 0; q < nQuads; q++) {
@@ -2230,15 +2241,7 @@ const BambooStudio = () => {
         const built = buildCatalogSeries(products);
         if (built.length > 0) setCatalogSeries(built);
         // Build molding price map from DB molding products (category='molding')
-        const dbMoldingPrices: Record<string, number> = {};
-        for (const p of products) {
-          if (p.category !== 'molding' || !p.series || !p.cost || p.cost <= 0) continue;
-          const match = DEFAULT_MOLDING_PRICES.find(m => m.name === p.series);
-          if (match && (!dbMoldingPrices[match.id] || p.cost < dbMoldingPrices[match.id])) {
-            dbMoldingPrices[match.id] = p.cost;
-          }
-        }
-        moldingDbPricesRef.current = dbMoldingPrices;
+        moldingDbPricesRef.current = buildLegacyMoldingPriceMap(products, DEFAULT_MOLDING_PRICES);
       })
       .catch(() => { /* non-critical */ });
   }, [seriesDefinitions]);
@@ -2751,8 +2754,12 @@ const BambooStudio = () => {
     setKpSavedNumber(null);
     try {
       await generateKP();
-    } catch {
-      window.alert('Не удалось сформировать PDF. Текущий расчёт остался в редакторе. Если номер заказа уже показан, заказ сохранён — сообщите этот номер менеджеру.');
+    } catch (cause) {
+      const message = cause instanceof Error
+        ? cause.message
+        : 'Не удалось сформировать PDF. Текущий расчёт остался в редакторе.';
+      setKpSaveError(`${message} Текущий расчёт остался в редакторе; заказ не создавался, если номер заказа не был показан.`);
+      window.alert(message);
     } finally {
       forExportRef.current = false;
       kpBusyRef.current = false;
@@ -2763,6 +2770,9 @@ const BambooStudio = () => {
   const generateKP = async () => {
     const nQuads = Math.min(3, Math.floor(pointsRef.current.length / 4));
     if (nQuads === 0) return;
+    const profileCatalogForQuote = profileCatalogLoading || profileCatalogError
+      ? null
+      : profileCatalogRecords;
 
     // Override-aware price helpers (respect manager panel adjustments)
     const getPanelPrice = (panelId: string) => {
@@ -2770,7 +2780,13 @@ const BambooStudio = () => {
       return panelOverridesRef.current[seriesId] ?? SERIES_PRICES[seriesId] ?? 4900;
     };
     const getEffectiveMoldingPrice = (style: string): number =>
-      moldingOverridesRef.current[style] ?? moldingDbPricesRef.current[style] ?? MOLDING_INFO[style]?.price ?? 940;
+      resolveMoldingPrice(
+        style,
+        moldingOverridesRef.current,
+        moldingDbPricesRef.current,
+        DEFAULT_MOLDING_PRICES,
+        MOLDING_INFO[style]?.price ?? 940,
+      );
 
     // Always render a FRESH export image so the proposal visual matches current settings
     let kpImage: string | null = null;
@@ -2806,6 +2822,10 @@ const BambooStudio = () => {
             wallHeightMm: wallHeightMmRef.current,
             panelOrientation: panelOrientationRef.current,
             jointProfilePosition: jointProfilePositionRef.current,
+            dividerStyleOverrides: { ...dividerStyleOverridesRef.current },
+            hMoldingStyleOverrides: { ...hMoldingStyleOverridesRef.current },
+            vProfileStyle: vProfileStyleRef.current,
+            vProfileWidth: vProfileWidthRef.current,
           }
         : (surfacesRef.current[q] ?? defaultSurfaceConfig()));
     }
@@ -2829,26 +2849,27 @@ const BambooStudio = () => {
     }
     // ── Profiles counted in 3 m pieces, like panels: collect required RUN LENGTHS
     // per style, then pack them into 3 m pieces with offcut reuse (packProfileRuns).
-    // Combined styles (e.g. 'black_gap') normalise to their KP billing key ('gap'),
-    // since the gap/light modifier drives the product type; colour is visual only.
-    const normMoldKpKey = (style: string): string => {
-      if (style.endsWith('_gap'))   return 'gap';
-      if (style.endsWith('_light')) return 'light';
-      return style;
-    };
     // Separate vertical and horizontal profile runs so the KP shows them as distinct line items.
     // Vertical: divider/joint profiles between/around panels; Horizontal: hMolding bars.
     const profileRunsV: Record<string, number[]> = {};
     const profileRunsH: Record<string, number[]> = {};
     const addRuns = (style: Exclude<MoldingStyle, 'none'>, lengthMm: number, count: number) => {
       if (count <= 0 || lengthMm <= 0) return;
-      const key = normMoldKpKey(style);
-      (profileRunsV[key] ??= []).push(...Array(count).fill(lengthMm));
+      (profileRunsV[style] ??= []).push(...Array(count).fill(lengthMm));
     };
     const addRunsH = (style: Exclude<MoldingStyle, 'none'>, lengthMm: number, count: number) => {
       if (count <= 0 || lengthMm <= 0) return;
-      const key = normMoldKpKey(style);
-      (profileRunsH[key] ??= []).push(...Array(count).fill(lengthMm));
+      (profileRunsH[style] ??= []).push(...Array(count).fill(lengthMm));
+    };
+    const addStyleCountsV = (counts: Readonly<Record<string, number>>, lengthMm: number) => {
+      for (const [style, count] of Object.entries(counts)) {
+        if (style !== 'none') addRuns(style as Exclude<MoldingStyle, 'none'>, lengthMm, count);
+      }
+    };
+    const addStyleCountsH = (counts: Readonly<Record<string, number>>, lengthMm: number) => {
+      for (const [style, count] of Object.entries(counts)) {
+        if (style !== 'none') addRunsH(style as Exclude<MoldingStyle, 'none'>, lengthMm, count);
+      }
     };
     // Column zone: needed early so profile joints can cover the FULL perimeter
     const isColumn = wallZone === 'column';
@@ -3004,17 +3025,42 @@ const BambooStudio = () => {
           // Metallic: outer wall-edge profiles count normally; internal joints between
           // two adjacent wood-family panels (wood/reiki) are skipped — no profile needed.
           const outerEdges = (wrapLeft ? 0 : 1) + (wrapRight ? 0 : 1);
-          let internalCount = 0;
+          const metallicInternalJoints: boolean[] = [];
           for (let j = 0; j < cfg.panelCount - 1; j++) {
             const left = cfg.sectorMaterials[j] ?? BAMBOO_PANELS[0];
             const right = cfg.sectorMaterials[j + 1] ?? BAMBOO_PANELS[0];
-            if (!noMetallicJoint(left, right)) internalCount++;
+            metallicInternalJoints.push(!noMetallicJoint(left, right));
           }
-          addRuns('metallic', hMm, outerEdges + internalCount);
+          const dividerOverrides = Object.entries(cfg.dividerStyleOverrides ?? {})
+            .flatMap(([rawIndex, style]) => {
+              const index = Number(rawIndex);
+              if (!Number.isInteger(index) || index < 0 || index >= cfg.dividerPositions.length || style == null) return [];
+              return [{
+                style,
+                replacesBase: metallicInternalJoints[index] ?? false,
+              }];
+            });
+          addStyleCountsV(
+            distributeProfileStyleRuns(
+              'metallic',
+              outerEdges + metallicInternalJoints.filter(Boolean).length,
+              dividerOverrides,
+            ),
+            hMm,
+          );
         } else {
           // Non-metallic chosen style (gold, black): wood-family rule does not apply
           const vQty = Math.max(0, cfg.panelCount + 1 - (wrapLeft ? 1 : 0) - (wrapRight ? 1 : 0));
-          addRuns(cfg.moldingStyle, hMm, vQty);
+          const dividerOverrides = Object.entries(cfg.dividerStyleOverrides ?? {})
+            .flatMap(([rawIndex, style]) => {
+              const index = Number(rawIndex);
+              if (!Number.isInteger(index) || index < 0 || index >= cfg.dividerPositions.length || style == null) return [];
+              return [{ style, replacesBase: index < cfg.panelCount - 1 }];
+            });
+          addStyleCountsV(
+            distributeProfileStyleRuns(cfg.moldingStyle, vQty, dividerOverrides),
+            hMm,
+          );
         }
         if (isColumn) {
           // UNIQUE contour joints covered by this face's molding: internal seams
@@ -3039,18 +3085,42 @@ const BambooStudio = () => {
           }
           return cfg.panelCount - 1;
         };
-        let metalJoints = 0;
+        const metalJointRatios: number[] = [];
         for (let j = 0; j < totalJoints; j++) {
           const leftRatio  = (j + 0.5) * colStep / wMm;
           const rightRatio = (j + 1.5) * colStep / wMm;
           const left  = cfg.sectorMaterials[ratioToSector(leftRatio)]  ?? BAMBOO_PANELS[0];
           const right = cfg.sectorMaterials[ratioToSector(rightRatio)] ?? BAMBOO_PANELS[0];
-          if (!noMetallicJoint(left, right)) metalJoints++;
+          if (!noMetallicJoint(left, right)) metalJointRatios.push(((j + 1) * colStep) / wMm);
         }
-        if (metalJoints > 0) addRuns('metallic', hMm, metalJoints);
+        const replacedAutomaticJoints = new Set<number>();
+        const dividerOverrides = Object.entries(cfg.dividerStyleOverrides ?? {})
+          .flatMap(([rawIndex, style]) => {
+            const index = Number(rawIndex);
+            if (!Number.isInteger(index) || index < 0 || index >= cfg.dividerPositions.length || style == null) return [];
+            const ratio = cfg.dividerPositions[index];
+            const automaticIndex = metalJointRatios.findIndex((jointRatio, jointIndex) =>
+              !replacedAutomaticJoints.has(jointIndex) && Math.abs(jointRatio - ratio) < 0.005);
+            const replacesBase = automaticIndex >= 0;
+            if (replacesBase) replacedAutomaticJoints.add(automaticIndex);
+            return [{ style, replacesBase }];
+          });
+        addStyleCountsV(
+          distributeProfileStyleRuns('metallic', metalJointRatios.length, dividerOverrides),
+          hMm,
+        );
         if (isColumn) columnVisibleJoints += totalJoints; // column geometry uses all joints
       }
-      if (cfg.hMoldingStyle !== 'none') addRunsH(cfg.hMoldingStyle as Exclude<MoldingStyle,'none'>, wMm, cfg.hMoldingPositions.length);
+      const horizontalOverrides = Object.entries(cfg.hMoldingStyleOverrides ?? {})
+        .flatMap(([rawIndex, style]) => {
+          const index = Number(rawIndex);
+          if (!Number.isInteger(index) || index < 0 || index >= cfg.hMoldingPositions.length || style == null) return [];
+          return [{ style, replacesBase: true }];
+        });
+      addStyleCountsH(
+        distributeProfileStyleRuns(cfg.hMoldingStyle, cfg.hMoldingPositions.length, horizontalOverrides),
+        wMm,
+      );
 
       // Mandatory horizontal row-join profiles: when the wall/column face is taller than one panel
       // (PANEL_H_MM = 2800 mm for vertical orientation, PANEL_W_MM = 1220 mm for horizontal TV),
@@ -3067,6 +3137,20 @@ const BambooStudio = () => {
         }
       }
     }
+    // Match the wall-niche renderer's extra decorative edge: one vertical run
+    // at each configured side-surface junction, using that surface's own style.
+    const nicheVerticalRuns = wallZone === 'wall-niche'
+      ? collectNicheVerticalProfileRuns(
+          nQuads,
+          kpCfgs.map((cfg, surfaceIndex) => surfacesRef.current[surfaceIndex] ? cfg : null),
+          PANEL_H_MM,
+        )
+      : [];
+    const nicheProfileCorners = new Set<number>();
+    for (const run of nicheVerticalRuns) {
+      addRuns(run.style as Exclude<MoldingStyle, 'none'>, run.lengthMm, 1);
+      nicheProfileCorners.add(run.cornerIndex);
+    }
     // Mandatory corner profiles: an external corner WITHOUT загиб always needs a
     // vertical profile at the shared edge — even if the walls have no molding style.
     // Exception: round/oval column (panel bends smoothly, no corner edges).
@@ -3075,9 +3159,13 @@ const BambooStudio = () => {
       for (let j = 0; j < nQuads - 1; j++) {
         const external = (cornerTypesRef.current[j] ?? 'external') === 'external';
         const wrapped = external && (wrapJunctionsRef.current[j] ?? false);
-        if (!external || wrapped) continue;
-        // If either adjacent wall has vertical molding, its runs already cover this edge
-        if (kpCfgs[j]?.moldingStyle !== 'none' || kpCfgs[j + 1]?.moldingStyle !== 'none') continue;
+        if (!needsFallbackCornerProfile(
+          external,
+          wrapped,
+          kpCfgs[j]?.moldingStyle ?? 'none',
+          kpCfgs[j + 1]?.moldingStyle ?? 'none',
+          nicheProfileCorners.has(j),
+        )) continue;
         const hMm = Math.max(
           kpCfgs[j]?.wallHeightMm > 0 ? kpCfgs[j].wallHeightMm : PANEL_H_MM,
           kpCfgs[j + 1]?.wallHeightMm > 0 ? kpCfgs[j + 1].wallHeightMm : PANEL_H_MM);
@@ -3194,9 +3282,23 @@ const BambooStudio = () => {
         const pieces = packProfileRuns(runs[style]!);
         profilePiecesTotal += pieces;
         if (pieces > 0) {
-          const info = MOLDING_INFO[style];
-          const label = `${getEffectiveMoldingName(style, moldingNameOverrides)}${suffix} (3 м, раскрой оптимизирован)`;
-          addItem(info.article + '-3M', label, pieces, getEffectiveMoldingPrice(style));
+          const official = resolveOfficialProfile(style, profileCatalogForQuote);
+          if (official) {
+            const genericNameId = style.endsWith('_gap') ? 'gap' : style.endsWith('_light') ? 'light' : style;
+            const nameOverride = moldingNameOverrides[style] ?? moldingNameOverrides[genericNameId];
+            const direction = `${suffix.trim()}, раскрой оптимизирован`;
+            addItem(
+              official.record.article,
+              makeOfficialProfileLabel(official, direction, nameOverride),
+              pieces,
+              getEffectiveMoldingPrice(style),
+            );
+          } else {
+            const info = MOLDING_INFO[style];
+            if (!info) throw new Error(`Не настроен официальный артикул профиля «${style}». КП не сформировано.`);
+            const label = `${getEffectiveMoldingName(style, moldingNameOverrides)}${suffix} (3 м, раскрой оптимизирован)`;
+            addItem(info.article + '-3M', label, pieces, getEffectiveMoldingPrice(style));
+          }
         }
       }
     };
@@ -3541,8 +3643,14 @@ const BambooStudio = () => {
     }
     // TV backlight: LED profile pieces
     if (tvBacklightRuns > 0) {
-      const blInfo = MOLDING_INFO['light'];
-      addItem(blInfo.article + '-3M', `${blInfo.name} (3 м)`, tvBacklightRuns, getEffectiveMoldingPrice('light'));
+      const official = resolveOfficialProfile('light', profileCatalogForQuote);
+      if (!official) throw new Error('Официальная запись профиля с подсветкой недоступна. КП не сформировано.');
+      addItem(
+        official.record.article,
+        makeOfficialProfileLabel(official, undefined, moldingNameOverrides.light),
+        tvBacklightRuns,
+        getEffectiveMoldingPrice('light'),
+      );
     }
     // Door zone: add reveal panels on top of the wall panels
     if (doorCut) {
@@ -4204,7 +4312,7 @@ const BambooStudio = () => {
     const modOpts: Array<{ id: 'normal' | 'gap' | 'light'; label: string }> = [
       { id: 'normal', label: 'Обычный' },
       { id: 'gap',    label: 'С разрывом' },
-      { id: 'light',  label: 'С подсветкой' },
+      ...(curColor === 'black' ? [{ id: 'light' as const, label: 'С подсветкой' }] : []),
     ];
 
     return (
@@ -4214,8 +4322,11 @@ const BambooStudio = () => {
           {colorOpts.map(o => {
             const active = curColor === o.id;
             return (
-              <button key={o.id} onClick={() => onChange(encodeMoldStyle(o.id, o.id === 'none' ? 'normal' : curMod))}
-                className="flex flex-col items-center gap-1 transition-all">
+              <button key={o.id}
+                onClick={() => onChange(encodeMoldStyle(o.id, o.id === 'none' ? 'normal' : curMod))}
+                disabled={curMod === 'light' && o.id !== 'black' && o.id !== 'none'}
+                title={curMod === 'light' && o.id !== 'black' ? 'Профиль с подсветкой доступен только в чёрном цвете' : undefined}
+                className="flex flex-col items-center gap-1 transition-all disabled:cursor-not-allowed disabled:opacity-30">
                 {/* profile bar icon */}
                 <div className={`w-full h-5 rounded-sm border-2 flex items-center justify-center transition-all
                   ${active ? 'border-gray-800 shadow-md scale-100' : 'border-transparent opacity-55'}`}
@@ -4245,6 +4356,11 @@ const BambooStudio = () => {
               </button>
             ))}
           </div>
+        )}
+        {curMod === 'light' && curColor !== 'black' && (
+          <p className="text-[8px] font-bold leading-relaxed text-red-600">
+            Подсветка доступна только для чёрного цвета. Этот сохранённый вариант не имеет официального артикула и будет остановлен при формировании КП.
+          </p>
         )}
       </div>
     );
