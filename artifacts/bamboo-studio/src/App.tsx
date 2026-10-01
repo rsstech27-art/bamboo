@@ -2737,7 +2737,30 @@ const BambooStudio = () => {
   }, []);
 
   // ── Commercial proposal (КП) PDF generation ──────────────────────────
+  const [kpBusy, setKpBusy] = useState(false);
+  const kpBusyRef = useRef(false);
+  const [kpSaveError, setKpSaveError] = useState<string | null>(null);
+  const [kpSavedNumber, setKpSavedNumber] = useState<string | null>(null);
+
   const handleGenerateKP = async () => {
+    // The ref also prevents duplicate requests before React renders disabled.
+    if (kpBusyRef.current || pointsRef.current.length < 4) return;
+    kpBusyRef.current = true;
+    setKpBusy(true);
+    setKpSaveError(null);
+    setKpSavedNumber(null);
+    try {
+      await generateKP();
+    } catch {
+      window.alert('Не удалось сформировать PDF. Текущий расчёт остался в редакторе. Если номер заказа уже показан, заказ сохранён — сообщите этот номер менеджеру.');
+    } finally {
+      forExportRef.current = false;
+      kpBusyRef.current = false;
+      setKpBusy(false);
+    }
+  };
+
+  const generateKP = async () => {
     const nQuads = Math.min(3, Math.floor(pointsRef.current.length / 4));
     if (nQuads === 0) return;
 
@@ -3579,13 +3602,25 @@ const BambooStudio = () => {
           kpData: { items, total: finalTotal, beforePhotoUrl: image?.src ?? null, kpPhotoUrl: kpImage },
         }),
       });
-      if (orderResp.ok) {
-        const saved = await orderResp.json() as OrderCreated;
-        orderNumber = saved.orderNumber ?? '';
-        savedOrderId = saved.id ?? null;
-        pdfToken = saved.pdfToken ?? '';
+      if (!orderResp.ok) {
+        setKpSaveError(`Не удалось сохранить заказ (ошибка сервера HTTP ${orderResp.status}). PDF не создан. Текущий расчёт не потерян — повторите сохранение.`);
+        return;
       }
-    } catch { /* non-critical — PDF still generated without order number */ }
+      const saved = await orderResp.json() as OrderCreated;
+      if (!Number.isInteger(saved.id) || saved.id <= 0 ||
+          typeof saved.orderNumber !== 'string' || !saved.orderNumber.trim() ||
+          typeof saved.pdfToken !== 'string' || !saved.pdfToken.trim()) {
+        setKpSaveError('Сервер не вернул подтверждение сохранения заказа. PDF не создан. Текущий расчёт не потерян. Перед повторной попыткой уточните у менеджера, появился ли заказ.');
+        return;
+      }
+      orderNumber = saved.orderNumber;
+      savedOrderId = saved.id;
+      pdfToken = saved.pdfToken;
+      setKpSavedNumber(orderNumber);
+    } catch {
+      setKpSaveError('Не удалось подтвердить сохранение заказа: ошибка соединения или ответа сервера. PDF не создан. Текущий расчёт не потерян — проверьте соединение и повторите сохранение. Если запрос уже дошёл до сервера, заказ мог сохраниться; уточните это у менеджера, чтобы избежать дубля.');
+      return;
+    }
 
     // Render КП onto an A4 canvas (Cyrillic-safe), then embed into PDF
     const W = 1240, H = 1754; // A4 @ 150dpi
@@ -6226,15 +6261,26 @@ const BambooStudio = () => {
                 }`}>
                 <Download size={11} className="shrink-0" /> Сохранить PNG
               </button>
-              <button onClick={handleGenerateKP}
-                className={`flex-1 min-w-0 flex items-center justify-center gap-1 text-[10px] font-bold py-2 px-1.5 rounded-xl transition-all active:scale-95 ${
+              <button onClick={handleGenerateKP} disabled={kpBusy}
+                aria-busy={kpBusy}
+                className={`flex-1 min-w-0 flex items-center justify-center gap-1 text-[10px] font-bold py-2 px-1.5 rounded-xl transition-all active:scale-95 disabled:opacity-60 disabled:cursor-wait ${
                   Object.keys(sectorMaterials).length > 0
                     ? 'bg-[#7ec662] text-white hover:bg-[#6db453] shadow-md ring-2 ring-[#7ec662] ring-offset-1'
                     : 'bg-[#c8e0be] text-white/70 shadow-sm'
                 }`}>
-                <FileText size={11} className="shrink-0" /> Рассчитать КП
+                <FileText size={11} className="shrink-0" /> {kpBusy ? 'Сохранение КП…' : kpSaveError ? 'Повторить сохранение КП' : 'Рассчитать КП'}
               </button>
             </div>
+            {kpSaveError && (
+              <p role="alert" className="mt-2 rounded-lg bg-red-50 p-2 text-xs text-red-800">
+                {kpSaveError}
+              </p>
+            )}
+            {kpSavedNumber && (
+              <p role="status" className="mt-2 text-xs font-bold text-green-700">
+                Заказ № {kpSavedNumber} сохранён.
+              </p>
+            )}
 
           </>)}
         </div>
