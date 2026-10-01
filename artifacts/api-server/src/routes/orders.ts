@@ -72,19 +72,16 @@ router.post("/orders", async (req, res) => {
         .values({ prefix, lastNumber: 0 })
         .onConflictDoNothing();
 
+      // PostgreSQL locks the counter row and increments its current value,
+      // including when another transaction has just created the prefix.
       const [seq] = await tx
-        .select()
-        .from(orderSequencesTable)
-        .where(eq(orderSequencesTable.prefix, prefix));
-
-      const nextNum = (seq?.lastNumber ?? 0) + 1;
-
-      await tx
         .update(orderSequencesTable)
-        .set({ lastNumber: nextNum })
-        .where(eq(orderSequencesTable.prefix, prefix));
+        .set({ lastNumber: sql`${orderSequencesTable.lastNumber} + 1` })
+        .where(eq(orderSequencesTable.prefix, prefix))
+        .returning({ lastNumber: orderSequencesTable.lastNumber });
 
-      const orderNumber = formatOrderNumber(prefix, nextNum);
+      if (!seq) throw new Error("Order sequence not found");
+      const orderNumber = formatOrderNumber(prefix, seq.lastNumber);
 
       const [inserted] = await tx
         .insert(ordersTable)

@@ -72,7 +72,15 @@ const mocks = vi.hoisted(() => {
               ? condition
               : condition?.conditions?.find((entry: any) => entry.kind === "eq");
             if (prefixCondition && columnName(prefixCondition.column) === "prefix") {
-              sequences.set(prefixCondition.value, values.lastNumber);
+              const lastNumber = values.lastNumber?.kind === "increment"
+                ? (sequences.get(prefixCondition.value) ?? 0) + 1
+                : values.lastNumber;
+              sequences.set(prefixCondition.value, lastNumber);
+              return {
+                returning: async () => [{ lastNumber }],
+                then: (resolve: (value: unknown) => unknown, reject: (error: unknown) => unknown) =>
+                  Promise.resolve([{ lastNumber }]).then(resolve, reject),
+              };
             }
             const id = conditionId(condition);
             const row = id === undefined ? undefined : rows.get(id);
@@ -150,7 +158,8 @@ vi.mock("@workspace/db/schema", () => ({
 vi.mock("drizzle-orm", () => ({
   eq: (column: unknown, value: unknown) => ({ kind: "eq", column, value }),
   desc: (column: unknown) => ({ kind: "desc", column }),
-  sql: () => "pdf_path",
+  sql: (_strings: TemplateStringsArray, ...values: unknown[]) =>
+    values[0] === "orderSequences.lastNumber" ? { kind: "increment" } : "pdf_path",
   and: (...conditions: unknown[]) => ({ kind: "and", conditions }),
   isNull: (column: unknown) => ({ kind: "isNull", column }),
 }));
