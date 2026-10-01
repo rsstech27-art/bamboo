@@ -63,7 +63,7 @@ export const AttachOrderPdfParams = zod.object({
   "id": zod.coerce.number().int().min(1)
 })
 
-export const attachOrderPdfBodyObjectPathRegExp = new RegExp('^/objects/uploads/[a-f0-9-]{36}$');
+export const attachOrderPdfBodyObjectPathRegExp = new RegExp('^/objects/uploads/(order-pdfs/)?[a-f0-9-]{36}$');
 export const attachOrderPdfBodyUploadTokenMax = 2048;
 
 

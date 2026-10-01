@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { ensureSchema } from "./lib/ensureSchema";
+import { startOrderPdfCleanup } from "./lib/orderPdfCleanup";
 
 const rawPort = process.env["PORT"];
 
@@ -25,6 +26,7 @@ ensureSchema()
         process.exit(1);
       }
       logger.info({ port }, "Server listening");
+      startOrderPdfCleanup();
     });
   })
   .catch((err) => {

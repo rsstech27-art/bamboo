@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { ORDER_PDF_GRANT_TTL_MS } from "./orderPdfLifecycle";
 
-const TTL_MS = 30 * 60 * 1000;
 type Grant = { orderId: number; expiresAt: number; objectPath?: string };
 
 function signature(payload: string): Buffer {
@@ -11,7 +11,7 @@ function signature(payload: string): Buffer {
 
 export function issueOrderPdfGrant(orderId: number, objectPath?: string): string {
   const payload = Buffer.from(JSON.stringify({
-    orderId, expiresAt: Date.now() + TTL_MS, ...(objectPath && { objectPath }),
+    orderId, expiresAt: Date.now() + ORDER_PDF_GRANT_TTL_MS, ...(objectPath && { objectPath }),
   })).toString("base64url");
   return `${payload}.${signature(payload).toString("base64url")}`;
 }

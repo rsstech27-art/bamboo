@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { Readable } from 'stream';
 import { File, Storage } from '@google-cloud/storage';
+import { ORDER_PDF_UPLOAD_TTL_SEC, isExpiredOrderPdf } from './orderPdfLifecycle';
 
 import {
   canAccessObject,
@@ -111,7 +112,7 @@ export class ObjectStorageService {
     return new Response(webStream, { headers });
   }
 
-  async getObjectEntityUploadURL(): Promise<string> {
+  async getObjectEntityUploadURL(orderPdf = false): Promise<string> {
     const privateObjectDir = this.getPrivateObjectDir();
     if (!privateObjectDir) {
       throw new Error(
@@ -121,7 +122,7 @@ export class ObjectStorageService {
     }
 
     const objectId = randomUUID();
-    const fullPath = `${privateObjectDir}/uploads/${objectId}`;
+    const fullPath = `${privateObjectDir}/uploads/${orderPdf ? 'order-pdfs/' : ''}${objectId}`;
 
     const { bucketName, objectName } = parseObjectPath(fullPath);
 
@@ -129,7 +130,7 @@ export class ObjectStorageService {
       bucketName,
       objectName,
       method: 'PUT',
-      ttlSec: 900,
+      ttlSec: ORDER_PDF_UPLOAD_TTL_SEC,
     });
   }
 
@@ -181,6 +182,51 @@ export class ObjectStorageService {
     );
     await version.copy(objectStorageClient.bucket(bucketName).file(objectName));
     return savedPath;
+  }
+
+  // Only namespaces owned exclusively by the order-PDF flow. Never sweep the
+  // shared uploads directory, even when a file there has application/pdf MIME.
+  async *listOrderPdfCandidates(): AsyncGenerator<File> {
+    const { bucketName, objectName } = parseObjectPath(
+      `${this.getPrivateObjectDir().replace(/\/$/, '')}/`,
+    );
+    const bucket = objectStorageClient.bucket(bucketName);
+    for (const suffix of ['uploads/order-pdfs/', 'order-pdfs/']) {
+      const prefix = `${objectName}${suffix}`;
+      let pageToken: string | undefined;
+      do {
+        const [files, nextQuery] = await bucket.getFiles({
+          prefix, autoPaginate: false, maxResults: 100, pageToken,
+        });
+        for (const file of files) {
+          if (/^[a-f0-9-]{36}$/.test(file.name.slice(prefix.length))) yield file;
+        }
+        pageToken = nextQuery?.pageToken;
+      } while (pageToken);
+    }
+  }
+
+  orderPdfObjectPath(file: File): string {
+    const { bucketName, objectName } = parseObjectPath(
+      `${this.getPrivateObjectDir().replace(/\/$/, '')}/`,
+    );
+    if (file.bucket.name !== bucketName || !file.name.startsWith(objectName)) {
+      throw new Error('PDF cleanup candidate outside private directory');
+    }
+    const path = `/objects/${file.name.slice(objectName.length)}`;
+    if (!/^\/objects\/(?:uploads\/order-pdfs|order-pdfs)\/[a-f0-9-]{36}$/.test(path)) {
+      throw new Error('PDF cleanup candidate outside order namespaces');
+    }
+    return path;
+  }
+
+  async deleteExpiredOrderPdf(file: File, now: number): Promise<boolean> {
+    // Re-read after acquiring the DB lock. Conditional deletion protects against
+    // a PUT completing between metadata inspection and deletion.
+    const [metadata] = await file.getMetadata();
+    if (!isExpiredOrderPdf(metadata, now)) return false;
+    await file.delete({ ifGenerationMatch: metadata.generation });
+    return true;
   }
 
   normalizeObjectEntityPath(rawPath: string): string {

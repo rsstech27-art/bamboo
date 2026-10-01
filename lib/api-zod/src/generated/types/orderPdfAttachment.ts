@@ -7,7 +7,7 @@
  */
 
 export interface OrderPdfAttachment {
-  /** @pattern ^/objects/uploads/[a-f0-9-]{36}$ */
+  /** @pattern ^/objects/uploads/(order-pdfs/)?[a-f0-9-]{36}$ */
   objectPath: string;
   /** @maxLength 2048 */
   uploadToken: string;

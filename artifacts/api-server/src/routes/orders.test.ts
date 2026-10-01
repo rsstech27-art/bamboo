@@ -8,11 +8,12 @@ const mocks = vi.hoisted(() => {
   const sequences = new Map<string, number>();
   let nextId = 1;
   let forceAtomicConflict = false;
+  let failPdfWrite = false;
 
   const deleteUnusedFile = vi.fn().mockResolvedValue(undefined);
   const storage = {
     getObjectEntityUploadURL: vi.fn(async () =>
-      "https://storage.googleapis.com/private-bucket/uploads/12345678-1234-1234-1234-123456789abc?signature=put",
+      "https://storage.googleapis.com/private-bucket/uploads/order-pdfs/12345678-1234-1234-1234-123456789abc?signature=put",
     ),
     normalizeObjectEntityPath: vi.fn((raw: string) => {
       const url = new URL(raw);
@@ -88,7 +89,13 @@ const mocks = vi.hoisted(() => {
             const applied = Boolean(canUpdate && !forceAtomicConflict);
             forceAtomicConflict = false;
             if (applied) Object.assign(row!, values);
-            const returning = async () => applied ? [{ id }] : [];
+            const returning = async () => {
+              if (failPdfWrite) {
+                failPdfWrite = false;
+                throw new Error("DB failed after PDF copy");
+              }
+              return applied ? [{ id }] : [];
+            };
             return {
               returning,
               then: (resolve: (value: unknown) => unknown, reject: (error: unknown) => unknown) =>
@@ -125,6 +132,7 @@ const mocks = vi.hoisted(() => {
       insert,
       select,
       update,
+      execute: vi.fn().mockResolvedValue([]),
     };
     return {
       select,
@@ -143,8 +151,10 @@ const mocks = vi.hoisted(() => {
       sequences.clear();
       nextId = 1;
       forceAtomicConflict = false;
+      failPdfWrite = false;
     },
     forceAtomicConflict: () => { forceAtomicConflict = true; },
+    failPdfWrite: () => { failPdfWrite = true; forceAtomicConflict = true; },
     conditionId,
     columnName,
   };
@@ -181,7 +191,7 @@ import router from "./orders";
 import { issueOrderPdfGrant } from "../lib/orderPdfGrant";
 import { InvalidOrderPdfError, ObjectNotFoundError } from "../lib/objectStorage";
 
-const UPLOAD_PATH = "/objects/uploads/12345678-1234-1234-1234-123456789abc";
+const UPLOAD_PATH = "/objects/uploads/order-pdfs/12345678-1234-1234-1234-123456789abc";
 
 function makeApp() {
   const app = express();
@@ -299,7 +309,7 @@ describe("anonymous order PDF capability flow", () => {
     expect(mocks.storage.downloadObject).toHaveBeenCalled();
   });
 
-  it("rejects an atomic first-writer conflict and deletes the unreferenced finalized copy", async () => {
+  it("rejects an atomic first-writer conflict and leaves the copy for delayed cleanup", async () => {
     const created = await createOrder();
     const issued = await authorizeUpload(created.body.id, created.body.pdfToken);
     mocks.forceAtomicConflict();
@@ -307,8 +317,20 @@ describe("anonymous order PDF capability flow", () => {
     const response = await request(app).patch(`/orders/${created.body.id}/pdf`)
       .send({ objectPath: issued.body.objectPath, uploadToken: issued.body.uploadToken });
     expect(response.status).toBe(409);
-    expect(mocks.storage.getObjectEntityFile).toHaveBeenCalledWith("/objects/order-pdfs/final-123");
-    expect(mocks.storage.deleteUnusedFile).toHaveBeenCalledOnce();
+    expect(mocks.storage.deleteUnusedFile).not.toHaveBeenCalled();
+    expect(mocks.rows.get(created.body.id)?.pdfPath).toBeNull();
+  });
+
+  it("leaves a finalized orphan for the safe sweep when the DB fails after copying", async () => {
+    const created = await createOrder();
+    const issued = await authorizeUpload(created.body.id, created.body.pdfToken);
+    expect(mocks.storage.getObjectEntityUploadURL).toHaveBeenCalledWith(true);
+    mocks.failPdfWrite();
+    const response = await request(app).patch(`/orders/${created.body.id}/pdf`)
+      .send({ objectPath: issued.body.objectPath, uploadToken: issued.body.uploadToken });
+    expect(response.status).toBe(500);
+    expect(mocks.storage.finalizeOrderPdf).toHaveBeenCalledWith(UPLOAD_PATH);
+    expect(mocks.storage.deleteUnusedFile).not.toHaveBeenCalled();
     expect(mocks.rows.get(created.body.id)?.pdfPath).toBeNull();
   });
 

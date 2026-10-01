@@ -5,6 +5,7 @@ import { eq, desc, sql, and, isNull } from "drizzle-orm";
 import { requireManagerSession } from "../middleware/managerAuth";
 import { ObjectStorageService, ObjectNotFoundError, InvalidOrderPdfError } from "../lib/objectStorage";
 import { issueOrderPdfGrant, verifyOrderPdfGrant } from "../lib/orderPdfGrant";
+import { ORDER_PDF_LOCK_ID } from "../lib/orderPdfLifecycle";
 import {
   CreateOrderBody, CreateOrderResponse,
   RequestOrderPdfUploadBody, RequestOrderPdfUploadResponse,
@@ -121,7 +122,7 @@ router.post("/orders/:id/pdf-upload-url", async (req, res) => {
     if (!order) return void res.status(404).json({ error: "Order not found" });
     if (order.pdfPath) return void res.status(409).json({ error: "PDF already saved" });
 
-    const uploadURL = await storage.getObjectEntityUploadURL();
+    const uploadURL = await storage.getObjectEntityUploadURL(true);
     // Derive the object path from the presigned URL
     const url = new URL(uploadURL);
     // Signed URL has form: https://storage.googleapis.com/<bucket>/<object>?...
@@ -189,17 +190,24 @@ router.patch("/orders/:id/pdf", async (req, res) => {
     const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, id));
     if (!order) return void res.status(404).json({ error: "Order not found" });
     if (order.pdfPath) return void res.status(409).json({ error: "PDF already saved" });
-    const savedPath = await storage.finalizeOrderPdf(objectPath);
-
-    const [updated] = await db
-      .update(ordersTable)
-      .set({ pdfPath: savedPath })
-      .where(and(eq(ordersTable.id, id), isNull(ordersTable.pdfPath)))
-      .returning({ id: ordersTable.id });
-
-    if (!updated) {
-      const unusedFile = await storage.getObjectEntityFile(savedPath);
-      await unusedFile.delete();
+    const outcome = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(${ORDER_PDF_LOCK_ID})`);
+      // The request may have waited behind cleanup or another attachment.
+      if (!verifyOrderPdfGrant(uploadToken, id, objectPath)) return "expired";
+      const savedPath = await storage.finalizeOrderPdf(objectPath);
+      const [updated] = await tx
+        .update(ordersTable)
+        .set({ pdfPath: savedPath })
+        .where(and(eq(ordersTable.id, id), isNull(ordersTable.pdfPath)))
+        .returning({ id: ordersTable.id });
+      // Conflicting writes and DB failures leave their copies for the same
+      // delayed sweep; never delete on an ambiguous commit outcome.
+      return updated ? "saved" : "conflict";
+    });
+    if (outcome === "expired") {
+      return void res.status(403).json({ error: "Invalid or expired upload permission" });
+    }
+    if (outcome === "conflict") {
       return void res.status(409).json({ error: "PDF already saved or order removed" });
     }
     res.json(AttachOrderPdfResponse.parse({ ok: true }));

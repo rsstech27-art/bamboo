@@ -3,7 +3,7 @@ import { Readable } from "node:stream";
 
 const mocks = vi.hoisted(() => {
   const destinationFile = {};
-  const targetBucket = { file: vi.fn(() => destinationFile) };
+  const targetBucket = { file: vi.fn(() => destinationFile), getFiles: vi.fn() };
   const generationFile = {
     createReadStream: vi.fn(),
     copy: vi.fn().mockResolvedValue([]),
@@ -22,6 +22,46 @@ const mocks = vi.hoisted(() => {
     sourceFile,
     getTargetBucket: vi.fn(() => targetBucket),
   };
+});
+
+describe("order PDF cleanup namespaces", () => {
+  const uuid = "12345678-1234-1234-1234-123456789abc";
+  beforeEach(() => {
+    vi.stubEnv("PRIVATE_OBJECT_DIR", "/private-bucket/private");
+    vi.clearAllMocks();
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("lists only dedicated order PDF namespaces, follows pagination, and skips unknown names", async () => {
+    const upload = { name: `private/uploads/order-pdfs/${uuid}` };
+    const copy = { name: `private/order-pdfs/${uuid}` };
+    mocks.targetBucket.getFiles
+      .mockResolvedValueOnce([[upload, { name: "private/uploads/order-pdfs/other-function/file" }], { pageToken: "next" }])
+      .mockResolvedValueOnce([[], null])
+      .mockResolvedValueOnce([[copy], null]);
+    const files = [];
+    for await (const file of new ObjectStorageService().listOrderPdfCandidates()) files.push(file);
+    expect(files).toEqual([upload, copy]);
+    expect(mocks.targetBucket.getFiles.mock.calls.map(([query]) => query.prefix)).toEqual([
+      "private/uploads/order-pdfs/", "private/uploads/order-pdfs/", "private/order-pdfs/",
+    ]);
+    expect(mocks.targetBucket.getFiles.mock.calls[1][0].pageToken).toBe("next");
+  });
+
+  it("rejects shared uploads (including unrelated PDFs), public assets and other buckets", () => {
+    const service = new ObjectStorageService();
+    for (const name of [`private/uploads/${uuid}`, `public/order-pdfs/${uuid}`,
+      `private/order-pdfs/subdir/${uuid}`, `private/photos/${uuid}`]) {
+      expect(() => service.orderPdfObjectPath({ name, bucket: { name: "private-bucket" } } as any))
+        .toThrow();
+    }
+    expect(() => service.orderPdfObjectPath({
+      name: `private/order-pdfs/${uuid}`, bucket: { name: "other-bucket" },
+    } as any)).toThrow();
+    expect(service.orderPdfObjectPath({
+      name: `private/uploads/order-pdfs/${uuid}`, bucket: { name: "private-bucket" },
+    } as any)).toBe(`/objects/uploads/order-pdfs/${uuid}`);
+  });
 });
 
 vi.mock("@google-cloud/storage", () => ({

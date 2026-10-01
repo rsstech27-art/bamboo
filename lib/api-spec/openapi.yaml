@@ -181,7 +181,7 @@ components:
       properties:
         objectPath:
           type: string
-          pattern: '^/objects/uploads/[a-f0-9-]{36}$'
+          pattern: '^/objects/uploads/(order-pdfs/)?[a-f0-9-]{36}$'
         uploadToken:
           type: string
           maxLength: 2048
