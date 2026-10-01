@@ -4482,12 +4482,12 @@ const BambooStudio = () => {
               </button>
             </div>
           ) : step === 'zone' ? (
-            <div className="flex flex-col items-center justify-center w-full h-full rounded-3xl bg-white border-2 border-dashed border-gray-200 p-10">
+            <div className="flex flex-col items-center justify-center w-full h-full rounded-3xl bg-white border-2 border-dashed border-gray-200 p-5">
               <div className="text-center mb-8">
                 <h3 className="text-xl font-normal text-gray-900 mb-1.5" style={{fontFamily:'Manrope, sans-serif'}}>Выберите тип зоны</h3>
                 <p className="text-sm font-normal text-gray-400" style={{fontFamily:'Manrope, sans-serif'}}>Какой участок стены вы хотите оформить?</p>
               </div>
-              <div className="grid grid-cols-3 gap-3 w-full max-w-3xl px-2">
+              <div className="grid grid-cols-2 gap-5 w-full max-w-6xl px-2">
                 {AVAILABLE_ZONES.map(zone => (
                   <button
                     key={zone.id}
@@ -4504,7 +4504,7 @@ const BambooStudio = () => {
                     }}
                     className="flex flex-col overflow-hidden rounded-xl border-2 border-gray-100 bg-gray-50 hover:border-black hover:shadow-md transition-all active:scale-95 group text-left"
                   >
-                    <div className="w-full h-36 bg-gray-200 overflow-hidden relative">
+                    <div className="w-full h-48 bg-gray-200 overflow-hidden relative">
                       <img
                         src={`${BASE}${zone.image}`}
                         alt={zone.label}
@@ -4512,8 +4512,8 @@ const BambooStudio = () => {
                         onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                       />
                     </div>
-                    <div className="px-3 py-2">
-                      <span className="text-xs font-black uppercase tracking-wide text-gray-800 group-hover:text-black leading-tight">{zone.label}</span>
+                    <div className="px-4 py-3">
+                      <span className="text-sm font-black uppercase tracking-wide text-gray-800 group-hover:text-black leading-tight">{zone.label}</span>
                       {!isReleaseZone(zone.id) && (
                         <span className="block mt-1 text-[10px] font-medium text-amber-700">В разработке</span>
                       )}
