@@ -1,9 +1,15 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { ordersTable, orderSequencesTable } from "@workspace/db/schema";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc, sql, and, isNull } from "drizzle-orm";
 import { requireManagerSession } from "../middleware/managerAuth";
-import { ObjectStorageService } from "../lib/objectStorage";
+import { ObjectStorageService, ObjectNotFoundError, InvalidOrderPdfError } from "../lib/objectStorage";
+import { issueOrderPdfGrant, verifyOrderPdfGrant } from "../lib/orderPdfGrant";
+import {
+  CreateOrderBody, CreateOrderResponse,
+  RequestOrderPdfUploadBody, RequestOrderPdfUploadResponse,
+  AttachOrderPdfBody, AttachOrderPdfResponse,
+} from "@workspace/api-zod";
 
 const router: IRouter = Router();
 const storage = new ObjectStorageService();
@@ -25,7 +31,9 @@ router.get("/orders", requireManagerSession, async (_req, res) => {
 });
 
 function parseId(raw: string | string[]): number {
-  return parseInt(Array.isArray(raw) ? raw[0] : raw, 10);
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  const id = /^[1-9]\d*$/.test(value) ? Number(value) : NaN;
+  return Number.isSafeInteger(id) ? id : NaN;
 }
 
 // GET /api/orders/:id
@@ -45,11 +53,9 @@ router.get("/orders/:id", requireManagerSession, async (req, res) => {
 // POST /api/orders — auto-assigns sequential order number
 router.post("/orders", async (req, res) => {
   try {
-    const { prefix, zoneLabel, kpData } = req.body as {
-      prefix?: unknown;
-      zoneLabel?: unknown;
-      kpData?: unknown;
-    };
+    const parsed = CreateOrderBody.safeParse(req.body);
+    if (!parsed.success) return void res.status(400).json({ error: "Invalid order data" });
+    const { prefix, zoneLabel, kpData } = parsed.data;
     if (typeof prefix !== "string" || prefix.trim() === "") {
       return void res.status(400).json({ error: "prefix is required" });
     }
@@ -93,7 +99,10 @@ router.post("/orders", async (req, res) => {
       return inserted;
     });
 
-    res.status(201).json(order);
+    res.setHeader("Cache-Control", "no-store");
+    res.status(201).json(CreateOrderResponse.passthrough().parse({
+      ...order, pdfToken: issueOrderPdfGrant(order.id),
+    }));
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: "Failed to create order", detail: msg });
@@ -101,14 +110,19 @@ router.post("/orders", async (req, res) => {
 });
 
 // POST /api/orders/:id/pdf-upload-url — returns a presigned PUT URL for PDF upload.
-// No manager session required here: the client already owns the order it just created.
+// Creation capability is required; knowing a sequential order ID is not ownership.
 router.post("/orders/:id/pdf-upload-url", async (req, res) => {
   try {
     const id = parseId(req.params.id);
     if (isNaN(id)) return void res.status(400).json({ error: "Invalid id" });
+    const parsed = RequestOrderPdfUploadBody.safeParse(req.body);
+    if (!parsed.success || !verifyOrderPdfGrant(parsed.data.pdfToken, id)) {
+      return void res.status(403).json({ error: "Invalid or expired order PDF permission" });
+    }
 
     const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, id));
     if (!order) return void res.status(404).json({ error: "Order not found" });
+    if (order.pdfPath) return void res.status(409).json({ error: "PDF already saved" });
 
     const uploadURL = await storage.getObjectEntityUploadURL();
     // Derive the object path from the presigned URL
@@ -120,7 +134,10 @@ router.post("/orders/:id/pdf-upload-url", async (req, res) => {
       `https://storage.googleapis.com/${pathParts[1]}/${objectName}`,
     );
 
-    res.json({ uploadURL, objectPath });
+    res.setHeader("Cache-Control", "no-store");
+    res.json(RequestOrderPdfUploadResponse.parse({
+      uploadURL, objectPath, uploadToken: issueOrderPdfGrant(id, objectPath),
+    }));
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: "Failed to generate upload URL", detail: msg });
@@ -159,27 +176,45 @@ router.patch("/orders/:id/after-photo", requireManagerSession, async (req, res) 
 });
 
 // PATCH /api/orders/:id/pdf — save the object path after a successful upload.
-router.patch("/orders/:id/pdf", requireManagerSession, async (req, res) => {
+router.patch("/orders/:id/pdf", async (req, res) => {
   try {
     const id = parseId(req.params.id);
     if (isNaN(id)) return void res.status(400).json({ error: "Invalid id" });
 
-    const { objectPath } = req.body as { objectPath?: unknown };
-    if (typeof objectPath !== "string" || !objectPath.startsWith("/objects/")) {
+    const { objectPath, uploadToken } = req.body ?? {};
+    if (!AttachOrderPdfBody.shape.objectPath.safeParse(objectPath).success) {
       return void res.status(400).json({ error: "Invalid objectPath" });
     }
+    const parsed = AttachOrderPdfBody.safeParse(req.body);
+    if (!parsed.success || !verifyOrderPdfGrant(uploadToken, id, objectPath)) {
+      return void res.status(403).json({ error: "Invalid or expired upload permission" });
+    }
+    const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, id));
+    if (!order) return void res.status(404).json({ error: "Order not found" });
+    if (order.pdfPath) return void res.status(409).json({ error: "PDF already saved" });
+    const savedPath = await storage.finalizeOrderPdf(objectPath);
 
     const [updated] = await db
       .update(ordersTable)
-      .set({ pdfPath: objectPath } as Record<string, unknown>)
-      .where(eq(ordersTable.id, id))
+      .set({ pdfPath: savedPath })
+      .where(and(eq(ordersTable.id, id), isNull(ordersTable.pdfPath)))
       .returning({ id: ordersTable.id });
 
-    if (!updated) return void res.status(404).json({ error: "Order not found" });
-    res.json({ ok: true });
+    if (!updated) {
+      const unusedFile = await storage.getObjectEntityFile(savedPath);
+      await unusedFile.delete();
+      return void res.status(409).json({ error: "PDF already saved or order removed" });
+    }
+    res.json(AttachOrderPdfResponse.parse({ ok: true }));
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ error: "Failed to save pdf path", ...(process.env.NODE_ENV !== "production" && { detail: msg }) });
+    if (err instanceof ObjectNotFoundError) {
+      return void res.status(422).json({ error: "Uploaded PDF not found" });
+    }
+    if (err instanceof InvalidOrderPdfError) {
+      return void res.status(422).json({ error: err.message });
+    }
+    req.log.error({ err }, "Failed to save order PDF");
+    res.status(500).json({ error: "Failed to save PDF" });
   }
 });
 
@@ -201,6 +236,8 @@ router.get("/orders/:id/pdf", requireManagerSession, async (req, res) => {
     const response = await storage.downloadObject(file, 0);
 
     res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Content-Disposition", `inline; filename="kp-${id}.pdf"`);
     if (response.headers.get("Content-Length")) {
       res.setHeader("Content-Length", response.headers.get("Content-Length")!);

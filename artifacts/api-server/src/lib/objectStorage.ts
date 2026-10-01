@@ -159,6 +159,30 @@ export class ObjectStorageService {
     return objectFile;
   }
 
+  // Pin the validated generation, then copy it away from the still-valid PUT URL.
+  // Otherwise a client could overwrite an already attached PDF until that URL expires.
+  async finalizeOrderPdf(objectPath: string): Promise<string> {
+    const file = await this.getObjectEntityFile(objectPath);
+    const [metadata] = await file.getMetadata();
+    const size = Number(metadata.size);
+    if (metadata.contentType !== 'application/pdf' || !Number.isFinite(size)
+      || size < 5 || size > 15 * 1024 * 1024 || !metadata.generation) {
+      throw new InvalidOrderPdfError();
+    }
+    const version = file.bucket.file(file.name, { generation: metadata.generation });
+    const chunks: Buffer[] = [];
+    for await (const chunk of version.createReadStream({ start: 0, end: 4 })) {
+      chunks.push(Buffer.from(chunk));
+    }
+    if (Buffer.concat(chunks).toString('ascii') !== '%PDF-') throw new InvalidOrderPdfError();
+    const savedPath = `/objects/order-pdfs/${randomUUID()}`;
+    const { bucketName, objectName } = parseObjectPath(
+      `${this.getPrivateObjectDir()}/${savedPath.slice('/objects/'.length)}`,
+    );
+    await version.copy(objectStorageClient.bucket(bucketName).file(objectName));
+    return savedPath;
+  }
+
   normalizeObjectEntityPath(rawPath: string): string {
     if (!rawPath.startsWith('https://storage.googleapis.com/')) {
       return rawPath;
@@ -208,6 +232,12 @@ export class ObjectStorageService {
       objectFile,
       requestedPermission: requestedPermission ?? ObjectPermission.READ,
     });
+  }
+}
+
+export class InvalidOrderPdfError extends Error {
+  constructor() {
+    super('Uploaded object must be a PDF of at most 15 MB');
   }
 }
 

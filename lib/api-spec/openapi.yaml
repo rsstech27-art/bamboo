@@ -11,6 +11,106 @@ tags:
   - name: health
     description: Health operations
 paths:
+  /orders:
+    post:
+      operationId: createOrder
+      summary: Create a client order with a temporary PDF-only permission
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderInput"
+      responses:
+        "201":
+          description: Created order; pdfToken is valid for 30 minutes and must not be persisted or logged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderCreated"
+        "400":
+          description: Invalid order
+        "500":
+          description: Order could not be created
+  /orders/{id}/pdf-upload-url:
+    parameters:
+      - $ref: "#/components/parameters/OrderId"
+    post:
+      operationId: requestOrderPdfUpload
+      summary: Issue an upload URL only to the creator of an order without a saved PDF
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderPdfPermission"
+      responses:
+        "200":
+          description: Upload URL and path-bound temporary permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderPdfUpload"
+        "400":
+          description: Invalid order ID
+        "403":
+          description: Missing, expired or invalid creation permission
+        "404":
+          description: Order not found
+        "409":
+          description: PDF already saved; replacements are not allowed
+        "500":
+          description: Storage could not issue an upload URL
+  /orders/{id}/pdf:
+    parameters:
+      - $ref: "#/components/parameters/OrderId"
+    patch:
+      operationId: attachOrderPdf
+      summary: Attach a verified uploaded PDF once using the order/path-bound permission
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderPdfAttachment"
+      responses:
+        "200":
+          description: PDF stored as an immutable copy and attached to the order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderPdfSaved"
+        "400":
+          description: Invalid ID or object path
+        "403":
+          description: Missing, expired or invalid upload permission
+        "404":
+          description: Order not found
+        "409":
+          description: PDF already saved; replacements are not allowed
+        "422":
+          description: Object missing or not a PDF (application/pdf, PDF signature, at most 15 MB)
+        "500":
+          description: PDF could not be saved
+    get:
+      operationId: downloadOrderPdf
+      summary: Download the order PDF (manager session required)
+      responses:
+        "200":
+          description: Stored PDF
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Invalid order ID
+        "401":
+          description: Manager session required
+        "404":
+          description: Order or saved PDF not found
+        "500":
+          description: PDF could not be read
   /healthz:
     get:
       operationId: healthCheck
@@ -25,7 +125,72 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
 components:
+  parameters:
+    OrderId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
   schemas:
+    OrderInput:
+      type: object
+      required: [prefix, zoneLabel, kpData]
+      properties:
+        prefix:
+          type: string
+          minLength: 1
+        zoneLabel:
+          type: string
+          minLength: 1
+        kpData:
+          type: object
+          additionalProperties: true
+    OrderCreated:
+      type: object
+      required: [id, orderNumber, pdfToken]
+      additionalProperties: true
+      properties:
+        id:
+          type: integer
+        orderNumber:
+          type: string
+        pdfToken:
+          type: string
+    OrderPdfPermission:
+      type: object
+      required: [pdfToken]
+      properties:
+        pdfToken:
+          type: string
+          maxLength: 2048
+    OrderPdfUpload:
+      type: object
+      required: [uploadURL, objectPath, uploadToken]
+      properties:
+        uploadURL:
+          type: string
+        objectPath:
+          type: string
+        uploadToken:
+          type: string
+    OrderPdfAttachment:
+      type: object
+      required: [objectPath, uploadToken]
+      properties:
+        objectPath:
+          type: string
+          pattern: '^/objects/uploads/[a-f0-9-]{36}$'
+        uploadToken:
+          type: string
+          maxLength: 2048
+    OrderPdfSaved:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
     HealthStatus:
       type: object
       properties:

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import type { OrderCreated, OrderPdfUpload } from '@workspace/api-client-react';
 import { Upload, Layout, Eraser, RotateCcw, Download, Check, Columns, Undo2, Redo2, Sun, Moon, FileText } from 'lucide-react';
 import { PANEL_H_MM, PANEL_W_MM, PANEL_AREA_M2, optimizedPanelCalc, packWidthRemainders, packProfileRuns, columnHiddenJoints, packWindowPieces, windowStdPieces, panelsWord, rowsWord } from './lib/panelCalc';
 import {
@@ -3567,6 +3568,7 @@ const BambooStudio = () => {
       (wallZone === 'wall-niche' || nQuads > 1) ? 'Стена с выступом' : 'Стена';
     let orderNumber = '';
     let savedOrderId: number | null = null;
+    let pdfToken = '';
     try {
       const orderResp = await fetch('/api/orders', {
         method: 'POST',
@@ -3578,9 +3580,10 @@ const BambooStudio = () => {
         }),
       });
       if (orderResp.ok) {
-        const saved = await orderResp.json() as { id?: number; orderNumber?: string };
+        const saved = await orderResp.json() as OrderCreated;
         orderNumber = saved.orderNumber ?? '';
         savedOrderId = saved.id ?? null;
+        pdfToken = saved.pdfToken ?? '';
       }
     } catch { /* non-critical — PDF still generated without order number */ }
 
@@ -4009,27 +4012,34 @@ const BambooStudio = () => {
     pdf.save('allwall-kp.pdf');
 
     // Upload PDF to object storage so managers can retrieve it later.
-    // Non-critical: run after the download so the user isn't blocked.
+    // Download remains available locally even when server persistence fails.
     if (savedOrderId !== null) {
       try {
-        const urlResp = await fetch(`/api/orders/${savedOrderId}/pdf-upload-url`, { method: 'POST' });
-        if (urlResp.ok) {
-          const { uploadURL, objectPath } = await urlResp.json() as { uploadURL: string; objectPath: string };
-          const pdfBlob = pdf.output('blob');
-          const uploadResp = await fetch(uploadURL, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/pdf' },
-            body: pdfBlob,
-          });
-          if (uploadResp.ok) {
-            await fetch(`/api/orders/${savedOrderId}/pdf`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ objectPath }),
-            });
-          }
-        }
-      } catch { /* non-critical — PDF available locally even without storage */ }
+        const urlResp = await fetch(`/api/orders/${savedOrderId}/pdf-upload-url`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pdfToken }),
+        });
+        if (!urlResp.ok) throw new Error('Не удалось получить разрешение на сохранение PDF.');
+        const { uploadURL, objectPath, uploadToken } = await urlResp.json() as OrderPdfUpload;
+        const pdfBlob = pdf.output('blob');
+        const uploadResp = await fetch(uploadURL, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/pdf' },
+          body: pdfBlob,
+        });
+        if (!uploadResp.ok) throw new Error('Не удалось загрузить PDF в хранилище.');
+        const saveResp = await fetch(`/api/orders/${savedOrderId}/pdf`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ objectPath, uploadToken }),
+        });
+        if (!saveResp.ok) throw new Error('Не удалось прикрепить PDF к заказу.');
+      } catch (err) {
+        window.alert(`PDF скачан на ваше устройство, но не сохранён в заказе № ${orderNumber || savedOrderId}. ${err instanceof Error ? err.message : 'Ошибка соединения.'} Передайте скачанный файл менеджеру.`);
+      }
+    } else {
+      window.alert('PDF скачан на ваше устройство, но заказ не удалось сохранить. Передайте скачанный файл менеджеру.');
     }
   };
 
