@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { Readable } from 'stream';
 import { File, Storage } from '@google-cloud/storage';
 import { ORDER_PDF_UPLOAD_TTL_SEC, isExpiredOrderPdf } from './orderPdfLifecycle';
+import { LEGACY_UPLOAD_PATH, type LegacyUploadInventory } from './legacyOrderPdfReport';
 
 import {
   canAccessObject,
@@ -182,6 +183,40 @@ export class ObjectStorageService {
     );
     await version.copy(objectStorageClient.bucket(bucketName).file(objectName));
     return savedPath;
+  }
+
+  // Read-only inventory, intentionally separate from deletion candidates.
+  // Shared legacy UUID uploads have no reliable feature ownership marker.
+  async *listLegacyUploadInventory(): AsyncGenerator<LegacyUploadInventory> {
+    const { bucketName, objectName } = parseObjectPath(
+      `${this.getPrivateObjectDir().replace(/\/$/, '')}/`,
+    );
+    const bucket = objectStorageClient.bucket(bucketName);
+    const prefix = `${objectName}uploads/`;
+    let pageToken: string | undefined;
+    do {
+      const [files, nextQuery] = await bucket.getFiles({
+        prefix, autoPaginate: false, maxResults: 100, pageToken,
+      });
+      for (const file of files) {
+        const objectPath = `/objects/${file.name.slice(objectName.length)}`;
+        if (!file.name.startsWith(prefix) || !LEGACY_UPLOAD_PATH.test(objectPath)) continue;
+        const [metadata] = await file.getMetadata();
+        const size = Number(metadata.size);
+        yield {
+          objectPath,
+          generation: metadata.generation == null ? undefined : String(metadata.generation),
+          sizeBytes: metadata.size != null && Number.isSafeInteger(size) && size >= 0 ? size : undefined,
+          timeCreated: metadata.timeCreated,
+          updated: metadata.updated,
+          contentType: metadata.contentType,
+          // Never export custom keys/values: these may contain credentials or PII,
+          // and even purported order IDs are not trustworthy ownership proof.
+          hasCustomMetadata: Object.keys(metadata.metadata ?? {}).length > 0,
+        };
+      }
+      pageToken = nextQuery?.pageToken;
+    } while (pageToken);
   }
 
   // Only namespaces owned exclusively by the order-PDF flow. Never sweep the

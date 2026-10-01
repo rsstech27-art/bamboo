@@ -1,0 +1,202 @@
+<!doctype html><html lang="ru"><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Предварительный отчёт о старых PDF</title><style>
+    body{font:15px/1.5 system-ui,sans-serif;max-width:1450px;margin:32px auto;padding:0 24px;color:#20302a}
+    h1{font-size:28px}h2{font-size:20px}.warning{padding:18px;border:1px solid #b3832f;background:#fff7e8}
+    .stats{display:flex;gap:20px;flex-wrap:wrap;margin:20px 0}.stat{padding:12px;border:1px solid #ccd7d0}
+    table{border-collapse:collapse;width:100%;font-size:12px}th,td{border-bottom:1px solid #ddd;text-align:left;padding:8px}
+    code{overflow-wrap:anywhere}section{overflow:auto}li{margin:6px 0}@media print{body{margin:0;padding:8px}}
+    </style><body><h1>Старые загрузки: предварительный отчёт</h1>
+    <p>Снимок от 2026-10-01T07:54:10.662Z. Режим: только чтение.</p>
+    <div class="warning"><strong>Ничего не удалено. Подтверждённых кандидатов на удаление: 0.</strong>
+    <p>Отсутствие ссылки не подтверждает принадлежность к заказам. MIME, имя, содержимое, совпадение хеша и возраст файла не считаются доказательством. Срок последнего разрешения также не подтверждён.</p></div>
+    <div class="stats"><div class="stat">Объектов: <strong>44</strong></div>
+    <div class="stat">Есть ссылки: <strong>31</strong></div>
+    <div class="stat">Без ссылок, но неизвестного происхождения: <strong>13</strong></div>
+    <div class="stat">Объём: <strong>8.03 МБ</strong></div></div>
+    <h2>Проверенные источники</h2><ul>
+    <li>Все поля заказов, товаров и настроек менеджера проверены в development и production. Проверка включает вложенные JSON-строки и ссылки на uploads в URL.</li>
+    <li>Старый PATCH сохранял переданный клиентом путь. Ссылка защищает объект, но не подтверждает его происхождение.</li>
+    <li>Журналы не сохраняли путь выданной загрузки, её поколение и связь с итоговым PDF. Резервные копии каталога не содержат заказов и истории PDF.</li>
+    <li>Системные метаданные хранилища показывают размер, поколение и даты. Пользовательские метаданные не подтверждают принадлежность.</li>
+    </ul><p>Снимки: production — 2026-10-01T07:53:11.63094+00:00; development — 2026-10-01T07:53:15.313699+00:00.</p>
+    <p>Ссылок на файлы, отсутствующие в инвентаризации: 0.</p>
+    <h2>Условия возможного удаления</h2><p>Нужны независимая серверная запись о выданном временном PDF с точным путём и поколением, подтверждённые сроки всех разрешений и явно согласованный список. Перед удалением обязательны свежая проверка всех ссылок в обоих окружениях, синхронизация с сохранением заказов и условное удаление того же поколения. Нельзя расширять автоматическую очистку общей папки uploads.</p>
+    <h2>Инвентаризация</h2><section><table><thead><tr><th>Путь</th><th>Байт</th><th>Изменён</th>
+    <th>Поколение</th><th>MIME (только справочно)</th><th>Ссылки</th><th>Решение</th></tr></thead><tbody><tr><td><code>/objects/uploads/0a5bcd1e-4ca1-4df3-950e-50801bf3992d</code></td>
+    <td>134155</td><td>2026-08-21T20:32:33.282Z</td>
+    <td>1787344353275899</td><td>application/pdf</td>
+    <td>development</td>
+    <td>Сохранить: есть ссылка</td></tr><tr><td><code>/objects/uploads/13207f25-ea79-45ad-87f8-ec3c4fb32bdd</code></td>
+    <td>203064</td><td>2026-09-19T17:08:49.905Z</td>
+    <td>1789837729899657</td><td>application/pdf</td>
+    <td>development</td>
+    <td>Сохранить: есть ссылка</td></tr><tr><td><code>/objects/uploads/1526a788-1308-4cd0-a1f3-4f14194dc948</code></td>
+    <td>186728</td><td>2026-09-18T09:39:46.960Z</td>
+    <td>1789724386955189</td><td>application/pdf</td>
+    <td>development</td>
+    <td>Сохранить: есть ссылка</td></tr><tr><td><code>/objects/uploads/16b4ca56-b356-486b-8296-666e8ec958d4</code></td>
+    <td>218564</td><td>2026-09-09T15:28:23.100Z</td>
+    <td>1788967703092133</td><td>application/pdf</td>
+    <td>development</td>
+    <td>Сохранить: есть ссылка</td></tr><tr><td><code>/objects/uploads/1767765c-13c7-43d5-9d3f-d6adbbfc336d</code></td>
+    <td>204375</td><td>2026-09-19T17:44:37.965Z</td>
+    <td>1789839877960115</td><td>application/pdf</td>
+    <td>development</td>
+    <td>Сохранить: есть ссылка</td></tr><tr><td><code>/objects/uploads/1fb49326-0229-4939-8bcd-04c299cf71bb</code></td>
+    <td>230332</td><td>2026-09-22T16:52:54.208Z</td>
+    <td>1790095974200784</td><td>application/pdf</td>
+    <td>Не найдены в снимках</td>
+    <td>Сохранить: происхождение не подтверждено</td></tr><tr><td><code>/objects/uploads/2dec2e0e-b384-4845-9653-bfb806124776</code></td>
+    <td>226664</td><td>2026-09-19T10:12:15.102Z</td>
+    <td>1789812735093421</td><td>application/pdf</td>
+    <td>development</td>
+    <td>Сохранить: есть ссылка</td></tr><tr><td><code>/objects/uploads/30868c18-540b-46ab-871e-2d4415e9989b</code></td>
+    <td>179126</td><td>2026-09-19T16:48:53.460Z</td>
+    <td>1789836533432823</td><td>application/pdf</td>
+    <td>development</td>
+    <td>Сохранить: есть ссылка</td></tr><tr><td><code>/objects/uploads/38c3d820-ba7e-4da3-89f9-d9bde24e9d24</code></td>
+    <td>179437</td><td>2026-09-19T20:24:46.799Z</td>
+    <td>1789849486794023</td><td>application/pdf</td>
+    <td>development</td>
+    <td>Сохранить: есть ссылка</td></tr><tr><td><code>/objects/uploads/3dff7976-ddb1-4784-988b-655472b34372</code></td>
+    <td>223151</td><td>2026-09-22T09:20:19.281Z</td>
+    <td>1790068819274921</td><td>application/pdf</td>
+    <td>Не найдены в снимках</td>
+    <td>Сохранить: происхождение не подтверждено</td></tr><tr><td><code>/objects/uploads/4005b267-6335-4f8f-b1f6-1f80ecfc4684</code></td>
+    <td>188051</td><td>2026-09-19T10:36:17.973Z</td>
+    <td>1789814177967594</td><td>application/pdf</td>
+    <td>development</td>
+    <td>Сохранить: есть ссылка</td></tr><tr><td><code>/objects/uploads/481903f5-694b-4933-8282-8e56a11f8140</code></td>
+    <td>135981</td><td>2026-09-19T11:42:07.683Z</td>
+    <td>1789818127674090</td><td>application/pdf</td>
+    <td>development</td>
+    <td>Сохранить: есть ссылка</td></tr><tr><td><code>/objects/uploads/49c7baae-0b6b-41d3-bea9-e3606cb8f01f</code></td>
+    <td>202361</td><td>2026-09-06T22:35:40.022Z</td>
+    <td>1788734140014961</td><td>application/pdf</td>
+    <td>development</td>
+    <td>Сохранить: есть ссылка</td></tr><tr><td><code>/objects/uploads/4a01e8b1-1bfd-4e56-8b46-e73575963b7f</code></td>
+    <td>209405</td><td>2026-09-19T16:30:44.250Z</td>
+    <td>1789835444243559</td><td>application/pdf</td>
+    <td>Не найдены в снимках</td>
+    <td>Сохранить: происхождение не подтверждено</td></tr><tr><td><code>/objects/uploads/5692e36c-58d8-447b-926a-cacbbd29f946</code></td>
+    <td>189080</td><td>2026-09-22T17:07:24.498Z</td>
+    <td>1790096844490650</td><td>application/pdf</td>
+    <td>Не найдены в снимках</td>
+    <td>Сохранить: происхождение не подтверждено</td></tr><tr><td><code>/objects/uploads/57008a1a-d396-4891-969c-de40827a4266</code></td>
+    <td>230893</td><td>2026-09-20T09:13:14.209Z</td>
+    <td>1789895594201608</td><td>application/pdf</td>
+    <td>development</td>
+    <td>Сохранить: есть ссылка</td></tr><tr><td><code>/objects/uploads/59632ea9-2907-4654-84f1-ae48328aeb06</code></td>
+    <td>170625</td><td>2026-09-17T02:07:18.927Z</td>
+    <td>1789610838916913</td><td>application/pdf</td>
+    <td>Не найдены в снимках</td>
+    <td>Сохранить: происхождение не подтверждено</td></tr><tr><td><code>/objects/uploads/5d69857a-179b-4b8d-b34c-c8176e275a67</code></td>
+    <td>139641</td><td>2026-09-06T22:00:51.519Z</td>
+    <td>1788732051511836</td><td>application/pdf</td>
+    <td>development</td>
+    <td>Сохранить: есть ссылка</td></tr><tr><td><code>/objects/uploads/5f9b3372-61cb-453c-bd44-47013cd213f9</code></td>
+    <td>187929</td><td>2026-09-19T10:29:43.337Z</td>
+    <td>1789813783323789</td><td>application/pdf</td>
+    <td>development</td>
+    <td>Сохранить: есть ссылка</td></tr><tr><td><code>/objects/uploads/616e4c25-bd95-473a-a112-16ec24fc1ad1</code></td>
+    <td>242617</td><td>2026-09-19T08:00:47.595Z</td>
+    <td>1789804847557268</td><td>application/pdf</td>
+    <td>Не найдены в снимках</td>
+    <td>Сохранить: происхождение не подтверждено</td></tr><tr><td><code>/objects/uploads/61e56b7e-74f3-4432-9313-5e4eeba7d394</code></td>
+    <td>221907</td><td>2026-09-22T09:21:23.947Z</td>
+    <td>1790068883942397</td><td>application/pdf</td>
+    <td>Не найдены в снимках</td>
+    <td>Сохранить: происхождение не подтверждено</td></tr><tr><td><code>/objects/uploads/6502ccb4-25ec-48d4-ac18-d709572412f1</code></td>
+    <td>147580</td><td>2026-09-18T09:12:21.464Z</td>
+    <td>1789722741425647</td><td>application/pdf</td>
+    <td>development</td>
+    <td>Сохранить: есть ссылка</td></tr><tr><td><code>/objects/uploads/6f670645-419e-464f-9022-c158586a7267</code></td>
+    <td>150211</td><td>2026-10-01T07:18:55.101Z</td>
+    <td>1790839135097647</td><td>application/pdf</td>
+    <td>Не найдены в снимках</td>
+    <td>Сохранить: происхождение не подтверждено</td></tr><tr><td><code>/objects/uploads/763e87b4-b422-4665-9f66-2c3ccc14db05</code></td>
+    <td>150147</td><td>2026-10-01T07:18:29.002Z</td>
+    <td>1790839108992466</td><td>application/pdf</td>
+    <td>Не найдены в снимках</td>
+    <td>Сохранить: происхождение не подтверждено</td></tr><tr><td><code>/objects/uploads/7ec961df-1d5c-4832-826b-c78bc1974824</code></td>
+    <td>252677</td><td>2026-09-09T15:49:49.307Z</td>
+    <td>1788968989299410</td><td>application/pdf</td>
+    <td>development</td>
+    <td>Сохранить: есть ссылка</td></tr><tr><td><code>/objects/uploads/873e2b83-e1eb-4765-99f3-eede565e3a72</code></td>
+    <td>201161</td><td>2026-09-19T17:06:57.070Z</td>
+    <td>1789837617055348</td><td>application/pdf</td>
+    <td>development</td>
+    <td>Сохранить: есть ссылка</td></tr><tr><td><code>/objects/uploads/8959a9ad-f124-4b99-b1f1-3b33f1f55a07</code></td>
+    <td>200792</td><td>2026-09-19T16:30:35.615Z</td>
+    <td>1789835435608438</td><td>application/pdf</td>
+    <td>Не найдены в снимках</td>
+    <td>Сохранить: происхождение не подтверждено</td></tr><tr><td><code>/objects/uploads/91160310-6dd2-4920-b9ff-51e1559aca36</code></td>
+    <td>209017</td><td>2026-09-19T08:47:37.757Z</td>
+    <td>1789807657747383</td><td>application/pdf</td>
+    <td>development</td>
+    <td>Сохранить: есть ссылка</td></tr><tr><td><code>/objects/uploads/a4f45415-085b-4e2b-af0d-21badbba5bbb</code></td>
+    <td>205169</td><td>2026-09-09T15:25:50.994Z</td>
+    <td>1788967550987525</td><td>application/pdf</td>
+    <td>development</td>
+    <td>Сохранить: есть ссылка</td></tr><tr><td><code>/objects/uploads/b19d14a6-6d2f-493f-9b3d-074362b0f1ec</code></td>
+    <td>229521</td><td>2026-09-09T15:29:09.129Z</td>
+    <td>1788967749124528</td><td>application/pdf</td>
+    <td>development</td>
+    <td>Сохранить: есть ссылка</td></tr><tr><td><code>/objects/uploads/c131ee5c-ea55-43fe-9f74-8f364ce1469f</code></td>
+    <td>192758</td><td>2026-09-09T13:30:59.785Z</td>
+    <td>1788960659778110</td><td>application/pdf</td>
+    <td>Не найдены в снимках</td>
+    <td>Сохранить: происхождение не подтверждено</td></tr><tr><td><code>/objects/uploads/c43131b5-0763-4147-9533-26fd915bbf82</code></td>
+    <td>201780</td><td>2026-09-19T17:31:46.376Z</td>
+    <td>1789839106369595</td><td>application/pdf</td>
+    <td>development</td>
+    <td>Сохранить: есть ссылка</td></tr><tr><td><code>/objects/uploads/c71bb027-c3aa-421f-b640-03a4fd8ec4f3</code></td>
+    <td>201248</td><td>2026-09-19T17:07:11.309Z</td>
+    <td>1789837631304711</td><td>application/pdf</td>
+    <td>development</td>
+    <td>Сохранить: есть ссылка</td></tr><tr><td><code>/objects/uploads/d2cc916f-36ca-427b-bd89-6ef2cc9b2cf0</code></td>
+    <td>190946</td><td>2026-09-09T14:35:33.493Z</td>
+    <td>1788964533486911</td><td>application/pdf</td>
+    <td>development</td>
+    <td>Сохранить: есть ссылка</td></tr><tr><td><code>/objects/uploads/d459a4eb-ce1f-4bf1-831e-4831c45db28a</code></td>
+    <td>210959</td><td>2026-09-09T15:04:15.475Z</td>
+    <td>1788966255467669</td><td>application/pdf</td>
+    <td>development</td>
+    <td>Сохранить: есть ссылка</td></tr><tr><td><code>/objects/uploads/d5395597-ff90-48dc-9f11-528f52626560</code></td>
+    <td>187157</td><td>2026-09-18T09:39:46.843Z</td>
+    <td>1789724386837084</td><td>application/pdf</td>
+    <td>development</td>
+    <td>Сохранить: есть ссылка</td></tr><tr><td><code>/objects/uploads/dc0b8857-08ce-4e9f-806f-2721ea8e4ed7</code></td>
+    <td>227089</td><td>2026-09-19T20:29:51.292Z</td>
+    <td>1789849791285509</td><td>application/pdf</td>
+    <td>development</td>
+    <td>Сохранить: есть ссылка</td></tr><tr><td><code>/objects/uploads/e7a02f62-eb7e-4f6d-941d-c3f87c3fda8d</code></td>
+    <td>192921</td><td>2026-09-22T13:47:57.390Z</td>
+    <td>1790084877381738</td><td>application/pdf</td>
+    <td>Не найдены в снимках</td>
+    <td>Сохранить: происхождение не подтверждено</td></tr><tr><td><code>/objects/uploads/f1dfbd2c-b23f-4316-9732-d3da5cd71ee7</code></td>
+    <td>266473</td><td>2026-09-20T08:58:02.898Z</td>
+    <td>1789894682872669</td><td>application/pdf</td>
+    <td>development</td>
+    <td>Сохранить: есть ссылка</td></tr><tr><td><code>/objects/uploads/f673f8b6-0d11-4e41-8141-03d9a3653e98</code></td>
+    <td>9</td><td>2026-10-01T07:18:40.635Z</td>
+    <td>1790839120579341</td><td>application/pdf</td>
+    <td>Не найдены в снимках</td>
+    <td>Сохранить: происхождение не подтверждено</td></tr><tr><td><code>/objects/uploads/f7e4eee8-0599-4b8e-a7a4-04471248c795</code></td>
+    <td>205271</td><td>2026-09-09T15:23:14.655Z</td>
+    <td>1788967394644164</td><td>application/pdf</td>
+    <td>development</td>
+    <td>Сохранить: есть ссылка</td></tr><tr><td><code>/objects/uploads/f9f1b57e-b1bc-4662-9ef5-63bd0f0f53a8</code></td>
+    <td>141132</td><td>2026-08-21T20:46:14.702Z</td>
+    <td>1787345174697650</td><td>application/pdf</td>
+    <td>development</td>
+    <td>Сохранить: есть ссылка</td></tr><tr><td><code>/objects/uploads/fa96b69a-c9a5-4afb-ba58-5973c0e11733</code></td>
+    <td>146721</td><td>2026-09-06T21:48:02.993Z</td>
+    <td>1788731282986404</td><td>application/pdf</td>
+    <td>development</td>
+    <td>Сохранить: есть ссылка</td></tr><tr><td><code>/objects/uploads/fcf41c51-40c3-4582-9068-8383b123e40b</code></td>
+    <td>200739</td><td>2026-09-09T15:44:13.203Z</td>
+    <td>1788968653196212</td><td>application/pdf</td>
+    <td>development</td>
+    <td>Сохранить: есть ссылка</td></tr></tbody></table></section></body></html>

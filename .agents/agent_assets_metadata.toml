@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "ta260bo9vn7v4NSdsnqv_"
+uri = "file://reports/legacy-order-pdfs-2026-10-01.html"
+type = "html"
+title = "Предварительный отчёт по старым PDF"
+description = "44 исторические загрузки: 31 со ссылками, 13 неподтверждённого происхождения. Подтверждённых кандидатов и удалённых файлов — 0."
+logical_id = "5c464a3c-3564-43fb-b34e-be11a6f38987"
+content_hash = "sha256:76acfa13582d6add077eaef35b7c059c6a37df3b09907aa54e4b321c54b87f90"
+size = 16885
+mtime_ms = 1790841250666
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:f3700be3-fc47-4feb-9137-d623e620af22/5c464a3c-3564-43fb-b34e-be11a6f38987/c81b3e91-2ee4-4eec-bf02-f6a32236ee94"
+storage_version_token = "1790841282077171"
+content_type = "text/html"

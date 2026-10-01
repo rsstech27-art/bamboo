@@ -1,0 +1,833 @@
+{
+  "formatVersion": 1,
+  "mode": "read-only",
+  "generatedAt": "2026-10-01T07:54:10.662Z",
+  "referenceSnapshots": [
+    {
+      "environment": "production",
+      "capturedAt": "2026-10-01T07:53:11.63094+00:00",
+      "complete": true,
+      "scannedTables": [
+        "orders",
+        "products",
+        "manager_settings"
+      ],
+      "referencedPathCount": 0
+    },
+    {
+      "environment": "development",
+      "capturedAt": "2026-10-01T07:53:15.313699+00:00",
+      "complete": true,
+      "scannedTables": [
+        "orders",
+        "products",
+        "manager_settings"
+      ],
+      "referencedPathCount": 31
+    }
+  ],
+  "evidenceSources": [
+    {
+      "source": "live database references",
+      "finding": "Protection only; old attachment paths were client-supplied"
+    },
+    {
+      "source": "application request logs",
+      "finding": "No issued-path, source-generation or copy mapping was recorded"
+    },
+    {
+      "source": "catalog backup archives",
+      "finding": "Products/settings only; no orders or PDF provenance"
+    },
+    {
+      "source": "storage system metadata",
+      "finding": "Generation, timestamps and size; not feature ownership"
+    },
+    {
+      "source": "custom metadata, MIME, UUID, content hash",
+      "finding": "Not accepted as independent ownership evidence"
+    }
+  ],
+  "summary": {
+    "inventoried": 44,
+    "referenced": 31,
+    "unreferencedButUnverified": 13,
+    "unverifiedBytesRetained": 2373955,
+    "bytesInventoried": 8415564,
+    "confirmedTemporaryPdfs": 0,
+    "deletionEligible": 0,
+    "deleted": 0
+  },
+  "missingReferencedPaths": [],
+  "confirmedCandidatePaths": [],
+  "deletionPerformed": false,
+  "warning": "No independent historical provenance or permission-expiry record was found. All shared uploads are retained. This report cannot authorize deletion.",
+  "objects": [
+    {
+      "objectPath": "/objects/uploads/0a5bcd1e-4ca1-4df3-950e-50801bf3992d",
+      "generation": "1787344353275899",
+      "sizeBytes": 134155,
+      "timeCreated": "2026-08-21T20:32:33.282Z",
+      "updated": "2026-08-21T20:32:33.282Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [
+        "development"
+      ],
+      "status": "retain-referenced",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/13207f25-ea79-45ad-87f8-ec3c4fb32bdd",
+      "generation": "1789837729899657",
+      "sizeBytes": 203064,
+      "timeCreated": "2026-09-19T17:08:49.905Z",
+      "updated": "2026-09-19T17:08:49.905Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [
+        "development"
+      ],
+      "status": "retain-referenced",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/1526a788-1308-4cd0-a1f3-4f14194dc948",
+      "generation": "1789724386955189",
+      "sizeBytes": 186728,
+      "timeCreated": "2026-09-18T09:39:46.960Z",
+      "updated": "2026-09-18T09:39:46.960Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [
+        "development"
+      ],
+      "status": "retain-referenced",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/16b4ca56-b356-486b-8296-666e8ec958d4",
+      "generation": "1788967703092133",
+      "sizeBytes": 218564,
+      "timeCreated": "2026-09-09T15:28:23.100Z",
+      "updated": "2026-09-09T15:28:23.100Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [
+        "development"
+      ],
+      "status": "retain-referenced",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/1767765c-13c7-43d5-9d3f-d6adbbfc336d",
+      "generation": "1789839877960115",
+      "sizeBytes": 204375,
+      "timeCreated": "2026-09-19T17:44:37.965Z",
+      "updated": "2026-09-19T17:44:37.965Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [
+        "development"
+      ],
+      "status": "retain-referenced",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/1fb49326-0229-4939-8bcd-04c299cf71bb",
+      "generation": "1790095974200784",
+      "sizeBytes": 230332,
+      "timeCreated": "2026-09-22T16:52:54.208Z",
+      "updated": "2026-09-22T16:52:54.208Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [],
+      "status": "retain-provenance-unverified",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/2dec2e0e-b384-4845-9653-bfb806124776",
+      "generation": "1789812735093421",
+      "sizeBytes": 226664,
+      "timeCreated": "2026-09-19T10:12:15.102Z",
+      "updated": "2026-09-19T10:12:15.102Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [
+        "development"
+      ],
+      "status": "retain-referenced",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/30868c18-540b-46ab-871e-2d4415e9989b",
+      "generation": "1789836533432823",
+      "sizeBytes": 179126,
+      "timeCreated": "2026-09-19T16:48:53.460Z",
+      "updated": "2026-09-19T16:48:53.460Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [
+        "development"
+      ],
+      "status": "retain-referenced",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/38c3d820-ba7e-4da3-89f9-d9bde24e9d24",
+      "generation": "1789849486794023",
+      "sizeBytes": 179437,
+      "timeCreated": "2026-09-19T20:24:46.799Z",
+      "updated": "2026-09-19T20:24:46.799Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [
+        "development"
+      ],
+      "status": "retain-referenced",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/3dff7976-ddb1-4784-988b-655472b34372",
+      "generation": "1790068819274921",
+      "sizeBytes": 223151,
+      "timeCreated": "2026-09-22T09:20:19.281Z",
+      "updated": "2026-09-22T09:20:19.281Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [],
+      "status": "retain-provenance-unverified",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/4005b267-6335-4f8f-b1f6-1f80ecfc4684",
+      "generation": "1789814177967594",
+      "sizeBytes": 188051,
+      "timeCreated": "2026-09-19T10:36:17.973Z",
+      "updated": "2026-09-19T10:36:17.973Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [
+        "development"
+      ],
+      "status": "retain-referenced",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/481903f5-694b-4933-8282-8e56a11f8140",
+      "generation": "1789818127674090",
+      "sizeBytes": 135981,
+      "timeCreated": "2026-09-19T11:42:07.683Z",
+      "updated": "2026-09-19T11:42:07.683Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [
+        "development"
+      ],
+      "status": "retain-referenced",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/49c7baae-0b6b-41d3-bea9-e3606cb8f01f",
+      "generation": "1788734140014961",
+      "sizeBytes": 202361,
+      "timeCreated": "2026-09-06T22:35:40.022Z",
+      "updated": "2026-09-06T22:35:40.022Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [
+        "development"
+      ],
+      "status": "retain-referenced",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/4a01e8b1-1bfd-4e56-8b46-e73575963b7f",
+      "generation": "1789835444243559",
+      "sizeBytes": 209405,
+      "timeCreated": "2026-09-19T16:30:44.250Z",
+      "updated": "2026-09-19T16:30:44.250Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [],
+      "status": "retain-provenance-unverified",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/5692e36c-58d8-447b-926a-cacbbd29f946",
+      "generation": "1790096844490650",
+      "sizeBytes": 189080,
+      "timeCreated": "2026-09-22T17:07:24.498Z",
+      "updated": "2026-09-22T17:07:24.498Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [],
+      "status": "retain-provenance-unverified",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/57008a1a-d396-4891-969c-de40827a4266",
+      "generation": "1789895594201608",
+      "sizeBytes": 230893,
+      "timeCreated": "2026-09-20T09:13:14.209Z",
+      "updated": "2026-09-20T09:13:14.209Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [
+        "development"
+      ],
+      "status": "retain-referenced",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/59632ea9-2907-4654-84f1-ae48328aeb06",
+      "generation": "1789610838916913",
+      "sizeBytes": 170625,
+      "timeCreated": "2026-09-17T02:07:18.927Z",
+      "updated": "2026-09-17T02:07:18.927Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [],
+      "status": "retain-provenance-unverified",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/5d69857a-179b-4b8d-b34c-c8176e275a67",
+      "generation": "1788732051511836",
+      "sizeBytes": 139641,
+      "timeCreated": "2026-09-06T22:00:51.519Z",
+      "updated": "2026-09-06T22:00:51.519Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [
+        "development"
+      ],
+      "status": "retain-referenced",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/5f9b3372-61cb-453c-bd44-47013cd213f9",
+      "generation": "1789813783323789",
+      "sizeBytes": 187929,
+      "timeCreated": "2026-09-19T10:29:43.337Z",
+      "updated": "2026-09-19T10:29:43.337Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [
+        "development"
+      ],
+      "status": "retain-referenced",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/616e4c25-bd95-473a-a112-16ec24fc1ad1",
+      "generation": "1789804847557268",
+      "sizeBytes": 242617,
+      "timeCreated": "2026-09-19T08:00:47.595Z",
+      "updated": "2026-09-19T08:00:47.595Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [],
+      "status": "retain-provenance-unverified",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/61e56b7e-74f3-4432-9313-5e4eeba7d394",
+      "generation": "1790068883942397",
+      "sizeBytes": 221907,
+      "timeCreated": "2026-09-22T09:21:23.947Z",
+      "updated": "2026-09-22T09:21:23.947Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [],
+      "status": "retain-provenance-unverified",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/6502ccb4-25ec-48d4-ac18-d709572412f1",
+      "generation": "1789722741425647",
+      "sizeBytes": 147580,
+      "timeCreated": "2026-09-18T09:12:21.464Z",
+      "updated": "2026-09-18T09:12:21.464Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [
+        "development"
+      ],
+      "status": "retain-referenced",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/6f670645-419e-464f-9022-c158586a7267",
+      "generation": "1790839135097647",
+      "sizeBytes": 150211,
+      "timeCreated": "2026-10-01T07:18:55.101Z",
+      "updated": "2026-10-01T07:18:55.101Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [],
+      "status": "retain-provenance-unverified",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": false,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/763e87b4-b422-4665-9f66-2c3ccc14db05",
+      "generation": "1790839108992466",
+      "sizeBytes": 150147,
+      "timeCreated": "2026-10-01T07:18:29.002Z",
+      "updated": "2026-10-01T07:18:29.002Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [],
+      "status": "retain-provenance-unverified",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": false,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/7ec961df-1d5c-4832-826b-c78bc1974824",
+      "generation": "1788968989299410",
+      "sizeBytes": 252677,
+      "timeCreated": "2026-09-09T15:49:49.307Z",
+      "updated": "2026-09-09T15:49:49.307Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [
+        "development"
+      ],
+      "status": "retain-referenced",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/873e2b83-e1eb-4765-99f3-eede565e3a72",
+      "generation": "1789837617055348",
+      "sizeBytes": 201161,
+      "timeCreated": "2026-09-19T17:06:57.070Z",
+      "updated": "2026-09-19T17:06:57.070Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [
+        "development"
+      ],
+      "status": "retain-referenced",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/8959a9ad-f124-4b99-b1f1-3b33f1f55a07",
+      "generation": "1789835435608438",
+      "sizeBytes": 200792,
+      "timeCreated": "2026-09-19T16:30:35.615Z",
+      "updated": "2026-09-19T16:30:35.615Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [],
+      "status": "retain-provenance-unverified",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/91160310-6dd2-4920-b9ff-51e1559aca36",
+      "generation": "1789807657747383",
+      "sizeBytes": 209017,
+      "timeCreated": "2026-09-19T08:47:37.757Z",
+      "updated": "2026-09-19T08:47:37.757Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [
+        "development"
+      ],
+      "status": "retain-referenced",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/a4f45415-085b-4e2b-af0d-21badbba5bbb",
+      "generation": "1788967550987525",
+      "sizeBytes": 205169,
+      "timeCreated": "2026-09-09T15:25:50.994Z",
+      "updated": "2026-09-09T15:25:50.994Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [
+        "development"
+      ],
+      "status": "retain-referenced",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/b19d14a6-6d2f-493f-9b3d-074362b0f1ec",
+      "generation": "1788967749124528",
+      "sizeBytes": 229521,
+      "timeCreated": "2026-09-09T15:29:09.129Z",
+      "updated": "2026-09-09T15:29:09.129Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [
+        "development"
+      ],
+      "status": "retain-referenced",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/c131ee5c-ea55-43fe-9f74-8f364ce1469f",
+      "generation": "1788960659778110",
+      "sizeBytes": 192758,
+      "timeCreated": "2026-09-09T13:30:59.785Z",
+      "updated": "2026-09-09T13:30:59.785Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [],
+      "status": "retain-provenance-unverified",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/c43131b5-0763-4147-9533-26fd915bbf82",
+      "generation": "1789839106369595",
+      "sizeBytes": 201780,
+      "timeCreated": "2026-09-19T17:31:46.376Z",
+      "updated": "2026-09-19T17:31:46.376Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [
+        "development"
+      ],
+      "status": "retain-referenced",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/c71bb027-c3aa-421f-b640-03a4fd8ec4f3",
+      "generation": "1789837631304711",
+      "sizeBytes": 201248,
+      "timeCreated": "2026-09-19T17:07:11.309Z",
+      "updated": "2026-09-19T17:07:11.309Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [
+        "development"
+      ],
+      "status": "retain-referenced",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/d2cc916f-36ca-427b-bd89-6ef2cc9b2cf0",
+      "generation": "1788964533486911",
+      "sizeBytes": 190946,
+      "timeCreated": "2026-09-09T14:35:33.493Z",
+      "updated": "2026-09-09T14:35:33.493Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [
+        "development"
+      ],
+      "status": "retain-referenced",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/d459a4eb-ce1f-4bf1-831e-4831c45db28a",
+      "generation": "1788966255467669",
+      "sizeBytes": 210959,
+      "timeCreated": "2026-09-09T15:04:15.475Z",
+      "updated": "2026-09-09T15:04:15.475Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [
+        "development"
+      ],
+      "status": "retain-referenced",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/d5395597-ff90-48dc-9f11-528f52626560",
+      "generation": "1789724386837084",
+      "sizeBytes": 187157,
+      "timeCreated": "2026-09-18T09:39:46.843Z",
+      "updated": "2026-09-18T09:39:46.843Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [
+        "development"
+      ],
+      "status": "retain-referenced",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/dc0b8857-08ce-4e9f-806f-2721ea8e4ed7",
+      "generation": "1789849791285509",
+      "sizeBytes": 227089,
+      "timeCreated": "2026-09-19T20:29:51.292Z",
+      "updated": "2026-09-19T20:29:51.292Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [
+        "development"
+      ],
+      "status": "retain-referenced",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/e7a02f62-eb7e-4f6d-941d-c3f87c3fda8d",
+      "generation": "1790084877381738",
+      "sizeBytes": 192921,
+      "timeCreated": "2026-09-22T13:47:57.390Z",
+      "updated": "2026-09-22T13:47:57.390Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [],
+      "status": "retain-provenance-unverified",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/f1dfbd2c-b23f-4316-9732-d3da5cd71ee7",
+      "generation": "1789894682872669",
+      "sizeBytes": 266473,
+      "timeCreated": "2026-09-20T08:58:02.898Z",
+      "updated": "2026-09-20T08:58:02.898Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [
+        "development"
+      ],
+      "status": "retain-referenced",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/f673f8b6-0d11-4e41-8141-03d9a3653e98",
+      "generation": "1790839120579341",
+      "sizeBytes": 9,
+      "timeCreated": "2026-10-01T07:18:40.635Z",
+      "updated": "2026-10-01T07:18:40.635Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [],
+      "status": "retain-provenance-unverified",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": false,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/f7e4eee8-0599-4b8e-a7a4-04471248c795",
+      "generation": "1788967394644164",
+      "sizeBytes": 205271,
+      "timeCreated": "2026-09-09T15:23:14.655Z",
+      "updated": "2026-09-09T15:23:14.655Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [
+        "development"
+      ],
+      "status": "retain-referenced",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/f9f1b57e-b1bc-4662-9ef5-63bd0f0f53a8",
+      "generation": "1787345174697650",
+      "sizeBytes": 141132,
+      "timeCreated": "2026-08-21T20:46:14.702Z",
+      "updated": "2026-08-21T20:46:14.702Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [
+        "development"
+      ],
+      "status": "retain-referenced",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/fa96b69a-c9a5-4afb-ba58-5973c0e11733",
+      "generation": "1788731282986404",
+      "sizeBytes": 146721,
+      "timeCreated": "2026-09-06T21:48:02.993Z",
+      "updated": "2026-09-06T21:48:02.993Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [
+        "development"
+      ],
+      "status": "retain-referenced",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    },
+    {
+      "objectPath": "/objects/uploads/fcf41c51-40c3-4582-9068-8383b123e40b",
+      "generation": "1788968653196212",
+      "sizeBytes": 200739,
+      "timeCreated": "2026-09-09T15:44:13.203Z",
+      "updated": "2026-09-09T15:44:13.203Z",
+      "contentType": "application/pdf",
+      "hasCustomMetadata": false,
+      "referencedIn": [
+        "development"
+      ],
+      "status": "retain-referenced",
+      "metadataComplete": true,
+      "olderThanRetentionWindow": true,
+      "ownership": "unverified",
+      "permissionExpiry": "unverified",
+      "deletionEligible": false
+    }
+  ]
+}

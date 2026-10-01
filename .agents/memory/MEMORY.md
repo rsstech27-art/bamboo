@@ -1,5 +1,6 @@
 - [Switch-sync per-surface state](switch-sync-surfaces.md) — canvas editor uses globals-as-active-surface model; all reset paths must also reset activeSurface + stored configs, and draw must clamp the active index.
 - [Wall-niche vProfile axis](wall-niche-vprofile.md) — profile must draw at previous quad's right edge (pts[(qi-1)*4+1]→pts[(qi-1)*4+2]), not at the side wall's own left/right edge.
 - [Workspace package callback limitation](workspace-package-callback.md) — package installation callback cannot perform an empty workspace reinstall and rejects root additions without a workspace flag.
+- [Production SELECT result validation](production-select-results.md) — verify the expected dataset, not just executeSql.success; transaction-wrapper output is not an empty reference scan.
 - [Signed-upload immutability](signed-upload-immutability.md) — attaching a signed-PUT upload must preserve the validated bytes, not a path the client can still overwrite.
 - [Catalog-aware code generation](catalog-codegen.md) — Orval's Zod version inference is unreliable with catalog dependencies; match the actual installed major explicitly.
