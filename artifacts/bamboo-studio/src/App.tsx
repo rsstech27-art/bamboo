@@ -10,8 +10,10 @@ import {
   DEFAULT_EXTRAS,
 } from './hooks/useManagerPrices';
 import { ManagerPanel } from './components/ManagerPanel';
+import { getAvailableZones, isReleaseZone, resolveAvailableZone, type ZoneId } from './lib/zones';
 
 const BASE = import.meta.env.BASE_URL;
+const AVAILABLE_ZONES = getAvailableZones(import.meta.env.DEV);
 
 const PANEL_SERIES = [
   {
@@ -555,7 +557,13 @@ const CornerTypeCheckboxes = ({ nJunctions, cornerTypes, setCornerTypes, wrapJun
 const BambooStudio = () => {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [step, setStep] = useState<'zone' | 'upload' | 'mark' | 'edit'>('zone');
-  const [wallZone, setWallZone] = useState<string | null>(null);
+  const [wallZone, setSelectedWallZone] = useState<ZoneId | null>(null);
+  // All zone transitions use the same build-time policy, not browser settings.
+  const setWallZone = (id: string | null) => {
+    const availableZone = resolveAvailableZone(id, import.meta.env.DEV);
+    setSelectedWallZone(availableZone);
+    if (id !== null && availableZone === null) setStep('zone');
+  };
   const [windowType, setWindowType] = useState<'standard' | 'panoramic' | null>(null);
   // Standard window: dimensions (mm) + corner joining preference (профиль / загиб)
   const [winSlopeDepthMm, setWinSlopeDepthMm] = useState(0);
@@ -4435,17 +4443,15 @@ const BambooStudio = () => {
                 <p className="text-sm font-normal text-gray-400" style={{fontFamily:'Manrope, sans-serif'}}>Какой участок стены вы хотите оформить?</p>
               </div>
               <div className="grid grid-cols-3 gap-3 w-full max-w-3xl px-2">
-                {([
-                  { id: 'wall',       label: 'Стена',            img: `${BASE}zones/wall.jpg` },
-                  { id: 'wall-niche', label: 'Стена с выступом', img: `${BASE}zones/wall-niche.jpg` },
-                  { id: 'window',     label: 'Оконный проём',    img: `${BASE}zones/window.jpg` },
-                  { id: 'door',       label: 'Дверной проём',    img: `${BASE}zones/door.jpg` },
-                  { id: 'tv',         label: 'ТВ-зона',          img: `${BASE}zones/tv.jpg` },
-                  { id: 'column',     label: 'Колонна',           img: `${BASE}zones/column.jpg` },
-                ] as const).map(zone => (
+                {AVAILABLE_ZONES.map(zone => (
                   <button
                     key={zone.id}
                     onClick={() => {
+                      if (resolveAvailableZone(zone.id, import.meta.env.DEV) === null) {
+                        setWallZone(null);
+                        setStep('zone');
+                        return;
+                      }
                       setWallZone(zone.id);
                       if (zone.id === 'column') setCornerTypes(['external', 'external']);
                       // Window / TV / Door: an extra screen to pick the type first
@@ -4455,7 +4461,7 @@ const BambooStudio = () => {
                   >
                     <div className="w-full h-36 bg-gray-200 overflow-hidden relative">
                       <img
-                        src={zone.img}
+                        src={`${BASE}${zone.image}`}
                         alt={zone.label}
                         className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                         onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
@@ -4463,6 +4469,9 @@ const BambooStudio = () => {
                     </div>
                     <div className="px-3 py-2">
                       <span className="text-xs font-black uppercase tracking-wide text-gray-800 group-hover:text-black leading-tight">{zone.label}</span>
+                      {!isReleaseZone(zone.id) && (
+                        <span className="block mt-1 text-[10px] font-medium text-amber-700">В разработке</span>
+                      )}
                     </div>
                   </button>
                 ))}
@@ -5410,7 +5419,7 @@ const BambooStudio = () => {
             <div className="bg-white rounded-2xl p-4 shadow-sm">
               <div className="flex items-center gap-1.5 mb-2.5">
                 <Columns size={12} className="text-gray-400"/>
-                <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">{wallZone === 'tv' ? (tvType === 'surface' ? 'ТВ-короб — лицевая плоскость' : `ТВ-зона — ${TV_ZONE_LABELS[activeSurface]}`) : wallZone === 'door' ? 'Размеры стены с дверью' : `Размеры стены ${activeSurface + 1}`}</span>
+                <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">{wallZone === 'door' ? 'Размеры стены с дверью' : `Размеры стены ${activeSurface + 1}`}</span>
               </div>
               <div className="grid grid-cols-2 gap-2 mb-2">
                 <label className="block">
