@@ -12,6 +12,7 @@
     "test:pdf-integration": "vitest run --config vitest.pdf-integration.config.ts"
   },
   "dependencies": {
+    "@workspace/profile-system": "workspace:*",
     "@google-cloud/storage": "^8.2.0",
     "@types/archiver": "^8.0.0",
     "@types/connect-pg-simple": "^7.0.3",

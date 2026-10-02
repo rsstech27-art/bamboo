@@ -12,3 +12,8 @@ The wall-panel editor stores per-surface configs in a ref array while global sta
 - The draw loop must clamp the active index to the number of existing quads (`Math.min(idx, nQuads - 1)`).
 - Undo history must be tagged with the surface index it was captured on; applying a snapshot from surface A to surface B silently corrupts state.
 - Interactive hit-testing helpers (dividers, molding handles, ratio projections) must operate on the active quad only.
+- Adopted seam suppression and virtual companion geometry are physical project state, not just handle UI state: include them in per-surface storage and undo/redo.
+
+**Why:** moving a seam without carrying its original-position suppression into physical accounting leaves both old and new installations billed; dropping companions removes real installations.
+
+**How to apply:** audit the live-state adapter, surface-switch snapshots, persist effects, history and reset paths together whenever seam interaction changes.

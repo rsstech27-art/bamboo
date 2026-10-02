@@ -7,6 +7,7 @@
   },
   "include": ["src"],
   "references": [
+    { "path": "../../lib/profile-system" },
     {
       "path": "../../lib/db"
     },

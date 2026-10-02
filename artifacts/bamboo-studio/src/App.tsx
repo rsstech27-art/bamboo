@@ -1,4 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { collectInstalledRuns, profileQuote, variantStyle, styleVariant, PURPOSE_NAMES, packInstalledRuns,
+  type Thickness, type Decoration, type InstalledRun, type EdgeSides } from '@workspace/profile-system';
+import { useUnifiedProfiles } from './hooks/useUnifiedProfiles';
+import ProjectProfilesPanel from './components/ProjectProfilesPanel';
+import { appendProfileCutPages } from './lib/profilePdf';
+import { profileStockCount, automaticRowSeams } from '@workspace/profile-system';
 import type { OrderCreated, OrderPdfUpload } from '@workspace/api-client-react';
 import { Upload, Layout, Eraser, RotateCcw, Download, Check, Columns, Undo2, Redo2, Sun, Moon, FileText } from 'lucide-react';
 import { PANEL_H_MM, PANEL_W_MM, PANEL_AREA_M2, optimizedPanelCalc, packWidthRemainders, packProfileRuns, columnHiddenJoints, packWindowPieces, windowStdPieces, panelsWord, rowsWord } from './lib/panelCalc';
@@ -230,23 +236,7 @@ const computeAutoSeamPositions = (
   singleRowH: number,
   jpp: string[],
 ): number[] => {
-  if (wallHeightMm <= singleRowH || wallHeightMm <= 0 || singleRowH <= 0) return [];
-  const rowCount = Math.ceil(wallHeightMm / singleRowH);
-  const cutH = wallHeightMm - (rowCount - 1) * singleRowH;
-  const hasTop    = jpp.includes('top');
-  const hasBottom = jpp.includes('bottom');
-  const positions: number[] = [];
-  if (hasTop && hasBottom) {
-    const halfCut = cutH / 2;
-    positions.push(halfCut / wallHeightMm, (wallHeightMm - halfCut) / wallHeightMm);
-  } else {
-    if (hasTop)    positions.push(cutH / wallHeightMm);
-    if (hasBottom) positions.push(((rowCount - 1) * singleRowH) / wallHeightMm);
-  }
-  for (let ri = 1; ri <= rowCount - 2; ri++) {
-    positions.push((ri * singleRowH) / wallHeightMm);
-  }
-  return positions.filter(r => r > 0 && r < 1);
+  return automaticRowSeams(wallHeightMm, singleRowH, jpp);
 };
 
 // ─── Dynamic catalog helpers ─────────────────────────────────────────────────
@@ -400,6 +390,11 @@ type SurfaceConfig = {
   hMoldingStyleOverrides?: Record<number, MoldingStyle>; // per-hMolding style override
   vProfileStyle?: MoldingStyle;  // vertical decorative profile at outer edge (wall-niche surfaces 1+)
   vProfileWidth?: number;        // thickness of the vertical profile
+  edgeProfileSides?: EdgeSides;
+  edgeProfileColor?: 'black' | 'metallic' | 'bronze' | 'gold';
+  adoptedSeamOriginals?: number[];
+  adoptedSeamCurrent?: number[];
+  hMoldingCompanions?: Record<string,number>;
 };
 const defaultSurfaceConfig = (): SurfaceConfig => ({
   panelCount: 5,
@@ -417,8 +412,10 @@ const defaultSurfaceConfig = (): SurfaceConfig => ({
   jointProfilePosition: ['bottom'],
   dividerStyleOverrides: {},
   hMoldingStyleOverrides: {},
-  vProfileStyle: 'black',
+  vProfileStyle: 'none',
   vProfileWidth: 2,
+  edgeProfileSides: { top: false, bottom: false, left: false, right: false },
+  edgeProfileColor: 'black',
 });
 
 const SURFACE_LABELS = ['Стена 1 · Основная', 'Стена 2', 'Стена 3'];
@@ -582,6 +579,7 @@ const BambooStudio = () => {
   const [tvCutoutDepthMm, setTvCutoutDepthMm] = useState(0);
   const [tvCutoutJoint, setTvCutoutJoint] = useState<'bend' | 'profile'>('profile');
   const [tvCutoutJointColor, setTvCutoutJointColor] = useState<'black' | 'gold' | 'metallic' | 'bronze'>('black');
+  const [profilePreviewRuns, setProfilePreviewRuns] = useState<InstalledRun[]>([]);
   const [tvCutoutInputMode, setTvCutoutInputMode] = useState<'size' | 'inches'>('size');
   const [tvCutoutPresetInches, setTvCutoutPresetInches] = useState<50 | 55 | 65 | null>(null);
   const [tvBoxDepthMm, setTvBoxDepthMm] = useState(0);
@@ -664,7 +662,7 @@ const BambooStudio = () => {
   const [hMoldingCount, setHMoldingCount] = useState(0);
   const [hMoldingWidth, setHMoldingWidth] = useState(1);
   const [hMoldingPositions, setHMoldingPositions] = useState<number[]>([]);
-  const [vProfileStyle, setVProfileStyle] = useState<MoldingStyle>('black');
+  const [vProfileStyle, setVProfileStyle] = useState<MoldingStyle>('none');
   const [vProfileWidth, setVProfileWidth] = useState(2);
   const [openSeries, setOpenSeries] = useState<Set<string>>(() => new Set(['metall-25']));
   const [footerCatalogOpen, setFooterCatalogOpen] = useState(false);
@@ -733,7 +731,7 @@ const BambooStudio = () => {
   const hMoldingCountRef = useRef(1);
   const hMoldingWidthRef = useRef(1);
   const hMoldingPositionsRef = useRef<number[]>([]);
-  const vProfileStyleRef = useRef<MoldingStyle>('black');
+  const vProfileStyleRef = useRef<MoldingStyle>('none');
   const vProfileWidthRef = useRef(2);
   const draggingHMoldingIndexRef = useRef<number | null>(null);
   // Original positions of auto-seams that have been adopted into hMoldingPositions.
@@ -768,6 +766,32 @@ const BambooStudio = () => {
   const [dbPhotoMap, setDbPhotoMap] = useState<Record<string, string>>({});
   // Dynamic catalog built from /api/products — drives the right-panel material selector
   const [catalogSeries, setCatalogSeries] = useState<PanelSeries[]>(PANEL_SERIES as PanelSeries[]);
+  const unifiedProfiles = useUnifiedProfiles();
+  const unifiedProfilesRef = useRef(unifiedProfiles);
+  unifiedProfilesRef.current = unifiedProfiles;
+  const [projectThickness, setProjectThickness] = useState<Thickness | null>(null);
+  const projectThicknessRef = useRef<Thickness | null>(null);
+  projectThicknessRef.current = projectThickness;
+  const [decorations, setDecorations] = useState<Decoration[]>([]);
+  const decorationsRef = useRef<Decoration[]>([]);
+  decorationsRef.current = decorations;
+  const [decorMode, setDecorMode] = useState(false);
+  const [decorStyle, setDecorStyle] = useState('black');
+  const [decorStart, setDecorStart] = useState<{x:number;y:number} | null>(null);
+  const [profileDrawError, setProfileDrawError] = useState<string | null>(null);
+  const columnPhysicalRef = useRef({perimeterMm:0,heightMm:0});
+  columnPhysicalRef.current = {perimeterMm:columnPerimeterMm(columnShape,columnSides),heightMm:columnHeightMm};
+  const boxJointRef = useRef('none');
+  boxJointRef.current = (tvType === 'surface' ? tvSurfaceJoint : tvBoxJoint) === 'profile'
+    ? (tvType === 'surface' ? tvSurfaceJointColor : tvBoxJointColor) : 'none';
+  useEffect(() => {
+    setDecorations([]); setDecorMode(false); setDecorStart(null); setProjectThickness(null);
+    adoptedSeamOriginalsRef.current.clear();
+    adoptedSeamCurrentRef.current.clear();
+    hMoldingCompanionMapRef.current.clear();
+    setEdgeProfileSides({top:false,bottom:false,left:false,right:false});
+    setEdgeProfileColor('black'); setProfileDrawError(null);
+  }, [image]);
   // Flat panel list derived from catalogSeries, kept in a ref so callbacks don't need a dep
   const catalogPanelsRef = useRef<Panel[]>(BAMBOO_PANELS);
 
@@ -794,6 +818,10 @@ const BambooStudio = () => {
     hMoldingStyleOverrides: Record<number, MoldingStyle>;
     vProfileStyle: MoldingStyle;
     vProfileWidth: number;
+    decorations?: Decoration[];
+    adoptedSeamOriginals?: number[];
+    adoptedSeamCurrent?: number[];
+    hMoldingCompanions?: Record<string,number>;
   };
   const historyRef = useRef<HistorySnapshot[]>([]);
   const redoRef   = useRef<HistorySnapshot[]>([]);
@@ -806,6 +834,7 @@ const BambooStudio = () => {
     redoRef.current = [];
     setRedoLen(0);
     historyRef.current.push({
+      decorations: structuredClone(decorationsRef.current),
       surfaceIndex: activeSurfaceRef.current,
       sectorMaterials: { ...sectorMaterialsRef.current },
       dividerPositions: [...dividerPositionsRef.current],
@@ -820,6 +849,9 @@ const BambooStudio = () => {
       hMoldingCount: hMoldingCountRef.current,
       hMoldingWidth: hMoldingWidthRef.current,
       hMoldingPositions: [...hMoldingPositionsRef.current],
+      adoptedSeamOriginals: [...adoptedSeamOriginalsRef.current],
+      adoptedSeamCurrent: [...adoptedSeamCurrentRef.current],
+      hMoldingCompanions: Object.fromEntries(hMoldingCompanionMapRef.current),
       panelOrientation: panelOrientationRef.current,
       edgeProfileSides: { ...edgeProfileSidesRef.current },
       edgeProfileColor: edgeProfileColorRef.current,
@@ -835,6 +867,7 @@ const BambooStudio = () => {
 
   // Capture current live state as a snapshot (used by both undo and redo)
   const captureSnapshot = useCallback((): HistorySnapshot => ({
+    decorations: structuredClone(decorationsRef.current),
     surfaceIndex: activeSurfaceRef.current,
     sectorMaterials: { ...sectorMaterialsRef.current },
     dividerPositions: [...dividerPositionsRef.current],
@@ -849,6 +882,9 @@ const BambooStudio = () => {
     hMoldingCount: hMoldingCountRef.current,
     hMoldingWidth: hMoldingWidthRef.current,
     hMoldingPositions: [...hMoldingPositionsRef.current],
+    adoptedSeamOriginals: [...adoptedSeamOriginalsRef.current],
+    adoptedSeamCurrent: [...adoptedSeamCurrentRef.current],
+    hMoldingCompanions: Object.fromEntries(hMoldingCompanionMapRef.current),
     panelOrientation: panelOrientationRef.current,
     edgeProfileSides: { ...edgeProfileSidesRef.current },
     edgeProfileColor: edgeProfileColorRef.current,
@@ -865,7 +901,11 @@ const BambooStudio = () => {
     setWrapJunctions(prev.wrapJunctions);
     setEdgeProfileSides(prev.edgeProfileSides);
     setEdgeProfileColor(prev.edgeProfileColor ?? 'black');
+    if (prev.decorations) setDecorations(prev.decorations);
     if (prev.surfaceIndex === activeSurfaceRef.current) {
+      adoptedSeamOriginalsRef.current=new Set(prev.adoptedSeamOriginals??[]);
+      adoptedSeamCurrentRef.current=new Set(prev.adoptedSeamCurrent??[]);
+      hMoldingCompanionMapRef.current=new Map(Object.entries(prev.hMoldingCompanions??{}));
       setSectorMaterials(prev.sectorMaterials);
       setDividerPositions(prev.dividerPositions);
       setPanelCount(prev.panelCount);
@@ -881,7 +921,7 @@ const BambooStudio = () => {
       setJointProfilePosition(prev.jointProfilePosition ?? ['bottom']);
       setDividerStyleOverrides(prev.dividerStyleOverrides ?? {});
       setHMoldingStyleOverrides(prev.hMoldingStyleOverrides ?? {});
-      setVProfileStyle(prev.vProfileStyle ?? 'black');
+      setVProfileStyle(prev.vProfileStyle ?? 'none');
       setVProfileWidth(prev.vProfileWidth ?? 2);
     } else {
       const cfg = surfacesRef.current[prev.surfaceIndex] ?? defaultSurfaceConfig();
@@ -898,6 +938,9 @@ const BambooStudio = () => {
         hMoldingCount: prev.hMoldingCount,
         hMoldingWidth: prev.hMoldingWidth,
         hMoldingPositions: prev.hMoldingPositions,
+        adoptedSeamOriginals: prev.adoptedSeamOriginals??[],
+        adoptedSeamCurrent: prev.adoptedSeamCurrent??[],
+        hMoldingCompanions: prev.hMoldingCompanions??{},
         panelOrientation: prev.panelOrientation,
         jointProfilePosition: prev.jointProfilePosition ?? ['bottom'],
         dividerStyleOverrides: prev.dividerStyleOverrides ?? {},
@@ -971,6 +1014,9 @@ const BambooStudio = () => {
       panelCount, dividerPositions, sectorMaterials,
       moldingStyle, moldingWidth,
       hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions,
+      adoptedSeamOriginals: [...adoptedSeamOriginalsRef.current],
+      adoptedSeamCurrent: [...adoptedSeamCurrentRef.current],
+      hMoldingCompanions: Object.fromEntries(hMoldingCompanionMapRef.current),
       wallWidthMm, wallHeightMm,
       panelOrientation,
       jointProfilePosition,
@@ -978,8 +1024,10 @@ const BambooStudio = () => {
       hMoldingStyleOverrides,
       vProfileStyle,
       vProfileWidth,
+      edgeProfileSides,
+      edgeProfileColor,
     };
-  }, [activeSurface, panelCount, dividerPositions, sectorMaterials, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, wallWidthMm, wallHeightMm, panelOrientation, jointProfilePosition, dividerStyleOverrides, hMoldingStyleOverrides, vProfileStyle, vProfileWidth]);
+  }, [activeSurface, panelCount, dividerPositions, sectorMaterials, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, wallWidthMm, wallHeightMm, panelOrientation, jointProfilePosition, dividerStyleOverrides, hMoldingStyleOverrides, vProfileStyle, vProfileWidth, edgeProfileSides, edgeProfileColor]);
   useEffect(() => { jointProfilePositionRef.current = jointProfilePosition; }, [jointProfilePosition]);
   useEffect(() => { dividerStyleOverridesRef.current = dividerStyleOverrides; }, [dividerStyleOverrides]);
   useEffect(() => { selectedDividerIdxRef.current = selectedDividerIdx; }, [selectedDividerIdx]);
@@ -1019,6 +1067,9 @@ const BambooStudio = () => {
       hMoldingCount: hMoldingCountRef.current,
       hMoldingWidth: hMoldingWidthRef.current,
       hMoldingPositions: [...hMoldingPositionsRef.current],
+      adoptedSeamOriginals: [...adoptedSeamOriginalsRef.current],
+      adoptedSeamCurrent: [...adoptedSeamCurrentRef.current],
+      hMoldingCompanions: Object.fromEntries(hMoldingCompanionMapRef.current),
       wallWidthMm: wallWidthMmRef.current,
       wallHeightMm: wallHeightMmRef.current,
       panelOrientation: panelOrientationRef.current,
@@ -1027,6 +1078,8 @@ const BambooStudio = () => {
       hMoldingStyleOverrides: { ...hMoldingStyleOverridesRef.current },
       vProfileStyle: vProfileStyleRef.current,
       vProfileWidth: vProfileWidthRef.current,
+      edgeProfileSides: { ...edgeProfileSidesRef.current },
+      edgeProfileColor: edgeProfileColorRef.current,
     };
     // For wall-niche: if the target surface was never configured, inherit the
     // current wall's config as a starting point so panels/materials carry over.
@@ -1053,6 +1106,9 @@ const BambooStudio = () => {
         }
       : (surfacesRef.current[idx] ?? defaultSurfaceConfig());
     const cfg = inheritedCfg;
+    adoptedSeamOriginalsRef.current=new Set(cfg.adoptedSeamOriginals??[]);
+    adoptedSeamCurrentRef.current=new Set(cfg.adoptedSeamCurrent??[]);
+    hMoldingCompanionMapRef.current=new Map(Object.entries(cfg.hMoldingCompanions??{}));
     surfacesRef.current[idx] = cfg;
     activeSurfaceRef.current = idx;
     setActiveSurface(idx);
@@ -1067,11 +1123,14 @@ const BambooStudio = () => {
     setHMoldingPositions(cfg.hMoldingPositions);
     setWallWidthMm(cfg.wallWidthMm);
     setWallHeightMm(cfg.wallHeightMm);
+    setEdgeProfileSides(cfg.edgeProfileSides ?? {top:false,bottom:false,left:false,right:false});
+    setEdgeProfileColor(cfg.edgeProfileColor ?? 'black');
+    setDecorStart(null);
     setPanelOrientation(cfg.panelOrientation ?? 'vertical');
     setJointProfilePosition(cfg.jointProfilePosition ?? ['bottom']);
     setDividerStyleOverrides(cfg.dividerStyleOverrides ?? {});
     setHMoldingStyleOverrides(cfg.hMoldingStyleOverrides ?? {});
-    setVProfileStyle(cfg.vProfileStyle ?? 'black');
+    setVProfileStyle(cfg.vProfileStyle ?? 'none');
     setVProfileWidth(cfg.vProfileWidth ?? 2);
     setActiveSector(null);
   }, []);
@@ -1087,6 +1146,68 @@ const BambooStudio = () => {
     return bounds;
   };
 
+  const liveSurfaceConfigs = useCallback((): SurfaceConfig[] => {
+    const n = Math.min(3, Math.floor(pointsRef.current.length / 4));
+    return Array.from({length:n}, (_,q) => q === activeSurfaceRef.current ? {
+      panelCount: panelCountRef.current, dividerPositions: dividerPositionsRef.current,
+      sectorMaterials: sectorMaterialsRef.current, moldingStyle: moldingStyleRef.current,
+      moldingWidth: moldingWidthRef.current, hMoldingStyle: hMoldingStyleRef.current,
+      hMoldingCount: hMoldingCountRef.current, hMoldingWidth: hMoldingWidthRef.current,
+      hMoldingPositions: hMoldingPositionsRef.current, wallWidthMm: wallWidthMmRef.current,
+      adoptedSeamOriginals: [...adoptedSeamOriginalsRef.current],
+      adoptedSeamCurrent: [...adoptedSeamCurrentRef.current],
+      hMoldingCompanions: Object.fromEntries(hMoldingCompanionMapRef.current),
+      wallHeightMm: wallHeightMmRef.current, panelOrientation: panelOrientationRef.current,
+      jointProfilePosition: jointProfilePositionRef.current,
+      dividerStyleOverrides: dividerStyleOverridesRef.current,
+      hMoldingStyleOverrides: hMoldingStyleOverridesRef.current,
+      vProfileStyle: vProfileStyleRef.current, vProfileWidth: vProfileWidthRef.current,
+      edgeProfileSides: edgeProfileSidesRef.current, edgeProfileColor: edgeProfileColorRef.current,
+    } : surfacesRef.current[q] ?? defaultSurfaceConfig());
+  }, []);
+  const getInstalledProfiles = useCallback((strict = false): InstalledRun[] => {
+    const thickness = projectThicknessRef.current;
+    const cfgs = liveSurfaceConfigs();
+    if (!thickness) {
+      if (strict) throw new Error('Выберите единую толщину панелей проекта: 5 или 8 мм.');
+      return [];
+    }
+    const current = unifiedProfilesRef.current;
+    if (strict && (current.loading || current.error)) throw new Error(current.error ?? 'Каталог ещё загружается.');
+    for (const cfg of cfgs) {
+      if (strict && !(cfg.wallWidthMm > 0 && cfg.wallHeightMm > 0))
+        throw new Error('Укажите реальные ширину и высоту каждой поверхности для расчёта профилей.');
+      if (cfg.edgeProfileColor && cfg.edgeProfileColor !== 'black' && Object.values(cfg.edgeProfileSides ?? {}).some(Boolean))
+        throw new Error('В проекте выбран старый цвет торцевого профиля. Подтвердите замену на чёрный.');
+      for (let i=0;i<cfg.panelCount;i++) {
+        const p = cfg.sectorMaterials[i];
+        if (!p) {
+          if (strict) throw new Error('Выберите материал для каждой панели. Незаданные материалы не подставляются автоматически.');
+          continue;
+        }
+        const mapped = current.panelThicknesses[p.article];
+        if (!mapped) throw new Error(`Не подтверждена толщина панели «${p.name}» (${p.article}). Укажите её в кабинете менеджера.`);
+        if (mapped !== thickness) throw new Error(`Панель ${p.article} имеет толщину ${mapped} мм, а проект — ${thickness} мм. Замените несовместимые панели явно.`);
+      }
+    }
+    const normalized = cfgs.map(cfg => ({
+      ...cfg,
+      sectorMaterials: Object.fromEntries(Object.entries(cfg.sectorMaterials).map(([i,p]) => [i, {
+        ...p, noMetallicProfile: p.noMetallicProfile || isWoodFamilyId(p.id),
+      }])),
+    }));
+    const face = cfgs[1];
+    return collectInstalledRuns({
+      thickness, surfaces: normalized, zone: wallZoneRef.current,
+      wraps: wrapJunctionsRef.current.map((wrapped,i)=>wrapped && cornerTypesRef.current[i] === 'external'),
+      decorations: decorationsRef.current,
+      tv: wallZoneRef.current === 'tv' && tvBacklightEnabledRef.current && face
+        ? {surface:1,widthMm:face.wallWidthMm,heightMm:face.wallHeightMm,edges:tvBacklightEdgesRef.current} : undefined,
+      boxJoints: wallZoneRef.current === 'tv' && face ? {surface:1,style:boxJointRef.current} : undefined,
+      hiddenColumn: wallZoneRef.current === 'column' ? columnPhysicalRef.current : undefined,
+      defaultPanel: normalized[0]?.sectorMaterials[0],
+    });
+  }, [liveSurfaceConfigs]);
   const drawFullScene = useCallback(() => {
     const img = imageRef.current;
     const canvas = mainCanvasRef.current;
@@ -1229,10 +1350,12 @@ const BambooStudio = () => {
         return { color: style, modifier: 'normal' };
       };
 
+      let unifiedProfilePass = false;
       const drawMoldLine = (
         x1: number, y1: number, x2: number, y2: number,
         style: Exclude<MoldingStyle, 'none'>, lw: number,
       ) => {
+        if (!unifiedProfilePass) return;
         const ddx = x2 - x1, ddy = y2 - y1, ll = Math.sqrt(ddx * ddx + ddy * ddy);
         if (ll < 1) return;
         const ppx = -ddy / ll, ppy = ddx / ll;
@@ -1822,6 +1945,8 @@ const BambooStudio = () => {
         hMoldingStyleOverrides: hMoldingStyleOverridesRef.current,
         vProfileStyle: vProfileStyleRef.current,
         vProfileWidth: vProfileWidthRef.current,
+        edgeProfileSides: edgeProfileSidesRef.current,
+        edgeProfileColor: edgeProfileColorRef.current,
       };
       const quadCfgs: SurfaceConfig[] = [];
       for (let q = 0; q < nQuads; q++) {
@@ -2020,6 +2145,32 @@ const BambooStudio = () => {
         }
       }
 
+      // The physical installation list is the only source of drawn profiles.
+      unifiedProfilePass = true;
+      try {
+        const installed = getInstalledProfiles();
+        setProfilePreviewRuns(prev=>JSON.stringify(prev)===JSON.stringify(installed)?prev:installed);
+        for (const run of installed) {
+          if (run.hidden || run.surface < 0) continue;
+          const quad = pts.slice(run.surface * 4, run.surface * 4 + 4);
+          if (quad.length !== 4) continue;
+          const project = (p: {x:number;y:number}) => ({
+            x: (1-p.y)*((1-p.x)*quad[0].x+p.x*quad[1].x)+p.y*((1-p.x)*quad[3].x+p.x*quad[2].x),
+            y: (1-p.y)*((1-p.x)*quad[0].y+p.x*quad[1].y)+p.y*((1-p.x)*quad[3].y+p.x*quad[2].y),
+          });
+          const a = project(run.from), b = project(run.to);
+          const style = variantStyle(run.variantId).replace('edge_', '') as Exclude<MoldingStyle,'none'>;
+          const cfg = quadCfgs[run.surface];
+          drawMoldLine(a.x,a.y,b.x,b.y,style,run.purpose === 'edge' ? 2 :
+            run.from.x === run.to.x ? cfg.moldingWidth : cfg.hMoldingWidth);
+        }
+        setProfileDrawError(null);
+      } catch (e) {
+        setProfilePreviewRuns(prev=>prev.length?[]:prev);
+        setProfileDrawError(e instanceof Error ? e.message : 'Ошибка размещения профилей.');
+      }
+      unifiedProfilePass = false;
+
       // Active surface outline (only with multiple surfaces, hidden on export)
       if (nQuads > 1 && !forExportRef.current && !curIsErasing) {
         const aq = pts.slice(curActiveSurf * 4, curActiveSurf * 4 + 4);
@@ -2041,7 +2192,8 @@ const BambooStudio = () => {
       // Surface-mounted: quad 0 is the box face. Built-in: quad 1 (Короб) is the box face.
       // Per-edge: tvBacklightEdgesRef.current[0..3] = [top, right, bottom, left].
       let tvGlowFacePts: Point[] | null = null;
-      if (wallZoneRef.current === 'tv' && tvBacklightEnabledRef.current) {
+      if (wallZoneRef.current === 'tv' && tvBacklightEnabledRef.current && projectThicknessRef.current &&
+          quadCfgs[1]?.wallWidthMm > 0 && quadCfgs[1]?.wallHeightMm > 0) {
         if (pts.length >= 8) tvGlowFacePts = pts.slice(4, 8); // quad 1 = Короб face for both types
       }
       if (tvGlowFacePts) {
@@ -2438,7 +2590,7 @@ const BambooStudio = () => {
   useEffect(() => {
     if (!image) return;
     drawFullScene();
-  }, [points, doorOpeningPoints, doorMarkMode, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, lightMode, cylHighlightPos, activeSurface, cornerTypes, wrapJunctions, wallZone, columnShape, drawFullScene, image, panelOrientation, edgeProfileSides, edgeProfileColor, jointProfilePosition, vProfileStyle, vProfileWidth, tvBacklightEnabled, tvBacklightEdges]);
+  }, [points, doorOpeningPoints, doorMarkMode, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, lightMode, cylHighlightPos, activeSurface, cornerTypes, wrapJunctions, wallZone, columnShape, drawFullScene, image, panelOrientation, edgeProfileSides, edgeProfileColor, jointProfilePosition, vProfileStyle, vProfileWidth, tvBacklightEnabled, tvBacklightEdges, projectThickness, decorations, wallWidthMm, wallHeightMm, columnHeightMm, columnSides, unifiedProfiles.catalog, tvBoxJoint, tvSurfaceJoint, tvSurfaceJointColor, tvBoxJointColor]);
 
   const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = mainCanvasRef.current;
@@ -2460,6 +2612,34 @@ const BambooStudio = () => {
   };
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (decorMode && step === 'edit') {
+      const point = getCanvasCoords(e);
+      const quad = points.slice(activeSurface*4,activeSurface*4+4);
+      if (quad.length !== 4) return;
+      let x=.5,y=.5;
+      // Invert the renderer's bilinear projection, not image-pixel distances.
+      for(let i=0;i<12;i++) {
+        const a=quad[0], b=quad[1], c=quad[2], d=quad[3];
+        const px=(1-y)*((1-x)*a.x+x*b.x)+y*((1-x)*d.x+x*c.x);
+        const py=(1-y)*((1-x)*a.y+x*b.y)+y*((1-x)*d.y+x*c.y);
+        const ux=(1-y)*(b.x-a.x)+y*(c.x-d.x), uy=(1-y)*(b.y-a.y)+y*(c.y-d.y);
+        const vx=(1-x)*(d.x-a.x)+x*(c.x-b.x), vy=(1-x)*(d.y-a.y)+x*(c.y-b.y);
+        const det=ux*vy-uy*vx;
+        if(Math.abs(det)<1e-8) return;
+        const dx=((px-point.x)*vy-(py-point.y)*vx)/det;
+        const dy=(ux*(py-point.y)-uy*(px-point.x))/det;
+        x-=dx;y-=dy;
+        if(Math.abs(dx)+Math.abs(dy)<1e-8) break;
+      }
+      if(x<0||x>1||y<0||y>1) return;
+      if(!decorStart) setDecorStart({x,y});
+      else if(Math.hypot(x-decorStart.x,y-decorStart.y)>.001) {
+        pushHistory();
+        setDecorations(prev=>[...prev,{id:crypto.randomUUID(),surface:activeSurface,style:decorStyle,from:decorStart,to:{x,y}}]);
+        setDecorStart(null);setDecorMode(false);
+      }
+      return;
+    }
     setIsDrawing(true);
     if (isErasing) {
       // snapshot current stroke count so we can undo this drag
@@ -2657,6 +2837,7 @@ const BambooStudio = () => {
   };
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (decorMode) return;
     if (isErasing || isDraggingDivider) return;
     const { x, y } = getCanvasCoords(e);
 
@@ -2770,6 +2951,8 @@ const BambooStudio = () => {
   const generateKP = async () => {
     const nQuads = Math.min(3, Math.floor(pointsRef.current.length / 4));
     if (nQuads === 0) return;
+    const installedProfiles = getInstalledProfiles(true);
+    const profileGroups = profileQuote(installedProfiles, unifiedProfilesRef.current.catalog);
     const profileCatalogForQuote = profileCatalogLoading || profileCatalogError
       ? null
       : profileCatalogRecords;
@@ -2933,19 +3116,7 @@ const BambooStudio = () => {
     const isTvBuiltin = wallZone === 'tv' && tvType === 'builtin';
     // TV backlight: profile length around perimeter of the box face.
     // Surface-mounted: box face is quad 0. Built-in: box face (Короб) is quad 1.
-    const tvBacklightRuns = tvBacklightEnabled && (isTvSurface || isTvBuiltin)
-      ? (() => {
-          const faceCfg = kpCfgs[1]; // surface 1 = Короб face for both surface and builtin TV
-          const faceW = faceCfg?.wallWidthMm ?? 0;
-          const faceH = faceCfg?.wallHeightMm ?? 0;
-          if (faceW <= 0 || faceH <= 0) return 0;
-          // Edge 0=top(W), 1=right(H), 2=bottom(W), 3=left(H)
-          const edgeDims = [faceW, faceH, faceW, faceH];
-          const enabledLens = edgeDims.filter((_, i) => tvBacklightEdges[i]);
-          if (enabledLens.length === 0) return 0;
-          return packProfileRuns(enabledLens);
-        })()
-      : 0;
+    const tvBacklightLength = installedProfiles.filter(r=>r.purpose==='tv').reduce((n,r)=>n+r.lengthMm,0)/1000;
     const tvBuiltinCut = isTvBuiltin && tvCutoutDepthMm > 0 && tvCutoutWidthMm > 0 && tvCutoutHeightMm > 0
       ? (() => {
           const pieces: import('./lib/panelCalc').WindowPiece[] = [];
@@ -3003,6 +3174,9 @@ const BambooStudio = () => {
       ? doorCut.panels * getPanelPrice(kpCfgs[0]?.sectorMaterials[0]?.id ?? BAMBOO_PANELS[0].id)
       : 0;
     const colPerMm = isColumn ? columnPerimeterMm(columnShape, columnSides) : 0;
+    // Kept inert for interpreting historical calculations; new quotes never call it.
+    // Prices and installations below come exclusively from the shared profile engine.
+    const legacyProfileAccounting = () => {
     // Vertical joints already counted on the VISIBLE column faces (incl. corner profiles)
     let columnVisibleJoints = 0;
     for (let q = 0; q < nQuads; q++) {
@@ -3324,6 +3498,14 @@ const BambooStudio = () => {
       }
     }
 
+    };
+    for (const group of profileGroups) {
+      const purpose = group.purposes.map(p => PURPOSE_NAMES[p]).join(', ');
+      addItem(group.variant.article,
+        `${group.variant.name} · ${group.variant.thicknessMm} мм · ${purpose} · ${(group.totalLengthMm/1000).toFixed(2)} м · заготовки 3 м (раскрой на следующих листах)`,
+        group.quantity, group.variant.price!);
+    }
+
     const total = items.reduce((sum, it) => sum + it.qty * it.price, 0);
     const fmt = (n: number) => n.toLocaleString('ru-RU') + ' ₽';
 
@@ -3641,17 +3823,7 @@ const BambooStudio = () => {
       addItem(mat.article, `Панель «${matLabel(mat)}» (наружние грани короба ТВ)`, tvBuiltinOuterCut.panels, getPanelPrice(mat.id));
       panelArticles.add(mat.article);
     }
-    // TV backlight: LED profile pieces
-    if (tvBacklightRuns > 0) {
-      const official = resolveOfficialProfile('light', profileCatalogForQuote);
-      if (!official) throw new Error('Официальная запись профиля с подсветкой недоступна. КП не сформировано.');
-      addItem(
-        official.record.article,
-        makeOfficialProfileLabel(official, undefined, moldingNameOverrides.light),
-        tvBacklightRuns,
-        getEffectiveMoldingPrice('light'),
-      );
-    }
+    // TV light runs are already present in profileGroups; never add them again.
     // Door zone: add reveal panels on top of the wall panels
     if (doorCut) {
       panelsTableTotal += doorCut.panels;
@@ -3707,7 +3879,9 @@ const BambooStudio = () => {
         body: JSON.stringify({
           prefix: orderPrefix,
           zoneLabel: orderZoneLabel,
-          kpData: { items, total: finalTotal, beforePhotoUrl: image?.src ?? null, kpPhotoUrl: kpImage },
+          kpData: { items, total: finalTotal, beforePhotoUrl: image?.src ?? null, kpPhotoUrl: kpImage,
+            profileSystem: { version: 1, thicknessMm: projectThicknessRef.current,
+              runs: installedProfiles, groups: profileGroups } },
         }),
       });
       if (!orderResp.ok) {
@@ -3858,7 +4032,7 @@ const BambooStudio = () => {
       y += 28;
       c.fillText(
         winJoint === 'profile'
-          ? `Соединение на углах: через профиль — 2 вертикальных (${Math.round(winHeightMm / 10)} см) + 1 горизонтальный (${Math.round(winWidthMm / 10)} см), хлысты 3 м`
+          ? 'Профили: только выбранные торцы, стыки и ручной декор; длины и раскрой — в таблице и приложении.'
           : 'Соединение на углах: загиб панели — профили не требуются',
         60, y + 8, W - 120);
       y += 28;
@@ -3893,15 +4067,7 @@ const BambooStudio = () => {
         `Деталей: ${tvBuiltinCut.pieces.length} · дополнительно панелей: ${tvBuiltinCut.panels} (обрезки полос используются повторно)`,
         60, y + 8);
       y += 28;
-      if (tvCutoutJoint === 'profile') {
-        const cutPieces = packProfileRuns([tvCutoutHeightMm, tvCutoutHeightMm, tvCutoutWidthMm, tvCutoutWidthMm]);
-        const cWp = Math.round(tvCutoutWidthMm / 10), cHp = Math.round(tvCutoutHeightMm / 10);
-        c.fillText(
-          `Профили по периметру стыков: бок. 2×${cHp} см + гориз. 2×${cWp} см · хлыстов 3 м: ${cutPieces} (остатки используются повторно, если хватает на целый прогон)`,
-          60, y + 8);
-      } else {
-        c.fillText('Стыки: загиб панели — профили не требуются', 60, y + 8);
-      }
+      c.fillText('Профили выреза: только явно добавленные участки; общий раскрой — в приложении.', 60, y + 8);
       y += 30;
       // Outer faces block
       if (tvBuiltinOuterCut) {
@@ -3919,10 +4085,10 @@ const BambooStudio = () => {
           60, y + 8);
         y += 30;
       }
-      if (isTvBuiltin && tvBacklightEnabled && tvBacklightRuns > 0) {
+      if (isTvBuiltin && tvBacklightEnabled && tvBacklightLength > 0) {
         const edgeNames = ['Верх', 'Право', 'Низ', 'Лево'];
         const onEdges = edgeNames.filter((_, i) => tvBacklightEdges[i]).join(', ');
-        c.fillText(`Подсветка (${onEdges}) · профиль с подсветкой 3 м: ${tvBacklightRuns} шт.`, 60, y + 8);
+        c.fillText(`Подсветка (${onEdges}) · ${tvBacklightLength.toFixed(2)} м · общий раскрой — в приложении.`, 60, y + 8);
         y += 28;
       }
     }
@@ -3980,10 +4146,10 @@ const BambooStudio = () => {
       }
       c.fillText(`Угловое соединение: ${tvSurfaceJoint === 'profile' ? 'через профиль' : 'загиб панелей'}`, 60, y + 8);
       y += 28;
-      if (tvBacklightEnabled && tvBacklightRuns > 0) {
+      if (tvBacklightEnabled && tvBacklightLength > 0) {
         const edgeNames = ['Верх', 'Право', 'Низ', 'Лево'];
         const onEdges = edgeNames.filter((_, i) => tvBacklightEdges[i]).join(', ');
-        c.fillText(`Подсветка (${onEdges}) · профиль с подсветкой 3 м: ${tvBacklightRuns} шт.`, 60, y + 8);
+        c.fillText(`Подсветка (${onEdges}) · ${tvBacklightLength.toFixed(2)} м · общий раскрой — в приложении.`, 60, y + 8);
         y += 28;
       }
       c.fillText(`Деталей короба: ${tvSurfaceCut.pieces.length} · панелей: ${tvSurfaceCut.panels} (обрезки полос используются повторно)`, 60, y + 8);
@@ -4025,15 +4191,13 @@ const BambooStudio = () => {
         y += 28;
         if (doorJoint === 'profile') {
           c.fillText(
-            `Профили откосов: лев. ${Math.round(dLeft.heightMm / 10)} см + прав. ${Math.round(dRight.heightMm / 10)} см + верх. ${Math.round(dTop.widthMm / 10)} см · хлыстов 3 м: ${packProfileRuns([dLeft.heightMm, dRight.heightMm, dTop.widthMm])}`,
+            'Профили проёма: выбранные торцы, стыки и ручной декор; общий раскрой — в приложении.',
             60, y + 8);
           y += 28;
         }
         if (doorType === 'with-transom' && dTop.heightMm > 0) {
-          const hCm = Math.round(dTop.heightMm / 10);
-          const pcs = packProfileRuns([dTop.heightMm, dTop.heightMm]);
           c.fillText(
-            `Профили фальшфрамуги (стыки с боковыми панелями): 2 × ${hCm} см · хлыстов 3 м: ${pcs}`,
+            'Стыки фальшфрамуги: только выбранные участки из общей раскладки профилей.',
             60, y + 8);
           y += 28;
         }
@@ -4152,6 +4316,7 @@ const BambooStudio = () => {
     const { jsPDF } = await import('jspdf');
     const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
     pdf.addImage(cv.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 210, 297);
+    appendProfileCutPages(pdf, profileGroups, orderNumber);
     pdf.save('allwall-kp.pdf');
 
     // Upload PDF to object storage so managers can retrieve it later.
@@ -4290,6 +4455,19 @@ const BambooStudio = () => {
   const MoldingStyleRow = ({
     value, onChange, vertical,
   }: { value: string; onChange: (v: MoldingStyle) => void; vertical: boolean }) => {
+    const options = unifiedProfiles.catalog.filter(v=>v.thicknessMm===projectThickness && v.kind!=='edge');
+    const known = value === 'none' || options.some(v=>variantStyle(v.id)===value ||
+      (value==='gap'&&variantStyle(v.id)==='black_gap') || (value==='light'&&variantStyle(v.id)==='black_light'));
+    return <label className="block text-[11px]">
+      <span className="sr-only">{vertical?'Вертикальные':'Горизонтальные'} стыки панелей</span>
+      <select className="w-full border rounded-lg p-2 bg-white" value={value==='gap'?'black_gap':value==='light'?'black_light':value}
+        disabled={!projectThickness} onChange={e=>onChange(e.target.value as MoldingStyle)}>
+        <option value="none">Без профиля</option>
+        {!known && <option value={value}>Старый несовместимый вариант: {value}</option>}
+        {options.map(v=><option key={v.id} value={variantStyle(v.id)}>{v.name}{!v.confirmed?' · не подтверждён':''}</option>)}
+      </select>
+      {!known && <span role="alert" className="text-amber-700">Замените старый вариант явно. Подсветка — только чёрная.</span>}
+    </label>;
     const dir = vertical ? 'to-r' : 'to-b';
     const { color: curColor, modifier: curMod } = decodeMoldStyle(value);
 
@@ -5036,7 +5214,7 @@ const BambooStudio = () => {
                             const colsNeeded = !isHorizBox ? Math.ceil(wallWidthMm / pW) : 0;
                             const tooWide = !isHorizBox && wallWidthMm > pW;
                             const seamCount = colsNeeded > 1 ? colsNeeded - 1 : 0;
-                            const seamProfileRuns = seamCount > 0 ? packProfileRuns(Array(seamCount).fill(wallHeightMm)) : 0;
+                            const seamProfileRuns = profileStockCount(profilePreviewRuns.filter(r=>r.surface===activeSurface&&r.purpose==='joint'&&r.from.x===r.to.x));
                             return (
                               <div className="space-y-1">
                                 <p className="text-[8px] text-gray-400">
@@ -5311,9 +5489,7 @@ const BambooStudio = () => {
                             const colsNeeded = !isHorizBox ? Math.ceil(wallWidthMm / pW) : 0;
                             const tooWide = !isHorizBox && wallWidthMm > pW;
                             const seamCount = colsNeeded > 1 ? colsNeeded - 1 : 0;
-                            const seamProfileRuns = seamCount > 0
-                              ? packProfileRuns(Array(seamCount).fill(wallHeightMm))
-                              : 0;
+                            const seamProfileRuns = profileStockCount(profilePreviewRuns.filter(r=>r.surface===activeSurface&&r.purpose==='joint'&&r.from.x===r.to.x));
                             return (
                               <div className="space-y-1">
                                 <p className="text-[8px] text-gray-400">
@@ -5513,43 +5689,13 @@ const BambooStudio = () => {
                           <MeterInput placeholder="напр. 15" valueMm={tvCutoutDepthMm} onChangeMm={(v) => { pushHistory(); setTvCutoutDepthMm(v); }} />
                         </label>
                       </div>
-                      {tvCutoutDepthMm > 0 && (
-                        <div className="mb-2">
-                          <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Тип соединения на углах</p>
-                          <div className="flex gap-1.5 mb-1.5">
-                            {(['profile', 'bend'] as const).map(jt => (
-                              <button key={jt} onClick={() => { pushHistory(); setTvCutoutJoint(jt); }}
-                                className={`flex-1 py-1.5 rounded-lg text-[9px] font-bold border transition-all active:scale-95 ${tvCutoutJoint === jt ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'}`}>
-                                {jt === 'profile' ? 'Профиль' : 'Загиб панели'}
-                              </button>
-                            ))}
-                          </div>
-                          {tvCutoutJoint === 'profile' && (
-                            <div className="grid grid-cols-4 gap-1">
-                              {PROFILE_COLOR_OPTS.map(o => {
-                                const active = tvCutoutJointColor === o.id;
-                                return (
-                                  <button key={o.id} onClick={() => { pushHistory(); setTvCutoutJointColor(o.id); }}
-                                    className="flex flex-col items-center gap-1 transition-all">
-                                    <div className={`w-full h-5 rounded-sm border-2 transition-all ${active ? 'border-gray-800 shadow-md' : 'border-transparent opacity-55'}`}
-                                      style={PROFILE_COLOR_BAR[o.id]}/>
-                                    <span className={`text-[7px] font-bold uppercase leading-none ${active ? 'text-gray-800' : 'text-gray-400'}`}>{o.label}</span>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      )}
+                      <p className="mb-2 text-[10px] text-gray-500">Контур выреза автоматически не обводится. Если нужны профили, добавьте реальные участки инструментом «Декор» ниже — двумя точками на выбранной поверхности. Для загиба панелей профиль не добавляется.</p>
                       {tvCutoutWidthMm > 0 && tvCutoutHeightMm > 0 && (() => {
                         const cW = tvCutoutWidthMm / 1000, cH = tvCutoutHeightMm / 1000, cD = tvCutoutDepthMm / 1000;
                         const sidesArea = tvCutoutDepthMm > 0 ? 2 * cD * cH : 0;
                         const topArea = tvCutoutDepthMm > 0 ? cD * cW : 0;
                         const bottomArea = tvCutoutDepthMm > 0 ? cD * cW : 0;
                         const totalZagiby = sidesArea + topArea + bottomArea;
-                        const profilePieces = tvCutoutJoint === 'profile' && tvCutoutWidthMm > 0 && tvCutoutHeightMm > 0
-                          ? packProfileRuns([tvCutoutHeightMm, tvCutoutHeightMm, tvCutoutWidthMm, tvCutoutWidthMm])
-                          : 0;
                         return (
                           <div className="space-y-1">
                             <p className="text-[9px] text-gray-500 leading-relaxed">
@@ -5559,11 +5705,6 @@ const BambooStudio = () => {
                             {tvCutoutDepthMm > 0 && (
                               <p className="text-[9px] text-[#5a9c3e] font-bold leading-relaxed">
                                 Грани внутри: боковые ×2 ({sidesArea.toFixed(2).replace('.', ',')} м²) + верхний ({topArea.toFixed(2).replace('.', ',')} м²) + нижний ({bottomArea.toFixed(2).replace('.', ',')} м²) = {totalZagiby.toFixed(2).replace('.', ',')} м²
-                              </p>
-                            )}
-                            {tvCutoutJoint === 'profile' && tvCutoutWidthMm > 0 && tvCutoutHeightMm > 0 && (
-                              <p className="text-[9px] text-gray-500 leading-relaxed">
-                                Профили по периметру стыков: бок. 2×{cH.toLocaleString('ru-RU')} + гориз. 2×{cW.toLocaleString('ru-RU')} м → <span className="font-bold text-gray-700">{profilePieces} хл. 3 м</span> (остатки используются, если хватает на целый прогон).
                               </p>
                             )}
                           </div>
@@ -5900,12 +6041,16 @@ const BambooStudio = () => {
                 {activeSector !== null ? `Панель №${activeSector + 1} — выберите материал` : 'Кликните по панели → выберите материал'}
               </p>
               <SeriesAccordion
-                series={catalogSeries}
+                series={catalogSeries.map(s=>({...s,panels:s.panels.filter(p=>unifiedProfiles.panelThicknesses[p.article]===projectThickness)})).filter(s=>s.panels.length>0)}
                 openIds={openSeries}
                 onToggle={toggleSeries}
                 selectedId={activeSector !== null ? sectorMaterials[activeSector]?.id : undefined}
                 nameOverrides={seriesNameOverrides}
                 onSelect={(panel) => {
+                  if (!projectThickness || unifiedProfiles.panelThicknesses[panel.article] !== projectThickness) {
+                    window.alert('Выберите толщину проекта и совместимый материал. Толщину панели подтверждает менеджер.');
+                    return;
+                  }
                   pushHistory();
                   if (activeSector !== null) {
                     setSectorMaterials({ ...sectorMaterials, [activeSector]: panel });
@@ -6123,6 +6268,28 @@ const BambooStudio = () => {
               </div>
             </div>
 
+            <ProjectProfilesPanel
+              thickness={projectThickness}
+              onThickness={v=>{
+                if(projectThickness && projectThickness!==v && !window.confirm('Изменить толщину проекта? Выбранные материалы сохранятся. Несовместимые панели потребуется заменить вручную перед созданием КП.')) return;
+                setProjectThickness(v);
+              }}
+              catalog={unifiedProfiles.catalog}
+              error={unifiedProfiles.error ?? profileDrawError ??
+                (!projectThickness ? 'Выберите толщину. Затем станут доступны панели этой толщины.' :
+                  catalogSeries.flatMap(s=>s.panels).some(p=>unifiedProfiles.panelThicknesses[p.article]===projectThickness)
+                    ? null : 'Для этой толщины пока нет подтверждённых панелей. Заполните толщины по артикулам в кабинете менеджера.')}
+              runs={(()=>{try{return getInstalledProfiles();}catch{return [];}})()}
+              decorations={decorations} surface={activeSurface}
+              widthMm={wallWidthMm} heightMm={wallHeightMm}
+              onWidth={n=>{pushHistory();setWallWidthMm(n);}}
+              onHeight={n=>{pushHistory();setWallHeightMm(n);}}
+              decorMode={decorMode} decorStarted={!!decorStart} decorStyle={decorStyle}
+              onDecorMode={v=>{setDecorMode(v);setDecorStart(null);setIsErasing(false);}}
+              onDecorStyle={setDecorStyle}
+              onDelete={id=>{pushHistory();setDecorations(prev=>prev.filter(d=>d.id!==id));}}
+            />
+
             {/* Vertical decorative profile — wall-niche side walls only */}
             {wallZone === 'wall-niche' && activeSurface > 0 && (
               <div className="bg-white rounded-2xl p-3 shadow-sm">
@@ -6154,7 +6321,8 @@ const BambooStudio = () => {
                   <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Профиль торц.</span>
                 </div>
                 <div className="grid grid-cols-2 gap-1 mb-2">
-                  {([['top', 'Верх'], ['bottom', 'Низ'], ['left', 'Лево'], ['right', 'Право']] as const).map(([side, label]) => (
+                  {([['top', 'Верх'], ['bottom', 'Низ'], ['left', 'Лево'], ['right', 'Право']] as const)
+                    .filter(([side])=>!(wallZone==='window'||wallZone==='door') || side==='top'||side==='bottom').map(([side, label]) => (
                     <button key={side}
                       onClick={() => { pushHistory(); setEdgeProfileSides(prev => ({ ...prev, [side]: !prev[side] })); }}
                       className={`py-2 rounded-lg text-[9px] font-bold uppercase transition-all active:scale-95 ${edgeProfileSides[side] ? 'bg-black text-white' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}>
@@ -6172,9 +6340,6 @@ const BambooStudio = () => {
                   };
                   const EDGE_COLOR_OPTS = [
                     { id: 'black'    as const, label: 'Чрн'  },
-                    { id: 'metallic' as const, label: 'Мтл'  },
-                    { id: 'bronze'   as const, label: 'Брнз' },
-                    { id: 'gold'     as const, label: 'Злт'  },
                   ];
                   return (
                     <div className="grid grid-cols-4 gap-1 mb-2">
@@ -6201,7 +6366,13 @@ const BambooStudio = () => {
                       (edgeProfileSides.left   ? wallHeightMm : 0) +
                       (edgeProfileSides.right  ? wallHeightMm : 0);
                     if (totalMm === 0) return <p className="text-[8px] text-amber-500">Укажите размеры</p>;
-                    const pieces = Math.ceil(totalMm / 3000);
+                    const lengths = [
+                      ...(edgeProfileSides.top ? [wallWidthMm] : []),
+                      ...(edgeProfileSides.bottom ? [wallWidthMm] : []),
+                      ...(edgeProfileSides.left ? [wallHeightMm] : []),
+                      ...(edgeProfileSides.right ? [wallHeightMm] : []),
+                    ].filter(n=>n>0);
+                    const pieces = profileStockCount(profilePreviewRuns.filter(r=>r.surface===activeSurface&&r.purpose==='edge'));
                     return <p className="text-[9px] font-bold text-[#5a9c3e]">≈ {(totalMm / 1000).toFixed(1).replace('.', ',')} м → {pieces} шт.</p>;
                   })()
                 )}
@@ -6270,7 +6441,7 @@ const BambooStudio = () => {
                 </div>
                 <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Соединение на углах откосов</p>
                 <div className="grid grid-cols-2 gap-1.5 mb-2">
-                  {([['profile', 'Через профиль'], ['bend', 'Загиб панели']] as const).map(([id, label]) => (
+                  {([['profile', 'Без загиба'], ['bend', 'Загиб панели']] as const).map(([id, label]) => (
                     <button key={id}
                       onClick={() => { pushHistory(); setWinJoint(id); }}
                       className={`py-2 rounded-xl text-[8px] font-bold uppercase tracking-wide transition-all active:scale-95 ${winJoint === id ? 'bg-black text-white' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}>
@@ -6279,7 +6450,7 @@ const BambooStudio = () => {
                   ))}
                 </div>
                 <p className="text-[8px] text-gray-400 mb-1.5">{winJoint === 'profile'
-                  ? 'На наружных углах откосов ставится профиль: 2 вертикальных (высота окна) + 1 горизонтальный (ширина окна). Хлысты 3 м, раскрой оптимизирован.'
+                  ? 'Полный обвод окна не добавляется. Торцы сверху/снизу и декоративные участки выберите отдельно; стыки панелей рассчитываются по общей раскладке.'
                   : 'Панель загибается на углах — профили не требуются.'}</p>
                 {(() => {
                   const pieces = windowStdPieces(winSlopeDepthMm, winWidthMm, winHeightMm, 0, 0);
@@ -6330,7 +6501,7 @@ const BambooStudio = () => {
                 </div>
                 <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Соединение на углах откосов</p>
                 <div className="grid grid-cols-2 gap-1.5 mb-2">
-                  {([['profile', 'Через профиль'], ['bend', 'Загиб панели']] as const).map(([id, label]) => (
+                  {([['profile', 'Без загиба'], ['bend', 'Загиб панели']] as const).map(([id, label]) => (
                     <button key={id}
                       onClick={() => { pushHistory(); setDoorJoint(id); }}
                       className={`py-2 rounded-xl text-[8px] font-bold uppercase tracking-wide transition-all active:scale-95 ${doorJoint === id ? 'bg-black text-white' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}>
@@ -6339,7 +6510,7 @@ const BambooStudio = () => {
                   ))}
                 </div>
                 <p className="text-[8px] text-gray-400 mb-2">{doorJoint === 'profile'
-                  ? 'На углах откосов ставится профиль по индивидуальным длинам левого, правого и верхнего откоса. Хлысты 3 м, раскрой оптимизирован.'
+                  ? 'Полный обвод двери не добавляется. Торцы сверху/снизу и декоративные участки выберите отдельно; стыки панелей рассчитываются по общей раскладке.'
                   : 'Панель загибается на углах — профили не требуются.'}</p>
                 {(() => {
                   const { left, right, top } = doorRevealSizes;

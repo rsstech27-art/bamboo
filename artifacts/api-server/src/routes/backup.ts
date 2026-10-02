@@ -48,12 +48,15 @@ import { productsTable, managerSettingsTable, profileCatalogTable, type ProfileC
 import { eq } from "drizzle-orm";
 import { requireManagerSession } from "../middleware/managerAuth";
 import { PROFILE_BACKUP_VERSION, validateProfileBackup, prepareProfileRestore, restoreProfiles, ProfileBackupConflict } from "../lib/profileBackup";
+import { validateCatalog, validatePanelThicknesses } from "@workspace/profile-system";
 
 const router: IRouter = Router();
 
 const MANIFEST_VERSION = 1;
 
 const VALID_SETTING_KEYS = new Set([
+  "profile_variants",
+  "panel_thicknesses",
   "panel_prices",
   "molding_prices",
   "series_names",
@@ -261,6 +264,13 @@ router.post(
       return void res.status(result.status).json({ error: result.error });
     }
     const { products: resolvedProducts, settings: mSettings } = result;
+    const protectedCatalog = Object.hasOwn(mSettings,"profile_variants") ||
+      Object.hasOwn(mSettings,"panel_thicknesses");
+    const canEditCatalog = req.session?.isAdmin === true || req.session?.isAdmin === undefined ||
+      req.session?.managerPerms?.products?.canEdit === true;
+    if(protectedCatalog && !canEditCatalog) {
+      return void res.status(403).json({error:"Для восстановления каталога профилей и толщины панелей нужно право «Товары → Редактирование». Архив не применён."});
+    }
 
     let added = 0;
     let updated = 0;
@@ -614,6 +624,8 @@ export function validateManifest(raw: unknown): ValidationResult {
   const settings: Record<string, unknown> = {};
   if (m["settings"] && typeof m["settings"] === "object" && !Array.isArray(m["settings"])) {
     for (const [key, val] of Object.entries(m["settings"] as Record<string, unknown>)) {
+      if (key === "profile_variants" && !validateCatalog(val)) return { ok: false, error: "Некорректные варианты профилей в архиве." };
+      if (key === "panel_thicknesses" && !validatePanelThicknesses(val)) return { ok: false, error: "Некорректная толщина панелей в архиве." };
       if (VALID_SETTING_KEYS.has(key)) settings[key] = val;
     }
   }

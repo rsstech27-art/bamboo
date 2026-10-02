@@ -11,6 +11,7 @@ import {
   type ResolvedProduct,
 } from "./backup";
 import { ZipArchive } from "archiver";
+import { emptyCatalog } from "@workspace/profile-system";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers — create real in-memory ZIP buffers for integration tests
@@ -55,6 +56,33 @@ const MINIMAL_MANIFEST = {
   products: [] as unknown[],
   settings: {},
 };
+
+describe("unified profile settings backup compatibility", () => {
+  it("JSON roundtrip preserves separate variants, manual prices and explicit panel thickness", () => {
+    const catalog=emptyCatalog().map((v,i)=>({...v,article:`TEST-${i}`,price:777+i,confirmed:true}));
+    const settings={profile_variants:catalog,panel_thicknesses:{"P-5":5,"P-8":8},
+      molding_prices:{black:543,edge:678},molding_names:{black:"Прежнее название"}};
+    const result=validateManifest(JSON.parse(JSON.stringify({...MINIMAL_MANIFEST,settings})));
+    expect(result.ok).toBe(true);
+    if(result.ok) expect(result.settings).toEqual(settings);
+  });
+  it("old backup without unified settings remains valid", () => {
+    expect(validateManifest(MINIMAL_MANIFEST).ok).toBe(true);
+  });
+  it("unconfirmed catalog is preserved without activating a tariff", () => {
+    const result=validateManifest({...MINIMAL_MANIFEST,settings:{profile_variants:emptyCatalog()}});
+    expect(result.ok).toBe(true);
+    if(result.ok) expect(result.settings.profile_variants).toEqual(emptyCatalog());
+  });
+  it("incomplete or reclassified catalog cannot be restored", () => {
+    expect(validateManifest({...MINIMAL_MANIFEST,settings:{profile_variants:[]}}).ok).toBe(false);
+    const rows=emptyCatalog();rows[0]!.lengthMm=2000 as 3000;
+    expect(validateManifest({...MINIMAL_MANIFEST,settings:{profile_variants:rows}}).ok).toBe(false);
+  });
+  it("unsupported thickness cannot be restored", () => {
+    expect(validateManifest({...MINIMAL_MANIFEST,settings:{panel_thicknesses:{"P-25":2.5}}}).ok).toBe(false);
+  });
+});
 
 const VALID_PROFILE = {
   kind: "connector",

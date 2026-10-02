@@ -15,6 +15,7 @@
     }
   },
   "references": [
+    { "path": "../../lib/profile-system" },
     {
       "path": "../../lib/api-client-react"
     }

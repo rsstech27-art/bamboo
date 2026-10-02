@@ -3,6 +3,7 @@
   "compileOnSave": false,
   "files": [],
   "references": [
+    { "path": "./lib/profile-system" },
     {
       "path": "./lib/db"
     },

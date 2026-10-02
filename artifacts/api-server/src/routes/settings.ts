@@ -3,12 +3,16 @@ import { db } from "@workspace/db";
 import { managerSettingsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { requireManagerSession } from "../middleware/managerAuth";
+import { requireAdminOrPerm } from "../middleware/managerAuth";
+import { validateCatalog, validatePanelThicknesses } from "@workspace/profile-system";
 
 const router: IRouter = Router();
 const isDev = process.env.NODE_ENV !== "production";
 
 /** Known setting keys */
 const VALID_KEYS = new Set([
+  "profile_variants",
+  "panel_thicknesses",
   "panel_prices",
   "molding_prices",
   "series_names",
@@ -54,13 +58,53 @@ router.get("/settings/api_key", requireManagerSession, async (_req, res) => {
 });
 
 // PUT /api/settings/:key  — upsert a single setting
-router.put("/settings/:key", requireManagerSession, async (req, res) => {
+// Existing price editors may change prices, but cannot create/activate or reclassify a variant.
+router.patch("/settings/profile_variants/prices", requireManagerSession,
+  requireAdminOrPerm(["prices","canEdit"]), async (req,res) => {
+    const prices = req.body as unknown;
+    if(!prices || typeof prices!=="object" || Array.isArray(prices) ||
+      !Object.values(prices).every(p=>typeof p==="number" && Number.isFinite(p) && p>0))
+      return void res.status(400).json({error:"Укажите положительные цены подтверждённых вариантов."});
+    try {
+      const changed = await db.transaction(async tx=>{
+        const [row] = await tx.select().from(managerSettingsTable)
+          .where(eq(managerSettingsTable.key,"profile_variants")).for("update");
+        const catalog = row?.value;
+        if(!validateCatalog(catalog)) return false;
+        const edits = prices as Record<string,number>;
+        if(Object.keys(edits).some(id=>!catalog.find(v=>v.id===id&&v.confirmed))) return false;
+        const value = catalog.map(v=>Object.hasOwn(edits,v.id)?{...v,price:edits[v.id]}:v);
+        await tx.update(managerSettingsTable).set({value,updatedAt:new Date()})
+          .where(eq(managerSettingsTable.key,"profile_variants"));
+        return true;
+      });
+      if(!changed) return void res.status(409).json({error:"Вариант ещё не подтверждён или каталог изменился. Обновите страницу; артикулы подтверждаются во вкладке «Товары»."});
+      res.json({ok:true});
+    } catch {
+      res.status(500).json({error:"Цены профилей не сохранены."});
+    }
+});
+
+router.put("/settings/:key", requireManagerSession, (req, res, next) => {
+  if (req.params["key"] === "profile_variants" || req.params["key"] === "panel_thicknesses") {
+    return requireAdminOrPerm(["products", "canEdit"])(req, res, next);
+  }
+  next();
+}, async (req, res) => {
   const key = req.params["key"] as string;
   if (!VALID_KEYS.has(key)) {
     return void res.status(400).json({ error: `Unknown setting key: ${key}` });
   }
 
   const value = req.body as unknown;
+  if (key === "profile_variants" && !validateCatalog(value)) {
+    res.status(400).json({ error: "Некорректный каталог: 20 фиксированных вариантов; подтверждённый вариант требует артикул и положительную цену." });
+    return;
+  }
+  if (key === "panel_thicknesses" && !validatePanelThicknesses(value)) {
+    res.status(400).json({ error: "Толщина панели по артикулу должна быть 5 или 8 мм." });
+    return;
+  }
   if (value === undefined || value === null) {
     return void res.status(400).json({ error: "Body must be a JSON value" });
   }
@@ -151,7 +195,11 @@ router.put("/settings/:key", requireManagerSession, async (req, res) => {
 });
 
 // DELETE /api/settings/:key  — reset a setting to default (remove the row)
-router.delete("/settings/:key", requireManagerSession, async (req, res) => {
+router.delete("/settings/:key", requireManagerSession, (req,res,next) => {
+  if(req.params["key"]==="profile_variants" || req.params["key"]==="panel_thicknesses")
+    return requireAdminOrPerm(["products","canEdit"])(req,res,next);
+  next();
+}, async (req, res) => {
   const key = req.params["key"] as string;
   if (!VALID_KEYS.has(key)) {
     return void res.status(400).json({ error: `Unknown setting key: ${key}` });

@@ -19,7 +19,8 @@ import {
 import { managerLogin, managerLogout, checkManagerSession, managerFetch, type ManagerSession } from '../lib/managerApi';
 import { useProfileCatalog } from '../hooks/useProfileCatalog';
 import { PROFILE_KIND_DETAILS, type ProfileCatalogRecord, type ProfileKind } from '../lib/profileCatalog';
-import { ProfileCatalogPanel } from './ProfileCatalogPanel';
+import UnifiedProfileCatalogPanel from './UnifiedProfileCatalogPanel';
+import { useUnifiedProfiles } from '../hooks/useUnifiedProfiles';
 import { MANAGER_PROFILE_GROUPS, getManagerProfileGroup, getManagerProfileName, getManagerProfileNameOverride } from '../lib/managerProfileLabels';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -671,6 +672,7 @@ function TabPrices({
   onReset, extrasOverrides, onUpdateExtras,
   customExtras, onAddExtra, onDeleteExtra, onUpdateCustomExtra,
   dbSaveStatus,
+  canEditProfilePrices,
 }: {
   panelOverrides: PriceMap;
   moldingOverrides: PriceMap;
@@ -703,10 +705,12 @@ function TabPrices({
   onDeleteExtra: (id: string) => void;
   onUpdateCustomExtra: (id: string, name: string, price: number) => void;
   dbSaveStatus: DbSaveStatus;
+  canEditProfilePrices: boolean;
 }) {
   const [seriesOpen,  setSeriesOpen]  = useState(true);
   const [moldingsOpen, setMoldingsOpen] = useState(true);
   const [extrasOpen, setExtrasOpen] = useState(false);
+  const unified = useUnifiedProfiles();
 
   const visibleSeries   = DEFAULT_SERIES_PRICES.filter(s => !hiddenSeriesIds.includes(s.id));
   const visibleMoldings = DEFAULT_MOLDING_PRICES.filter(m => !hiddenMoldingIds.includes(m.id));
@@ -728,6 +732,10 @@ function TabPrices({
 
   return (
     <div className="max-w-xl mx-auto space-y-6 py-6 px-4">
+      {unified.error ? <p role="alert" className="text-red-700 text-xs">{unified.error}</p> :
+        <UnifiedProfileCatalogPanel catalog={unified.catalog} panelThicknesses={unified.panelThicknesses}
+          panels={[]} legacyRates={[]} pricesOnly canEdit={canEditProfilePrices}
+          onSaveCatalog={unified.savePrices} onSavePanelThicknesses={unified.savePanelThicknesses} />}
       {/* ── Серии панелей ── */}
       <section>
         <button onClick={() => setSeriesOpen(v => !v)}
@@ -776,7 +784,7 @@ function TabPrices({
           className="w-full flex items-center justify-between group mb-3">
           <div className="flex items-center gap-2">
             <ChevronRight size={13} className={`text-gray-400 transition-transform ${moldingsOpen ? 'rotate-90' : ''}`} />
-            <h3 className="text-xs font-black uppercase tracking-widest text-gray-500 group-hover:text-gray-700 transition-colors">Профили</h3>
+            <h3 className="text-xs font-black uppercase tracking-widest text-gray-500 group-hover:text-gray-700 transition-colors">Прежние цены профилей · архив</h3>
           </div>
           <span className="text-[10px] text-gray-400">Название · Цена (₽/3 м)</span>
         </button>
@@ -790,35 +798,21 @@ function TabPrices({
                 <div key={group.id} data-testid={`manager-profile-group-${group.id}`}>
                   <h4 className="pt-4 pb-1 text-xs font-bold text-gray-700">{group.label}</h4>
                   {groupProfiles.map(m => (
-                <EditableRow
-                  key={m.id}
-                  defaultName={getManagerProfileName(m.id, m.name)}
-                  defaultPrice={m.defaultPrice}
-                  nameOverride={getManagerProfileNameOverride(m.id, m.name, moldingNameOverrides[m.id])}
-                  priceOverride={moldingOverrides[m.id]}
-                  onNameChange={name => onUpdateMoldingName(m.id, name)}
-                  onPriceChange={price => onUpdateMolding(m.id, price)}
-                  onDelete={() => onHideMolding(m.id)}
-                  metaLabel={group.id === 'edge' ? 'Торцевой профиль · отдельный тип' : officialMetaFor(m.id)}
-                />
+                <div key={m.id} className="py-2 text-xs border-b border-gray-100">
+                  {getManagerProfileNameOverride(m.id,m.name,moldingNameOverrides[m.id]) ?? getManagerProfileName(m.id,m.name)}
+                  <span className="float-right">{moldingOverrides[m.id] ?? m.defaultPrice} ₽</span>
+                </div>
                   ))}
                 </div>
                 );
               })}
               {customMoldings.length > 0 && <h4 className="pt-4 pb-1 text-xs font-bold text-gray-700">Другие профили</h4>}
               {customMoldings.map(m => (
-                <CustomItemRow
-                  key={m.id}
-                  item={m}
-                  onUpdate={(name, price) => onUpdateCustomMolding(m.id, name, price)}
-                  onDelete={() => onDeleteMolding(m.id)}
-                />
+                <div key={m.id} className="py-2 text-xs">{m.name} · {m.price} ₽</div>
               ))}
             </div>
             <div className="mt-3">
-              <AddItemForm onAdd={onAddMolding} buttonLabel="Добавить профиль" formTitle="Новый профиль"
-                namePlaceholder="Название профиля" priceLabel="Цена, ₽/3 м" pricePlaceholder="990"
-                errorFallback="Не удалось добавить профиль" />
+              <p className="text-xs text-gray-500">Для новых КП заполните варианты 5/8 мм во вкладке «Товары». Архивные ставки не переносились автоматически.</p>
             </div>
           </>
         )}
@@ -1678,6 +1672,7 @@ function TabProducts({
   onUpdateCustomExtra?: (id: string, name: string, price: number) => void;
 }) {
   const { data, loading, error, reload } = useFetch<Product[]>('/api/products');
+  const unified = useUnifiedProfiles();
   const [creating, setCreating] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [creatingMolding, setCreatingMolding] = useState(false);
@@ -1817,7 +1812,20 @@ function TabProducts({
       )}
 
       <div className="max-w-5xl mx-auto">
-        <ProfileCatalogPanel canEdit={canEditOfficialCatalog} />
+        {unified.error && <p role="alert" className="p-3 text-red-700">{unified.error}</p>}
+        {unified.loading ? <p className="p-3">Загрузка каталога профилей…</p> :
+          <UnifiedProfileCatalogPanel
+            catalog={unified.catalog}
+            panelThicknesses={unified.panelThicknesses}
+            panels={(data ?? []).filter(p => p.category === 'panel' || !p.category).map(p => ({ article: p.article, name: p.name }))}
+            legacyRates={[
+              ...DEFAULT_MOLDING_PRICES.map(m=>({name:moldingNameOverrides?.[m.id] ?? m.name,price:moldingOverrides?.[m.id] ?? m.defaultPrice})),
+              ...(data ?? []).filter(p=>p.category==='molding').map(p=>({name:`${p.article} · ${p.name}`,price:p.cost})),
+            ]}
+            canEdit={canEditOfficialCatalog && !unified.error}
+            onSaveCatalog={unified.saveCatalog}
+            onSavePanelThicknesses={unified.savePanelThicknesses}
+          />}
       </div>
 
       {/* ── Two-column grid ── */}
@@ -1909,7 +1917,7 @@ function TabProducts({
               <div className="flex items-center gap-2">
                 <ChevronRight size={13} className={`text-gray-400 transition-transform ${profilesOpen ? 'rotate-90' : ''}`} />
                 <h3 className="text-xs font-black uppercase tracking-widest text-gray-500 group-hover:text-gray-700 transition-colors">
-                  Профили
+                  Прежние профили · архив
                 </h3>
                 {moldingProducts.length > 0 && (
                   <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">
@@ -1920,15 +1928,7 @@ function TabProducts({
             </button>
             {profilesOpen && (
               <div className="space-y-2">
-                {creatingMolding ? (
-                  <MoldingCreateForm seriesOptions={moldingSeriesOptions} onSave={createMolding} onCancel={() => setCreatingMolding(false)} />
-                ) : (
-                  <button
-                    onClick={() => { setCreatingMolding(true); setCreating(false); }}
-                    className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 hover:border-black text-gray-500 hover:text-black text-sm font-bold py-3 rounded-2xl transition-colors">
-                    <Plus size={14} /> Добавить профиль
-                  </button>
-                )}
+                <p className="text-xs text-gray-500">Сохранены без изменения. Новые КП используют только подтверждённые варианты единого каталога выше.</p>
                 {moldingProducts.length === 0 && !creatingMolding && (
                   <div className="text-center py-4 text-gray-400 text-sm">
                     <Package size={24} className="mx-auto mb-2 opacity-30" />
@@ -1936,9 +1936,7 @@ function TabProducts({
                   </div>
                 )}
                 {moldingProducts.map(p => (
-                  <MoldingCard key={p.id} product={p}
-                    onEdit={() => { setEditingMolding(p); setCreatingMolding(false); }}
-                    onDelete={() => delMolding(p.id)} />
+                  <div key={p.id} className="border rounded-xl p-3 text-xs">{p.article} · {p.name} · {p.cost} ₽</div>
                 ))}
               </div>
             )}
@@ -2710,6 +2708,7 @@ export function ManagerPanel({
             <div className={`flex-1 overflow-y-auto ${showAdmin ? 'hidden' : ''}`}>
               {tab === 'prices' && (
                 <TabPrices
+                  canEditProfilePrices={isAdmin || (permissions?.prices?.canEdit ?? false)}
                   panelOverrides={panelOverrides}
                   moldingOverrides={moldingOverrides}
                   seriesNameOverrides={seriesNameOverrides}
