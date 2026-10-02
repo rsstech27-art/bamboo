@@ -6,4 +6,5 @@
 - [Catalog-aware code generation](catalog-codegen.md) — Orval's Zod version inference is unreliable with catalog dependencies; match the actual installed major explicitly.
 - [Ambiguous order-save failures](order-save-ambiguity.md) — a lost POST response is not proof that no order exists; retry guarantees require server-side deduplication.
 - [Official profile pricing](profile-catalog-pricing.md) — importing base articles is not authorization to replace configurable color/type prices.
+- [Official catalog initialization](profile-catalog-initialization.md) — publishing its schema does not populate reference records; initialize each environment through the manager import.
 - [Post-merge schema ownership](post-merge-schema-ownership.md) — table filters do not protect auxiliary sequences; Drizzle SQL errors can exit zero.
