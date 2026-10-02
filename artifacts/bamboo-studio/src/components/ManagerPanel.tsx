@@ -2373,9 +2373,6 @@ function TabIntegrations() {
               </div>
             </li>
           </ol>
-          <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-[11px] text-blue-700">
-            <strong>Совет:</strong> Если AmoCRM не поддерживает произвольные заголовки, используйте промежуточный сервер (n8n, Make, Zapier) или встроенный виджет, который добавит заголовок <code className="bg-blue-100 rounded px-0.5">X-Api-Key</code> перед передачей запроса.
-          </div>
         </div>
       </section>
     </div>
