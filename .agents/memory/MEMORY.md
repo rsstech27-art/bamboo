@@ -7,3 +7,4 @@
 - [Ambiguous order-save failures](order-save-ambiguity.md) — a lost POST response is not proof that no order exists; retry guarantees require server-side deduplication.
 - [Official profile pricing](profile-catalog-pricing.md) — importing base articles is not authorization to replace configurable color/type prices.
 - [Post-merge schema ownership](post-merge-schema-ownership.md) — table filters do not protect auxiliary sequences; Drizzle SQL errors can exit zero.
+- [Release visibility](release-visibility.md) — в релизе скрывать разделы, которые ещё находятся в разработке.
