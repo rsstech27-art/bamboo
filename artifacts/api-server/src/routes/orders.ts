@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { ordersTable, orderSequencesTable } from "@workspace/db/schema";
 import { eq, desc, sql, and, isNull } from "drizzle-orm";
-import { requireManagerSession } from "../middleware/managerAuth";
+import { requireManagerSession, requireAdminOrPerm } from "../middleware/managerAuth";
 import { ObjectStorageService, ObjectNotFoundError, InvalidOrderPdfError } from "../lib/objectStorage";
 import { issueOrderPdfGrant, verifyOrderPdfGrant } from "../lib/orderPdfGrant";
 import { ORDER_PDF_LOCK_ID } from "../lib/orderPdfLifecycle";
@@ -122,6 +122,31 @@ router.post("/orders/:id/pdf-upload-url", async (req, res) => {
     if (!order) return void res.status(404).json({ error: "Order not found" });
     if (order.pdfPath) return void res.status(409).json({ error: "PDF already saved" });
 
+    res.setHeader("Cache-Control", "no-store");
+    res.json(await makePdfUploadGrant(id));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: "Failed to generate upload URL", detail: msg });
+  }
+});
+
+// Recovery never replaces an existing PDF and requires explicit order-edit rights.
+router.post("/orders/:id/pdf-recovery-url", requireAdminOrPerm(["orders", "canEdit"]), async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    if (isNaN(id)) return void res.status(400).json({ error: "Invalid id" });
+    const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, id));
+    if (!order) return void res.status(404).json({ error: "Order not found" });
+    if (order.pdfPath) return void res.status(409).json({ error: "PDF already saved" });
+    res.setHeader("Cache-Control", "no-store");
+    res.json(await makePdfUploadGrant(id));
+  } catch (err) {
+    req.log?.error({ err }, "Failed to issue order PDF recovery grant");
+    res.status(500).json({ error: "Failed to generate upload URL" });
+  }
+});
+
+async function makePdfUploadGrant(id: number) {
     const uploadURL = await storage.getObjectEntityUploadURL(true);
     // Derive the object path from the presigned URL
     const url = new URL(uploadURL);
@@ -132,15 +157,10 @@ router.post("/orders/:id/pdf-upload-url", async (req, res) => {
       `https://storage.googleapis.com/${pathParts[1]}/${objectName}`,
     );
 
-    res.setHeader("Cache-Control", "no-store");
-    res.json(RequestOrderPdfUploadResponse.parse({
+    return RequestOrderPdfUploadResponse.parse({
       uploadURL, objectPath, uploadToken: issueOrderPdfGrant(id, objectPath),
-    }));
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ error: "Failed to generate upload URL", detail: msg });
-  }
-});
+    });
+}
 
 // PATCH /api/orders/:id/after-photo — save a base64 after-photo into kpData.
 router.patch("/orders/:id/after-photo", requireManagerSession, async (req, res) => {

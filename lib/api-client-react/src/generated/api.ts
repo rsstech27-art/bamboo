@@ -480,6 +480,80 @@ export const useRequestOrderPdfUpload = <TError = ErrorType<void>,
       return useMutation(getRequestOrderPdfUploadMutationOptions(options));
     }
 
+export const getRequestOrderPdfRecoveryUrl = (id: number,) => {
+
+
+
+
+  return `/api/orders/${id}/pdf-recovery-url`
+}
+
+/**
+ * @summary Issue a PDF recovery upload grant to an administrator or manager with order-edit rights
+ */
+export const requestOrderPdfRecovery = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<OrderPdfUpload> => {
+
+  return customFetch<OrderPdfUpload>(getRequestOrderPdfRecoveryUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRequestOrderPdfRecoveryMutationKey = () => ['requestOrderPdfRecovery'] as const;
+
+export const getRequestOrderPdfRecoveryMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestOrderPdfRecovery>>, TError,RequestOrderPdfRecoveryMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof requestOrderPdfRecovery>>, TError,RequestOrderPdfRecoveryMutationVariables, TContext> => {
+
+const mutationKey = getRequestOrderPdfRecoveryMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof requestOrderPdfRecovery>>, RequestOrderPdfRecoveryMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  requestOrderPdfRecovery(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RequestOrderPdfRecoveryMutationResult = NonNullable<Awaited<ReturnType<typeof requestOrderPdfRecovery>>>
+
+    export type RequestOrderPdfRecoveryMutationError = ErrorType<void>
+    export type RequestOrderPdfRecoveryMutationVariables = {id: number}
+
+    /**
+ * @summary Issue a PDF recovery upload grant to an administrator or manager with order-edit rights
+ */
+export const useRequestOrderPdfRecovery = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestOrderPdfRecovery>>, TError,RequestOrderPdfRecoveryMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof requestOrderPdfRecovery>>,
+        TError,
+        RequestOrderPdfRecoveryMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRequestOrderPdfRecoveryMutationOptions(options));
+    }
+
 export const getAttachOrderPdfUrl = (id: number,) => {
 
 

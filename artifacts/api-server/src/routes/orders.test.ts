@@ -198,7 +198,12 @@ function makeApp() {
   app.use(express.json());
   app.use((req, _res, next) => {
     const testReq = req;
-    testReq.session = (req.get("x-manager") ? { isManager: true } : {}) as Request["session"];
+    const role = req.get("x-manager");
+    testReq.session = (role ? {
+      isManager: true,
+      ...(role === "readonly" ? { isAdmin: false, managerPerms: { orders: { canRead: true } } } : {}),
+      ...(role === "editor" ? { isAdmin: false, managerPerms: { orders: { canRead: true, canEdit: true } } } : {}),
+    } : {}) as Request["session"];
     testReq.log = { error: vi.fn() } as unknown as Request["log"];
     next();
   });
@@ -228,6 +233,22 @@ describe("anonymous order PDF capability flow", () => {
   });
 
   afterEach(() => vi.unstubAllEnvs());
+
+  it("allows PDF recovery only with order-edit rights and still refuses replacement", async () => {
+    const created = await createOrder();
+    const url = `/orders/${created.body.id}/pdf-recovery-url`;
+    expect((await request(app).post(url)).status).toBe(401);
+    expect((await request(app).post(url).set("x-manager", "readonly")).status).toBe(403);
+    const recovery = await request(app).post(url).set("x-manager", "editor");
+    expect(recovery.status).toBe(200);
+    expect(recovery.headers["cache-control"]).toBe("no-store");
+    const attached = await request(app).patch(`/orders/${created.body.id}/pdf`).send({
+      objectPath: recovery.body.objectPath, uploadToken: recovery.body.uploadToken,
+    });
+    expect(attached.status).toBe(200);
+    expect((await request(app).post(url).set("x-manager", "editor")).status).toBe(409);
+    expect((await request(app).post("/orders/99999/pdf-recovery-url").set("x-manager", "editor")).status).toBe(404);
+  });
 
   it("returns a creation token and only issues an upload grant with the matching creation capability", async () => {
     const created = await createOrder();

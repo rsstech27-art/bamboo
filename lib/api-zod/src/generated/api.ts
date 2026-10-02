@@ -133,6 +133,23 @@ export const RequestOrderPdfUploadResponse = zod.object({
 
 
 /**
+ * @summary Issue a PDF recovery upload grant to an administrator or manager with order-edit rights
+ */
+
+
+
+export const RequestOrderPdfRecoveryParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const RequestOrderPdfRecoveryResponse = zod.object({
+  "uploadURL": zod.string(),
+  "objectPath": zod.string(),
+  "uploadToken": zod.string()
+})
+
+
+/**
  * @summary Attach a verified uploaded PDF once using the order/path-bound permission
  */
 

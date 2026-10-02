@@ -181,6 +181,31 @@ paths:
           description: PDF already saved; replacements are not allowed
         "500":
           description: Storage could not issue an upload URL
+  /orders/{id}/pdf-recovery-url:
+    parameters:
+      - $ref: "#/components/parameters/OrderId"
+    post:
+      operationId: requestOrderPdfRecovery
+      summary: Issue a PDF recovery upload grant to an administrator or manager with order-edit rights
+      responses:
+        "200":
+          description: Upload URL and order/path-bound attachment permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderPdfUpload"
+        "400":
+          description: Invalid order ID
+        "401":
+          description: Manager session required
+        "403":
+          description: Order-edit permission required
+        "404":
+          description: Order not found
+        "409":
+          description: PDF already saved; replacements are not allowed
+        "500":
+          description: Storage unavailable
   /orders/{id}/pdf:
     parameters:
       - $ref: "#/components/parameters/OrderId"

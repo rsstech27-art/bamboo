@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import type { OrderCreated, OrderPdfUpload } from '@workspace/api-client-react';
+import type { OrderCreated } from '@workspace/api-client-react';
 import { Upload, Layout, Eraser, RotateCcw, Download, Check, Columns, Undo2, Redo2, Sun, Moon, FileText } from 'lucide-react';
 import { PANEL_H_MM, PANEL_W_MM, PANEL_AREA_M2, optimizedPanelCalc, packWidthRemainders, packProfileRuns, columnHiddenJoints, packWindowPieces, windowStdPieces, panelsWord, rowsWord } from './lib/panelCalc';
 import {
@@ -23,6 +23,7 @@ import {
   needsFallbackCornerProfile,
 } from './lib/profileRuns';
 import { ManagerPanel } from './components/ManagerPanel';
+import { uploadOrderPdf } from './lib/orderPdf';
 import { getAvailableZones, isReleaseZone, resolveAvailableZone, type ZoneId } from './lib/zones';
 
 const BASE = import.meta.env.BASE_URL;
@@ -652,7 +653,6 @@ const BambooStudio = () => {
   const [activeSector, setActiveSector] = useState<number | null>(null);
   const [brushSize, setBrushSize] = useState(40);
   const [isErasing, setIsErasing] = useState(false);
-  const [isDrawing, setIsDrawing] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [isDraggingDivider, setIsDraggingDivider] = useState(false);
   const [moldingStyle, setMoldingStyle] = useState<MoldingStyle>('black');
@@ -2294,7 +2294,7 @@ const BambooStudio = () => {
         const dQ = Math.sqrt((cx - midX) ** 2 + (cy - midY) ** 2);
         if (dQ < minDistFound) minDistFound = dQ;
       }
-      if (minDistFound <= DIVIDER_HIT_RADIUS * 2) return d;
+      if (minDistFound <= canvasHitRadius(DIVIDER_HIT_RADIUS * 2)) return d;
     }
     return -1;
   }, []);
@@ -2357,8 +2357,8 @@ const BambooStudio = () => {
       const midX = (lx + rx) / 2;
       const midY = (ly + ry) / 2;
       // Hit the drag handle (14px radius) OR anywhere along the visible line (8px)
-      if (Math.sqrt((cx - midX) ** 2 + (cy - midY) ** 2) <= 14) return i;
-      if (distToSeg(lx, ly, rx, ry) <= 8) return i;
+      if (Math.sqrt((cx - midX) ** 2 + (cy - midY) ** 2) <= canvasHitRadius(14)) return i;
+      if (distToSeg(lx, ly, rx, ry) <= canvasHitRadius(8)) return i;
     }
     // Also hit-test virtual companion lines — clicking a companion drags the primary.
     for (let i = 0; i < positions.length; i++) {
@@ -2372,8 +2372,8 @@ const BambooStudio = () => {
         const crx2 = q[1].x + (q[2].x - q[1].x) * cr;
         const cry2 = q[1].y + (q[2].y - q[1].y) * cr;
         const cmX = (clx + crx2) / 2, cmY = (cly + cry2) / 2;
-        if (Math.sqrt((cx - cmX) ** 2 + (cy - cmY) ** 2) <= 14) return i;
-        if (distToSeg(clx, cly, crx2, cry2) <= 8) return i;
+        if (Math.sqrt((cx - cmX) ** 2 + (cy - cmY) ** 2) <= canvasHitRadius(14)) return i;
+        if (distToSeg(clx, cly, crx2, cry2) <= canvasHitRadius(8)) return i;
       }
     }
     return -1;
@@ -2411,7 +2411,7 @@ const BambooStudio = () => {
       const ry = q[1].y + (q[2].y - q[1].y) * seamR;
       const midX = (lx + rx) / 2;
       const midY = (ly + ry) / 2;
-      if (Math.sqrt((cx - midX) ** 2 + (cy - midY) ** 2) <= 14) return seamR;
+      if (Math.sqrt((cx - midX) ** 2 + (cy - midY) ** 2) <= canvasHitRadius(14)) return seamR;
     }
     return -1;
   }, [getActiveSingleRowH]);
@@ -2440,7 +2440,17 @@ const BambooStudio = () => {
     drawFullScene();
   }, [points, doorOpeningPoints, doorMarkMode, step, sectorMaterials, panelCount, dividerPositions, activeSector, isErasing, moldingStyle, moldingWidth, hMoldingStyle, hMoldingCount, hMoldingWidth, hMoldingPositions, lightMode, cylHighlightPos, activeSurface, cornerTypes, wrapJunctions, wallZone, columnShape, drawFullScene, image, panelOrientation, edgeProfileSides, edgeProfileColor, jointProfilePosition, vProfileStyle, vProfileWidth, tvBacklightEnabled, tvBacklightEdges]);
 
-  const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const pointerSessionRef = useRef<{ id: number; x: number; y: number; moved: boolean; handled: boolean } | null>(null);
+  const pointerTypeRef = useRef('mouse');
+  const drawingRef = useRef(false);
+  const canvasHitRadius = (radius: number) => {
+    const canvas = mainCanvasRef.current;
+    if (!canvas || pointerTypeRef.current === 'mouse') return radius;
+    const rect = canvas.getBoundingClientRect();
+    return Math.max(radius, (radius <= 8 ? 12 : 24) * canvas.width / Math.max(1, rect.width));
+  };
+
+  const getCanvasCoords = (e: { clientX: number; clientY: number }) => {
     const canvas = mainCanvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
@@ -2452,18 +2462,24 @@ const BambooStudio = () => {
     };
   };
 
-  const getScreenCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const getScreenCoords = (e: { clientX: number; clientY: number }) => {
     const container = containerRef.current;
     if (!container) return { x: 0, y: 0 };
     const rect = container.getBoundingClientRect();
     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
   };
 
-  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    setIsDrawing(true);
+  const handleMouseDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    drawingRef.current = true;
     if (isErasing) {
       // snapshot current stroke count so we can undo this drag
       maskUndoStackRef.current.push(maskStrokesRef.current.length);
+      const { x, y } = getCanvasCoords(e);
+      const canvas = mainCanvasRef.current;
+      if (canvas) {
+        maskStrokesRef.current.push({ x, y, r: (brushSize / 2) * canvas.width / canvas.getBoundingClientRect().width });
+        drawFullScene();
+      }
       return;
     }
     if (step !== 'edit') return;
@@ -2526,13 +2542,13 @@ const BambooStudio = () => {
   };
 
   const handleMouseUp = () => {
-    setIsDrawing(false);
+    drawingRef.current = false;
     draggingDividerIndexRef.current = null;
     draggingHMoldingIndexRef.current = null;
     setIsDraggingDivider(false);
   };
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleMouseMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const { x: sx, y: sy } = getScreenCoords(e);
     setMousePos({ x: sx, y: sy });
 
@@ -2635,7 +2651,7 @@ const BambooStudio = () => {
     }
 
     // Eraser drawing — store strokes in memory so they survive any canvas reset
-    if (isErasing && isDrawing) {
+    if (isErasing && drawingRef.current) {
       const canvas = mainCanvasRef.current;
       if (!canvas) return;
       const rect = canvas.getBoundingClientRect();
@@ -2656,7 +2672,7 @@ const BambooStudio = () => {
     }
   };
 
-  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleCanvasClick = (e: { clientX: number; clientY: number }) => {
     if (isErasing || isDraggingDivider) return;
     const { x, y } = getCanvasCoords(e);
 
@@ -2744,22 +2760,42 @@ const BambooStudio = () => {
   const kpBusyRef = useRef(false);
   const [kpSaveError, setKpSaveError] = useState<string | null>(null);
   const [kpSavedNumber, setKpSavedNumber] = useState<string | null>(null);
+  const pendingPdfRef = useRef<{ id: number; token: string; blob: Blob } | null>(null);
+  const savedWithoutPdfRef = useRef(false);
+  const [kpPdfUrl, setKpPdfUrl] = useState<string | null>(null);
+  const [kpPdfSaved, setKpPdfSaved] = useState(false);
+  useEffect(() => () => { if (kpPdfUrl) URL.revokeObjectURL(kpPdfUrl); }, [kpPdfUrl]);
 
   const handleGenerateKP = async () => {
     // The ref also prevents duplicate requests before React renders disabled.
     if (kpBusyRef.current || pointsRef.current.length < 4) return;
+    if (savedWithoutPdfRef.current && !pendingPdfRef.current) {
+      setKpSaveError('Заказ уже создан. Восстановите PDF в разделе «Заказы», чтобы не создать дубль.');
+      return;
+    }
     kpBusyRef.current = true;
     setKpBusy(true);
     setKpSaveError(null);
-    setKpSavedNumber(null);
     try {
+      if (pendingPdfRef.current) {
+        const pending = pendingPdfRef.current;
+        await uploadOrderPdf(pending.id, pending.blob, pending.token);
+        pendingPdfRef.current = null;
+        savedWithoutPdfRef.current = false;
+        setKpPdfSaved(true);
+        return;
+      }
+      setKpSavedNumber(null);
+      setKpPdfSaved(false);
+      setKpPdfUrl(null);
       await generateKP();
     } catch (cause) {
       const message = cause instanceof Error
         ? cause.message
         : 'Не удалось сформировать PDF. Текущий расчёт остался в редакторе.';
-      setKpSaveError(`${message} Текущий расчёт остался в редакторе; заказ не создавался, если номер заказа не был показан.`);
-      window.alert(message);
+      setKpSaveError(pendingPdfRef.current
+        ? `Заказ сохранён, но PDF не прикреплён. ${message} Нажмите «Повторить загрузку PDF» — новый заказ не создастся.`
+        : `${message} Текущий расчёт остался в редакторе. Если номер заказа уже показан, заказ создан; не создавайте дубль — восстановите PDF в заказах.`);
     } finally {
       forExportRef.current = false;
       kpBusyRef.current = false;
@@ -3723,6 +3759,7 @@ const BambooStudio = () => {
       }
       orderNumber = saved.orderNumber;
       savedOrderId = saved.id;
+      savedWithoutPdfRef.current = true;
       pdfToken = saved.pdfToken;
       setKpSavedNumber(orderNumber);
     } catch {
@@ -3764,7 +3801,30 @@ const BambooStudio = () => {
     if (kpImage) {
       await new Promise<void>((resolve) => {
         const img = new Image();
-        img.onload = () => {
+        img.onerror = () => window.alert('Не удалось открыть фото. Выберите изображение в формате JPEG, PNG или WebP.');
+        img.onload = async () => {
+          // Phone photos can exceed the canvas/memory limits on mobile Safari.
+          // Preserve aspect ratio; wall coordinates are marked after normalization.
+          const longestSide = Math.max(img.naturalWidth, img.naturalHeight);
+          if (longestSide > 2048) {
+            try {
+              const resized = document.createElement('canvas');
+              const scale = 2048 / longestSide;
+              resized.width = Math.round(img.naturalWidth * scale);
+              resized.height = Math.round(img.naturalHeight * scale);
+              const ctx = resized.getContext('2d');
+              if (!ctx) throw new Error('Не удалось подготовить фото.');
+              ctx.fillStyle = '#ffffff';
+              ctx.fillRect(0, 0, resized.width, resized.height);
+              ctx.drawImage(img, 0, 0, resized.width, resized.height);
+              img.onload = null;
+              img.src = resized.toDataURL('image/jpeg', 0.9);
+              await img.decode();
+            } catch {
+              window.alert('Не удалось подготовить фото. Попробуйте изображение меньшего размера.');
+              return;
+            }
+          }
           const maxW = W - 120, maxH = 560;
           const k = Math.min(maxW / img.width, maxH / img.height);
           const iw = img.width * k, ih = img.height * k;
@@ -4152,38 +4212,15 @@ const BambooStudio = () => {
     const { jsPDF } = await import('jspdf');
     const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
     pdf.addImage(cv.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 210, 297);
-    pdf.save('allwall-kp.pdf');
-
-    // Upload PDF to object storage so managers can retrieve it later.
-    // Download remains available locally even when server persistence fails.
-    if (savedOrderId !== null) {
-      try {
-        const urlResp = await fetch(`/api/orders/${savedOrderId}/pdf-upload-url`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pdfToken }),
-        });
-        if (!urlResp.ok) throw new Error('Не удалось получить разрешение на сохранение PDF.');
-        const { uploadURL, objectPath, uploadToken } = await urlResp.json() as OrderPdfUpload;
-        const pdfBlob = pdf.output('blob');
-        const uploadResp = await fetch(uploadURL, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/pdf' },
-          body: pdfBlob,
-        });
-        if (!uploadResp.ok) throw new Error('Не удалось загрузить PDF в хранилище.');
-        const saveResp = await fetch(`/api/orders/${savedOrderId}/pdf`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ objectPath, uploadToken }),
-        });
-        if (!saveResp.ok) throw new Error('Не удалось прикрепить PDF к заказу.');
-      } catch (err) {
-        window.alert(`PDF скачан на ваше устройство, но не сохранён в заказе № ${orderNumber || savedOrderId}. ${err instanceof Error ? err.message : 'Ошибка соединения.'} Передайте скачанный файл менеджеру.`);
-      }
-    } else {
-      window.alert('PDF скачан на ваше устройство, но заказ не удалось сохранить. Передайте скачанный файл менеджеру.');
-    }
+    const blob = pdf.output('blob');
+    setKpPdfUrl(URL.createObjectURL(blob));
+    if (savedOrderId === null) throw new Error('Не получен номер заказа для сохранения PDF.');
+    pendingPdfRef.current = { id: savedOrderId, token: pdfToken, blob };
+    // Never launch a mobile PDF viewer before the upload and attachment finish.
+    await uploadOrderPdf(savedOrderId, blob, pdfToken);
+    pendingPdfRef.current = null;
+    savedWithoutPdfRef.current = false;
+    setKpPdfSaved(true);
   };
 
   const handleChangePanelCount = (count: number) => {
@@ -4266,6 +4303,7 @@ const BambooStudio = () => {
         img.src = f.target?.result as string;
       };
       reader.readAsDataURL(file);
+      reader.onerror = () => window.alert('Не удалось прочитать выбранное фото. Попробуйте выбрать его снова.');
     }
   };
 
@@ -4404,7 +4442,7 @@ const BambooStudio = () => {
           <h1 style={{
             verticalAlign: 'middle',
             color: '#ffffff',
-            fontSize: '46px',
+            fontSize: 'clamp(28px, 9vw, 46px)',
             fontFamily: 'var(--t-headline-font, Arial)',
             lineHeight: 1.2,
             fontWeight: 300,
@@ -4659,11 +4697,43 @@ const BambooStudio = () => {
             <div ref={containerRef} className="relative w-full h-full bg-gray-100 rounded-3xl overflow-hidden shadow-sm border border-gray-200 flex items-center justify-center">
               <canvas
                 ref={mainCanvasRef}
-                onClick={handleCanvasClick}
-                onMouseMove={handleMouseMove}
-                onMouseDown={handleMouseDown}
-                onMouseUp={handleMouseUp}
-                onMouseLeave={handleMouseUp}
+                onPointerDown={e => {
+                  if (pointerSessionRef.current || !e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
+                  pointerTypeRef.current = e.pointerType;
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                  handleMouseDown(e);
+                  pointerSessionRef.current = {
+                    id: e.pointerId, x: e.clientX, y: e.clientY, moved: false,
+                    handled: isErasing || draggingDividerIndexRef.current !== null || draggingHMoldingIndexRef.current !== null,
+                  };
+                }}
+                onPointerMove={e => {
+                  const session = pointerSessionRef.current;
+                  if (session && session.id !== e.pointerId) return;
+                  if (!session && !e.isPrimary) return;
+                  pointerTypeRef.current = e.pointerType;
+                  if (session && Math.hypot(e.clientX - session.x, e.clientY - session.y) > 6) session.moved = true;
+                  handleMouseMove(e);
+                }}
+                onPointerUp={e => {
+                  const session = pointerSessionRef.current;
+                  if (!session || session.id !== e.pointerId) return;
+                  const tapped = !session.moved && !session.handled;
+                  pointerSessionRef.current = null;
+                  handleMouseUp();
+                  if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+                  if (tapped) handleCanvasClick(e);
+                }}
+                onPointerCancel={e => {
+                  if (pointerSessionRef.current?.id !== e.pointerId) return;
+                  pointerSessionRef.current = null;
+                  handleMouseUp();
+                }}
+                onLostPointerCapture={e => {
+                  if (pointerSessionRef.current?.id !== e.pointerId) return;
+                  pointerSessionRef.current = null;
+                  handleMouseUp();
+                }}
                 className="touch-none block"
                 style={{ cursor: isErasing ? 'none' : step === 'mark' ? 'crosshair' : 'pointer', maxWidth: '100%', maxHeight: '100%' }}
               />
@@ -4738,7 +4808,7 @@ const BambooStudio = () => {
         )}
 
         {/* ── Right tool panel — hidden on zone-selection step ── */}
-        <div className={`w-full md:flex-[1] md:min-w-0 shrink-0 flex flex-col gap-1.5 overflow-y-auto pb-4 md:pb-1 ${step === 'zone' ? 'hidden' : ''}`} style={{ scrollbarWidth: 'none' }}>
+        <div className={`w-full md:flex-[1] md:min-w-0 shrink-0 flex flex-col gap-1.5 overflow-y-auto pb-4 md:pb-1 max-md:[&_button]:min-h-10 max-md:[&_input]:min-h-10 max-md:[&_input]:text-base max-md:[&_select]:min-h-10 max-md:[&_select]:text-base ${step === 'zone' ? 'hidden' : ''}`} style={{ scrollbarWidth: 'none' }}>
 
           {/* MARK step */}
           {step === 'mark' && (
@@ -6384,7 +6454,7 @@ const BambooStudio = () => {
                     ? 'bg-[#7ec662] text-white hover:bg-[#6db453] shadow-md ring-2 ring-[#7ec662] ring-offset-1'
                     : 'bg-[#c8e0be] text-white/70 shadow-sm'
                 }`}>
-                <FileText size={11} className="shrink-0" /> {kpBusy ? 'Сохранение КП…' : kpSaveError ? 'Повторить сохранение КП' : 'Рассчитать КП'}
+                <FileText size={11} className="shrink-0" /> {kpBusy ? 'Сохранение КП…' : pendingPdfRef.current ? 'Повторить загрузку PDF' : kpSaveError ? 'Повторить сохранение КП' : 'Рассчитать КП'}
               </button>
             </div>
             {kpSaveError && (
@@ -6394,8 +6464,14 @@ const BambooStudio = () => {
             )}
             {kpSavedNumber && (
               <p role="status" className="mt-2 text-xs font-bold text-green-700">
-                Заказ № {kpSavedNumber} сохранён.
+                Заказ № {kpSavedNumber} сохранён. {kpPdfSaved ? 'PDF прикреплён.' : kpBusy ? 'Сохраняем PDF — не закрывайте страницу.' : 'PDF ещё не прикреплён.'}
               </p>
+            )}
+            {kpPdfUrl && !kpBusy && (
+              <a href={kpPdfUrl} download={`allwall-kp-${kpSavedNumber ?? ''}.pdf`}
+                className="mt-2 flex min-h-10 items-center justify-center gap-2 rounded-xl bg-black px-3 py-2 text-sm font-bold text-white">
+                <Download size={16} /> Скачать PDF
+              </a>
             )}
 
           </>)}

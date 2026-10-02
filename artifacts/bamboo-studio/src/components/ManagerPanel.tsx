@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { uploadOrderPdf } from '../lib/orderPdf';
+import { recoverOrderPdf } from '../lib/recoverOrderPdf';
 import {
   X, LogOut, Lock, ChevronRight, Package, ShoppingBag, Tag,
   Plus, Pencil, Trash2, RotateCcw, Image, Check, Loader2,
@@ -2033,8 +2035,8 @@ const ZONE_COLORS: Record<string, string> = {
 
 interface KPItem { article: string; name: string; qty: number; price: number; }
 
-function OrderCard({ order, expanded, onToggle }: {
-  order: Order; expanded: boolean; onToggle: () => void;
+function OrderCard({ order, expanded, onToggle, canEditPdf }: {
+  order: Order; expanded: boolean; onToggle: () => void; canEditPdf: boolean;
 }) {
   const items = (order.kpData.items as KPItem[] | undefined) ?? [];
   const total = (order.kpData.total as number | undefined) ?? 0;
@@ -2051,7 +2053,31 @@ function OrderCard({ order, expanded, onToggle }: {
     hour: '2-digit', minute: '2-digit',
   });
 
-  const pdfUrl = order.pdfPath ? `/api/orders/${order.id}/pdf` : null;
+  const [pdfRestored, setPdfRestored] = useState(false);
+  const [pdfWorking, setPdfWorking] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+  const pdfWorkingRef = useRef(false);
+  const pdfInputRef = useRef<HTMLInputElement>(null);
+  const pdfUrl = order.pdfPath || pdfRestored ? `/api/orders/${order.id}/pdf` : null;
+  const restorePdf = async (file?: File) => {
+    if (pdfWorkingRef.current) return;
+    pdfWorkingRef.current = true;
+    setPdfWorking(true);
+    setPdfError(null);
+    try {
+      if (file && (file.size > 15 * 1024 * 1024 || await file.slice(0, 5).text() !== '%PDF-')) {
+        throw new Error('Выберите PDF размером не более 15 МБ.');
+      }
+      const blob = file ?? await recoverOrderPdf(order);
+      await uploadOrderPdf(order.id, blob);
+      setPdfRestored(true);
+    } catch (cause) {
+      setPdfError(cause instanceof Error ? cause.message : 'Не удалось восстановить PDF.');
+    } finally {
+      pdfWorkingRef.current = false;
+      setPdfWorking(false);
+    }
+  };
 
   const handleAfterPhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -2112,6 +2138,26 @@ function OrderCard({ order, expanded, onToggle }: {
         <ChevronRight size={14} className={`shrink-0 text-gray-300 transition-transform ${expanded ? 'rotate-90' : ''}`} />
       </button>
 
+      {!pdfUrl && (
+        <div className="mx-4 mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+          <p className="text-xs text-amber-900">PDF не прикреплён. Расчёт заказа сохранён.</p>
+          {canEditPdf && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button type="button" disabled={pdfWorking} onClick={() => void restorePdf()}
+                className="min-h-10 rounded-lg bg-black px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
+                {pdfWorking ? 'Сохранение PDF…' : 'Восстановить PDF из расчёта'}
+              </button>
+              <button type="button" disabled={pdfWorking} onClick={() => pdfInputRef.current?.click()}
+                className="min-h-10 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-bold disabled:opacity-50">
+                Прикрепить PDF с устройства
+              </button>
+              <input ref={pdfInputRef} type="file" accept=".pdf,application/pdf" className="hidden"
+                onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; if (file) void restorePdf(file); }} />
+            </div>
+          )}
+          {pdfError && <p role="alert" className="mt-2 text-xs text-red-700">{pdfError}</p>}
+        </div>
+      )}
       {expanded && (
         <div className="px-5 pb-4 border-t border-gray-100">
           {/* Photo row: До и После side-by-side when both present, otherwise stacked */}
@@ -2379,7 +2425,7 @@ function TabIntegrations() {
   );
 }
 
-function TabOrders() {
+function TabOrders({ canEditPdf }: { canEditPdf: boolean }) {
   const { data, loading, error } = useFetch<Order[]>('/api/orders');
   const [expandedId, setExpandedId]     = useState<number | null>(null);
   const [search, setSearch]             = useState('');
@@ -2498,6 +2544,7 @@ function TabOrders() {
       )}
       {visible.map(o => (
         <OrderCard key={o.id} order={o}
+          canEditPdf={canEditPdf}
           expanded={expandedId === o.id}
           onToggle={() => setExpandedId(prev => prev === o.id ? null : o.id)} />
       ))}
@@ -2785,7 +2832,7 @@ export function ManagerPanel({
                   onUpdateCustomExtra={onUpdateCustomExtra}
                 />
               )}
-              {tab === 'orders' && <TabOrders />}
+              {tab === 'orders' && <TabOrders canEditPdf={isAdmin || Boolean(permissions?.orders?.canEdit)} />}
               {tab === 'integrations' && <TabIntegrations />}
               {tab === 'backup' && (
                 <div className="max-w-2xl mx-auto py-8 px-4">
