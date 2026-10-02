@@ -9,6 +9,8 @@
  *   - Products absent from the archive are LEFT UNTOUCHED.
  *   - Settings keys present in the archive OVERWRITE the live values.
  *   - Settings keys absent from the archive are LEFT UNTOUCHED.
+ *   - Optional profileCatalog v1 merges metadata by kind, never profile prices.
+ *   - Missing profileCatalog (legacy ZIPs) leaves all profile metadata untouched.
  *   This is intentionally "import/merge" to prevent accidental bulk deletion.
  *
  * Archive format (version 1):
@@ -42,9 +44,10 @@ import express, { Router, type IRouter } from "express";
 import { ZipArchive } from "archiver";
 import unzipper from "unzipper";
 import { db } from "@workspace/db";
-import { productsTable, managerSettingsTable } from "@workspace/db/schema";
+import { productsTable, managerSettingsTable, profileCatalogTable, type ProfileCatalogMetadata } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { requireManagerSession } from "../middleware/managerAuth";
+import { PROFILE_BACKUP_VERSION, validateProfileBackup, prepareProfileRestore, restoreProfiles, ProfileBackupConflict } from "../lib/profileBackup";
 
 const router: IRouter = Router();
 
@@ -127,9 +130,10 @@ export async function readEntryBounded(
 // ─────────────────────────────────────────────────────────────────────────────
 router.get("/backup/export", requireManagerSession, async (req, res) => {
   try {
-    const [products, settingRows] = await Promise.all([
+    const [products, settingRows, profiles] = await Promise.all([
       db.select().from(productsTable).orderBy(productsTable.createdAt),
       db.select().from(managerSettingsTable),
+      db.select().from(profileCatalogTable).orderBy(profileCatalogTable.kind),
     ]);
 
     const settings: Record<string, unknown> = {};
@@ -220,6 +224,12 @@ router.get("/backup/export", requireManagerSession, async (req, res) => {
       exportedAt: now.toISOString(),
       products: manifestProducts,
       settings,
+      profileCatalog: {
+        version: PROFILE_BACKUP_VERSION,
+        profiles: profiles.map(({ kind, article, name, colors, lengthMm, panelThicknessesMm }) => ({
+          kind, article, name, colors, lengthMm, panelThicknessesMm,
+        })),
+      },
     };
 
     archive.append(JSON.stringify(manifest, null, 2), { name: "manifest.json" });
@@ -258,6 +268,9 @@ router.post(
 
     try {
       await db.transaction(async (tx) => {
+        const profilesToRestore = result.profiles === undefined
+          ? []
+          : await prepareProfileRestore(tx, result.profiles);
         for (const p of resolvedProducts) {
           const [existing] = await tx
             .select({ id: productsTable.id })
@@ -311,8 +324,12 @@ router.post(
             });
           settingsRestored++;
         }
+        await restoreProfiles(tx, profilesToRestore);
       });
     } catch (err) {
+      if (err instanceof ProfileBackupConflict) {
+        return void res.status(409).json({ error: err.message });
+      }
       const msg = err instanceof Error ? err.message : String(err);
       return void res.status(500).json({ error: "Ошибка при импорте", detail: msg });
     }
@@ -340,7 +357,7 @@ export interface ResolvedProduct {
 }
 
 type ProcessResult =
-  | { ok: true; products: ResolvedProduct[]; settings: Record<string, unknown> }
+  | { ok: true; products: ResolvedProduct[]; settings: Record<string, unknown>; profiles?: ProfileCatalogMetadata[] }
   | { ok: false; status: 400; error: string };
 
 export async function processBackupBuffer(body: Buffer): Promise<ProcessResult> {
@@ -441,7 +458,7 @@ export async function processBackupBuffer(body: Buffer): Promise<ProcessResult> 
     panelHeightMm: p.panelHeightMm,
   }));
 
-  return { ok: true, products, settings: mSettings };
+  return { ok: true, products, settings: mSettings, profiles: validation.profiles };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -511,7 +528,7 @@ interface ManifestProduct {
 }
 
 type ValidationResult =
-  | { ok: true; products: ManifestProduct[]; settings: Record<string, unknown> }
+  | { ok: true; products: ManifestProduct[]; settings: Record<string, unknown>; profiles?: ProfileCatalogMetadata[] }
   | { ok: false; error: string };
 
 export function validateManifest(raw: unknown): ValidationResult {
@@ -601,7 +618,13 @@ export function validateManifest(raw: unknown): ValidationResult {
     }
   }
 
-  return { ok: true, products, settings };
+  let profiles: ProfileCatalogMetadata[] | undefined;
+  if (Object.prototype.hasOwnProperty.call(m, "profileCatalog")) {
+    const validation = validateProfileBackup(m["profileCatalog"]);
+    if (!validation.ok) return validation;
+    profiles = validation.profiles;
+  }
+  return { ok: true, products, settings, profiles };
 }
 
 export default router;

@@ -56,6 +56,101 @@ const MINIMAL_MANIFEST = {
   settings: {},
 };
 
+const VALID_PROFILE = {
+  kind: "connector",
+  article: "MC-EDITED",
+  name: "Исправленный соединительный профиль",
+  colors: ["black", "bronze"],
+  lengthMm: 3000,
+  panelThicknessesMm: [5, 8],
+};
+
+describe("versioned profileCatalog manifest section", () => {
+  const manifestWithProfiles = (profiles: unknown[]) => ({
+    ...MINIMAL_MANIFEST,
+    profileCatalog: { version: 1, profiles },
+  });
+
+  it("accepts corrected metadata and trims articles/names", () => {
+    const result = validateManifest(manifestWithProfiles([
+      { ...VALID_PROFILE, article: " MC-EDITED ", name: " Название менеджера " },
+      { ...VALID_PROFILE, kind: "light", article: "DL-EDITED", colors: ["black"] },
+    ]));
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.profiles?.[0]).toEqual({
+        ...VALID_PROFILE, article: "MC-EDITED", name: "Название менеджера",
+      });
+    }
+  });
+
+  it("distinguishes legacy archives from an explicit empty section", () => {
+    const legacy = validateManifest(MINIMAL_MANIFEST);
+    const empty = validateManifest(manifestWithProfiles([]));
+    expect(legacy.ok && legacy.profiles).toBeUndefined();
+    expect(empty.ok && empty.profiles).toEqual([]);
+  });
+
+  it.each([
+    ["unknown kind", { kind: "corner" }],
+    ["blank article", { article: " " }],
+    ["overlong article", { article: "A".repeat(101) }],
+    ["blank name", { name: "" }],
+    ["overlong name", { name: "N".repeat(201) }],
+    ["empty colors", { colors: [] }],
+    ["unknown color", { colors: ["white"] }],
+    ["non-string color", { colors: [1] }],
+    ["duplicate colors", { colors: ["black", "black"] }],
+    ["light nonblack color", { kind: "light", colors: ["gold"] }],
+    ["invalid length", { lengthMm: 2500 }],
+    ["string length", { lengthMm: "3000" }],
+    ["missing compatibility", { panelThicknessesMm: undefined }],
+    ["partial compatibility", { panelThicknessesMm: [8] }],
+    ["extra compatibility", { panelThicknessesMm: [5, 8, 10] }],
+    ["reversed compatibility", { panelThicknessesMm: [8, 5] }],
+    ["price in metadata", { price: 100 }],
+    ["timestamp in metadata", { updatedAt: "2026-01-01" }],
+  ])("rejects %s", (_label, patch) => {
+    const result = validateManifest(manifestWithProfiles([{ ...VALID_PROFILE, ...patch }]));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("profileCatalog");
+  });
+
+  it.each([
+    null,
+    [],
+    { version: 2, profiles: [VALID_PROFILE] },
+    { profiles: [VALID_PROFILE] },
+    { version: 1, profiles: {} },
+    { version: 1, profiles: [null] },
+  ])("rejects malformed or unsupported sections: %j", (profileCatalog) => {
+    expect(validateManifest({ ...MINIMAL_MANIFEST, profileCatalog }).ok).toBe(false);
+  });
+
+  it("rejects duplicate kinds and normalized articles", () => {
+    expect(validateManifest(manifestWithProfiles([
+      VALID_PROFILE, { ...VALID_PROFILE, article: "DIFFERENT" },
+    ])).ok).toBe(false);
+    expect(validateManifest(manifestWithProfiles([
+      VALID_PROFILE, { ...VALID_PROFILE, kind: "gap", article: " MC-EDITED " },
+    ])).ok).toBe(false);
+  });
+
+  it("carries profiles through real ZIP decoding without introducing prices", async () => {
+    const zip = await buildZip([{
+      name: "manifest.json",
+      content: JSON.stringify(manifestWithProfiles([VALID_PROFILE])),
+    }]);
+    const result = await processBackupBuffer(zip);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.profiles).toEqual([VALID_PROFILE]);
+      expect(result.settings).toEqual({});
+      expect(result.products).toEqual([]);
+    }
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Auth checks — no manager session
 // ─────────────────────────────────────────────────────────────────────────────

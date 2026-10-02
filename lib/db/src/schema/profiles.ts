@@ -43,5 +43,23 @@ export const insertProfileCatalogSchema = createInsertSchema(profileCatalogTable
 
 export const selectProfileCatalogSchema = createSelectSchema(profileCatalogTable);
 
+export const profileCatalogMetadataSchema = z.object({
+  kind: z.enum(["connector", "gap", "light"]),
+  article: z.string().trim().min(1).max(100),
+  name: z.string().trim().min(1).max(200),
+  colors: z.array(z.enum(["black", "gold", "bronze", "metallic"])).min(1),
+  lengthMm: z.literal(3000),
+  panelThicknessesMm: z.tuple([z.literal(5), z.literal(8)]),
+}).strict().superRefine((profile, ctx) => {
+  if (new Set(profile.colors).size !== profile.colors.length) {
+    ctx.addIssue({ code: "custom", path: ["colors"], message: "Duplicate colors" });
+  }
+  if (profile.kind === "light" && profile.colors.some((color) => color !== "black")) {
+    ctx.addIssue({ code: "custom", path: ["colors"], message: "Light profiles only support black" });
+  }
+});
+
 export type InsertProfileCatalog = z.infer<typeof insertProfileCatalogSchema>;
 export type ProfileCatalogEntry = typeof profileCatalogTable.$inferSelect;
+
+export type ProfileCatalogMetadata = z.infer<typeof profileCatalogMetadataSchema>;
