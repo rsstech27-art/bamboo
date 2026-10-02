@@ -18,7 +18,8 @@ import {
 } from '../hooks/useManagerPrices';
 import { managerLogin, managerLogout, checkManagerSession, managerFetch, type ManagerSession } from '../lib/managerApi';
 import { useProfileCatalog } from '../hooks/useProfileCatalog';
-import { PROFILE_KIND_DETAILS, type ProfileCatalogRecord, type ProfileKind } from '../lib/profileCatalog';
+import { PROFILE_KIND_DETAILS, PROFILE_COLOR_LABELS, buildLegacyMoldingPriceMap, isLegacyMoldingPriceSource, resolveMoldingPrice,
+  type ProfileCatalogRecord, type ProfileKind, type ProfileColor } from '../lib/profileCatalog';
 import { ProfileCatalogPanel } from './ProfileCatalogPanel';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1637,6 +1638,7 @@ const CATALOG_SIZE = 115;
 
 function TabProducts({
   seriesOptions, onPhotoChange, onSettingsChange, extrasOverrides, canEditOfficialCatalog,
+  canEditProfilePrices, onSaveMoldingPrices,
   moldingOverrides, moldingNameOverrides, customMoldings, hiddenMoldingIds,
   onUpdateMolding, onUpdateMoldingName, onDeleteMolding, onUpdateCustomMolding,
   onHideMolding, onAddMolding,
@@ -1645,6 +1647,8 @@ function TabProducts({
 }: {
   seriesOptions: Array<{ name: string; price: number }>;
   canEditOfficialCatalog: boolean;
+  canEditProfilePrices: boolean;
+  onSaveMoldingPrices?: (edits: PriceMap) => Promise<void>;
   onPhotoChange?: () => void;
   onSettingsChange?: () => void;
   extrasOverrides?: PriceMap;
@@ -1714,6 +1718,9 @@ function TabProducts({
 
   // ── Molding products ────────────────────────────────────────────────────────
   const createMolding = async (form: typeof EMPTY_MOLDING) => {
+    if (!isLegacyMoldingPriceSource(form, DEFAULT_MOLDING_PRICES)) {
+      throw new Error('Выберите расчётную серию профиля и укажите стоимость больше нуля.');
+    }
     const r = await managerFetch('/api/products', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form),
     });
@@ -1761,7 +1768,22 @@ function TabProducts({
 
   // ── Computed ────────────────────────────────────────────────────────────────
   const panelProducts   = data?.filter(p => (p.category ?? 'panel') !== 'molding') ?? [];
-  const moldingProducts = data?.filter(p => p.category === 'molding') ?? [];
+  // Hide unrelated historical records, without removing them from DB or backups.
+  const moldingProducts = data?.filter(p => isLegacyMoldingPriceSource(p, DEFAULT_MOLDING_PRICES)) ?? [];
+  const legacyPrices = buildLegacyMoldingPriceMap(data ?? [], DEFAULT_MOLDING_PRICES);
+  const idsByKind: Record<ProfileKind, string[]> = {
+    connector: ['black','metallic','bronze','gold'],
+    gap: ['gap','metallic_gap','bronze_gap','gold_gap'],
+    light: ['light'],
+  };
+  const profilePricing = Object.fromEntries(Object.entries(idsByKind).map(([kind, ids]) => [
+    kind, ids.map(id => ({
+      id,
+      label: PROFILE_COLOR_LABELS[(id === 'gap' || id === 'light' ? 'black' : id.split('_')[0]) as ProfileColor],
+      price: resolveMoldingPrice(id === 'gap' ? 'black_gap' : id === 'light' ? 'black_light' : id,
+        moldingOverrides ?? {}, legacyPrices, DEFAULT_MOLDING_PRICES),
+    })),
+  ]));
 
   const currentCount = panelProducts.length;
   const alreadyFull = currentCount >= CATALOG_SIZE;
@@ -1777,13 +1799,11 @@ function TabProducts({
   // Серии профилей (для выпадающего списка в форме)
   const moldingSeriesOptions: Array<{ name: string }> = [
     ...DEFAULT_MOLDING_PRICES
-      .filter(m => !(hiddenMoldingIds ?? []).includes(m.id))
-      .map(m => ({ name: (moldingNameOverrides ?? {})[m.id] || m.name })),
-    ...(customMoldings ?? []).map(m => ({ name: m.name })),
+      .map(m => ({ name: m.name })),
   ];
 
   return (
-    <div className="py-6 px-4">
+    <div className="w-full min-w-0 py-6 px-4">
       {/* ── Modals ── */}
       {editingProduct && (
         <EditProductModal
@@ -1801,10 +1821,6 @@ function TabProducts({
           onClose={() => setEditingMolding(null)}
         />
       )}
-
-      <div className="max-w-5xl mx-auto">
-        <ProfileCatalogPanel canEdit={canEditOfficialCatalog} />
-      </div>
 
       {/* ── Two-column grid ── */}
       <div className="flex gap-6 items-start max-w-5xl mx-auto">
@@ -1906,19 +1922,23 @@ function TabProducts({
             </button>
             {profilesOpen && (
               <div className="space-y-2">
-                {creatingMolding ? (
-                  <MoldingCreateForm seriesOptions={moldingSeriesOptions} onSave={createMolding} onCancel={() => setCreatingMolding(false)} />
-                ) : (
-                  <button
-                    onClick={() => { setCreatingMolding(true); setCreating(false); }}
-                    className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 hover:border-black text-gray-500 hover:text-black text-sm font-bold py-3 rounded-2xl transition-colors">
-                    <Plus size={14} /> Добавить профиль
-                  </button>
-                )}
-                {moldingProducts.length === 0 && !creatingMolding && (
-                  <div className="text-center py-4 text-gray-400 text-sm">
-                    <Package size={24} className="mx-auto mb-2 opacity-30" />
-                    Нет добавленных профилей
+                <ProfileCatalogPanel canEdit={canEditOfficialCatalog}
+                  canEditPrices={canEditProfilePrices}
+                  pricing={profilePricing}
+                  onSavePrices={onSaveMoldingPrices
+                    ? edits => onSaveMoldingPrices(Object.fromEntries(edits.map(({id,price}) => [id,price])))
+                    : undefined} />
+                {moldingProducts.length > 0 && (
+                  <div className="space-y-2 pt-3">
+                    <p className="text-xs font-semibold text-gray-500">Дополнительные источники цен, используемые в расчёте</p>
+                    {creatingMolding ? (
+                      <MoldingCreateForm seriesOptions={moldingSeriesOptions} onSave={createMolding} onCancel={() => setCreatingMolding(false)} />
+                    ) : (
+                      <button onClick={() => { setCreatingMolding(true); setCreating(false); }}
+                        className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 hover:border-black text-gray-500 hover:text-black text-sm font-bold py-3 rounded-2xl transition-colors">
+                        <Plus size={14} /> Добавить источник цены
+                      </button>
+                    )}
                   </div>
                 )}
                 {moldingProducts.map(p => (
@@ -1994,10 +2014,6 @@ function TabProducts({
           </section>
         </div>
 
-        {/* ════════════════════ RIGHT — sidebar ════════════════════ */}
-        <div className="w-72 shrink-0 space-y-3">
-
-        </div>
       </div>
     </div>
   );
@@ -2518,6 +2534,7 @@ interface Props {
   seriesDefinitions: SeriesDefinition[];
   onUpdatePanel: (id: string, p: number) => void;
   onUpdateMolding: (id: string, p: number) => void;
+  onSaveMoldingPrices?: (edits: PriceMap) => Promise<void>;
   onUpdateSeriesName: (id: string, name: string) => void;
   onUpdateMoldingName: (id: string, name: string) => void;
   onAddSeries: (name: string, price: number) => void;
@@ -2549,6 +2566,7 @@ export function ManagerPanel({
   customSeries, customMoldings, seriesDefinitions,
   hiddenSeriesIds, hiddenMoldingIds, hiddenExtrasIds,
   onUpdatePanel, onUpdateMolding, onUpdateSeriesName, onUpdateMoldingName,
+  onSaveMoldingPrices,
   onAddSeries, onDeleteSeries, onUpdateCustomSeries,
   onAddMolding, onDeleteMolding, onUpdateCustomMolding,
   onHideSeries, onHideMolding, onHideExtra,
@@ -2558,6 +2576,19 @@ export function ManagerPanel({
   dbSaveStatus,
   mode = 'admin',
 }: Props) {
+  useEffect(() => {
+    // The full-screen manager owns background clipping/scroll lock. Nested dialogs
+    // are portaled to body and must not restore a second, conflicting lock.
+    const root = document.getElementById('root');
+    const previousRootOverflow = root?.style.overflow ?? '';
+    const previousBodyOverflow = document.body.style.overflow;
+    if (root) root.style.overflow = 'clip';
+    document.body.style.overflow = 'hidden';
+    return () => {
+      if (root) root.style.overflow = previousRootOverflow;
+      document.body.style.overflow = previousBodyOverflow;
+    };
+  }, []);
   const [isAuth, setIsAuth] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [tab, setTab] = useState<TabId>('prices');
@@ -2611,7 +2642,7 @@ export function ManagerPanel({
   return (
     <>
       <div className="fixed inset-0 z-[998] bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="fixed inset-0 z-[999] flex flex-col bg-[#f8f8f6] animate-[slideInUp_0.25s_ease]">
+      <div className="fixed inset-0 z-[999] flex flex-col overflow-hidden bg-[#f8f8f6] animate-[slideInUp_0.25s_ease]">
         {!sessionChecked ? (
           /* Waiting for session check — show minimal spinner */
           <div className="flex items-center justify-center h-full gap-2 text-gray-400">
@@ -2629,15 +2660,15 @@ export function ManagerPanel({
           <>
             {/* Header */}
             <div className="shrink-0 bg-black text-white">
-              <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
+              <div className="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="font-black text-base tracking-wide">ALL WALL</div>
-                  <div className="h-4 w-px bg-white/20" />
-                  <div className="text-sm text-gray-400">Кабинет менеджера</div>
+                  <div className="hidden sm:block h-4 w-px bg-white/20" />
+                  <div className="hidden sm:block text-sm text-gray-400">Кабинет менеджера</div>
                 </div>
                 <div className="flex items-center gap-3">
                   {managerLoginName && (
-                    <span className="text-xs text-gray-500">{managerLoginName}</span>
+                    <span className="hidden sm:inline text-xs text-gray-500">{managerLoginName}</span>
                   )}
                   <button onClick={logout}
                     className="flex items-center gap-1.5 text-gray-400 hover:text-white text-xs transition-colors">
@@ -2651,12 +2682,12 @@ export function ManagerPanel({
               </div>
 
               {/* Tabs row */}
-              <div className="max-w-5xl mx-auto px-6 flex gap-1 pb-0 items-end">
+              <div className="max-w-5xl mx-auto px-4 sm:px-6 flex gap-1 pb-0 items-end overflow-x-auto">
                 {visibleTabs.map(t => {
                   const Icon = t.icon;
                   return (
                     <button key={t.id} onClick={() => { setShowAdmin(false); setTab(t.id); }}
-                      className={`flex items-center gap-2 px-4 py-3 text-sm font-bold border-b-2 transition-all ${
+                      className={`shrink-0 flex items-center gap-2 px-4 py-3 text-sm font-bold border-b-2 transition-all ${
                         !showAdmin && tab === t.id
                           ? 'border-[#7ec662] text-white'
                           : 'border-transparent text-gray-500 hover:text-gray-300'
@@ -2670,7 +2701,7 @@ export function ManagerPanel({
                   <>
                     <div className="flex-1" />
                     <button onClick={() => setShowAdmin(true)}
-                      className={`flex items-center gap-2 px-4 py-3 text-sm font-bold border-b-2 transition-all ${
+                      className={`shrink-0 flex items-center gap-2 px-4 py-3 text-sm font-bold border-b-2 transition-all ${
                         showAdmin
                           ? 'border-[#7ec662] text-white'
                           : 'border-transparent text-gray-500 hover:text-gray-300'
@@ -2693,7 +2724,7 @@ export function ManagerPanel({
             )}
 
             {/* Tab content */}
-            <div className={`flex-1 overflow-y-auto ${showAdmin ? 'hidden' : ''}`}>
+            <div className={`flex-1 min-w-0 overflow-x-hidden overflow-y-auto ${showAdmin ? 'hidden' : ''}`}>
               {tab === 'prices' && (
                 <TabPrices
                   panelOverrides={panelOverrides}
@@ -2733,6 +2764,8 @@ export function ManagerPanel({
                 <TabProducts
                   seriesOptions={seriesOptions}
                   canEditOfficialCatalog={canEditOfficialCatalog}
+                  canEditProfilePrices={isAdmin || (permissions?.prices?.canEdit ?? false)}
+                  onSaveMoldingPrices={onSaveMoldingPrices}
                   onPhotoChange={onPhotoChange}
                   onSettingsChange={onSettingsChange}
                   extrasOverrides={extrasOverrides}

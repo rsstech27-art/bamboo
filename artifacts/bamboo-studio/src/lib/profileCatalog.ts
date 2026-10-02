@@ -135,17 +135,45 @@ export function resolveMoldingProductPriceAlias(style: string): string {
 }
 
 /** Preserve the pre-import exact-series lookup; metadata is not a price migration. */
+export function isLegacyMoldingPriceSource(
+  product: { category?: string | null; series?: string | null; cost?: number | null },
+  definitions: readonly (MoldingPriceDefinition & { name: string })[],
+): boolean {
+  return product.category === 'molding' && typeof product.cost === 'number' &&
+    Number.isFinite(product.cost) && product.cost > 0 &&
+    definitions.some(definition => definition.name === product.series);
+}
+
+/** One complete price write, preserving every unrelated historic setting. */
+export function mergeMoldingPriceEdits(
+  existing: Readonly<Record<string, number>>,
+  edits: Readonly<Record<string, number>>,
+  definitions: readonly MoldingPriceDefinition[],
+): Record<string, number> {
+  const allowed = new Set(definitions.map(definition => definition.id));
+  for (const [id, price] of Object.entries(edits)) {
+    if (!allowed.has(id) || !Number.isFinite(price) || price <= 0) {
+      throw new Error('Укажите положительную цену для существующего профиля.');
+    }
+  }
+  const next = { ...existing, ...edits };
+  // Explicitly changing a color's price also updates its existing historical alias.
+  // Metadata edits alone never migrate prices, and aliases for other colors stay untouched.
+  if (edits.gap !== undefined && Object.hasOwn(existing, 'black_gap')) next.black_gap = edits.gap;
+  if (edits.light !== undefined && Object.hasOwn(existing, 'black_light')) next.black_light = edits.light;
+  return next;
+}
+
 export function buildLegacyMoldingPriceMap(
   products: readonly { category?: string | null; series?: string | null; cost?: number | null }[],
   definitions: readonly (MoldingPriceDefinition & { name: string })[],
 ): Record<string, number> {
   const prices: Record<string, number> = {};
   for (const product of products) {
-    if (product.category !== 'molding' || !product.series ||
-        typeof product.cost !== 'number' || !Number.isFinite(product.cost) || product.cost <= 0) continue;
+    if (!isLegacyMoldingPriceSource(product, definitions)) continue;
     const match = definitions.find(definition => definition.name === product.series);
-    if (match && (prices[match.id] === undefined || product.cost < prices[match.id])) {
-      prices[match.id] = product.cost;
+    if (match && (prices[match.id] === undefined || product.cost! < prices[match.id])) {
+      prices[match.id] = product.cost!;
     }
   }
   return prices;

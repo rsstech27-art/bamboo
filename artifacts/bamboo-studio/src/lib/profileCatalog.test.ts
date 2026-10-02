@@ -2,6 +2,8 @@ import { strict as assert } from 'node:assert';
 import { DEFAULT_MOLDING_PRICES } from '../hooks/useManagerPrices.ts';
 import {
   buildLegacyMoldingPriceMap,
+  isLegacyMoldingPriceSource,
+  mergeMoldingPriceEdits,
   makeOfficialProfileLabel,
   resolveMoldingPrice,
   resolveMoldingPriceAlias,
@@ -14,6 +16,37 @@ import {
   distributeProfileStyleRuns,
   needsFallbackCornerProfile,
 } from './profileRuns.ts';
+
+const historicalProfiles = [
+  {category:'molding',series:'Профиль торцевой',cost:1100},
+  {category:'molding',series:'Профиль соединительный с разрывом',cost:3000},
+  {category:'molding',series:'Профиль соединительный с подсветкой',cost:1100},
+];
+for(const product of historicalProfiles.slice(1)) {
+  assert.equal(isLegacyMoldingPriceSource(product,DEFAULT_MOLDING_PRICES),false);
+}
+assert.equal(isLegacyMoldingPriceSource(historicalProfiles[0]!,DEFAULT_MOLDING_PRICES),true);
+assert.deepEqual(buildLegacyMoldingPriceMap(historicalProfiles,DEFAULT_MOLDING_PRICES),{edge:1100});
+const usedSource={category:'molding',series:DEFAULT_MOLDING_PRICES[0]!.name,cost:1234};
+assert.equal(isLegacyMoldingPriceSource(usedSource,DEFAULT_MOLDING_PRICES),true);
+assert.equal(isLegacyMoldingPriceSource({...usedSource,cost:0},DEFAULT_MOLDING_PRICES),false);
+assert.equal(isLegacyMoldingPriceSource({...usedSource,category:'panel'},DEFAULT_MOLDING_PRICES),false);
+console.log('✓ hiding unused profile cards uses the same exact-series rules as quote prices');
+
+const oldPrices={black:890,gold:990,edge_black:790,legacy_saved_id:777};
+const mergedPrices=mergeMoldingPriceEdits(oldPrices,{black:1234,gold:2345},DEFAULT_MOLDING_PRICES);
+assert.deepEqual(mergedPrices,{black:1234,gold:2345,edge_black:790,legacy_saved_id:777});
+assert.deepEqual(oldPrices,{black:890,gold:990,edge_black:790,legacy_saved_id:777});
+console.log('✓ group price edits preserve other colors, edges and historical keys without mutation');
+assert.deepEqual(mergeMoldingPriceEdits(
+  {gap:1090,black_gap:2090,light:1490,black_light:2490,metallic_gap:1190},
+  {gap:3090},DEFAULT_MOLDING_PRICES),
+  {gap:3090,black_gap:3090,light:1490,black_light:2490,metallic_gap:1190});
+console.log('✓ an explicit color price edit updates its existing same-color alias only');
+for(const edits of [{black:0},{black:-1},{black:NaN},{black:Infinity},{unknown:1234}]) {
+  assert.throws(()=>mergeMoldingPriceEdits(oldPrices,edits,DEFAULT_MOLDING_PRICES));
+}
+console.log('✓ invalid or unknown prices cannot enter a group save');
 
 const catalog: ProfileCatalogRecord[] = [
   {

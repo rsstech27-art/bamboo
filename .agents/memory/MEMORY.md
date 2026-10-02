@@ -6,5 +6,6 @@
 - [Catalog-aware code generation](catalog-codegen.md) — Orval's Zod version inference is unreliable with catalog dependencies; match the actual installed major explicitly.
 - [Ambiguous order-save failures](order-save-ambiguity.md) — a lost POST response is not proof that no order exists; retry guarantees require server-side deduplication.
 - [Official profile pricing](profile-catalog-pricing.md) — importing base articles is not authorization to replace configurable color/type prices.
+- [Manager overlay layout](manager-overlay-layout.md) — portal nested editors, use one scroll-lock owner, and check mobile card bounds rather than masking oversized grids.
 - [Post-merge schema ownership](post-merge-schema-ownership.md) — table filters do not protect auxiliary sequences; Drizzle SQL errors can exit zero.
 - [Release visibility](release-visibility.md) — в релизе скрывать разделы, которые ещё находятся в разработке.

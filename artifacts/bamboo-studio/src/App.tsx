@@ -632,7 +632,7 @@ const BambooStudio = () => {
     customSeries, customMoldings, seriesDefinitions,
     hiddenSeriesIds, hiddenMoldingIds, hiddenExtrasIds,
     panelOverridesRef, moldingOverridesRef,
-    setPanelPrice, setMoldingPrice, setSeriesName, setMoldingName,
+    setPanelPrice, setMoldingPrice, setMoldingPrices, setSeriesName, setMoldingName,
     addCustomSeries, deleteCustomSeries, updateCustomSeries,
     addCustomMolding, deleteCustomMolding, updateCustomMolding,
     hideDefaultSeries, hideDefaultMolding, hideDefaultExtra,
@@ -6510,6 +6510,7 @@ const BambooStudio = () => {
           seriesDefinitions={seriesDefinitions}
           onUpdatePanel={setPanelPrice}
           onUpdateMolding={setMoldingPrice}
+          onSaveMoldingPrices={setMoldingPrices}
           onUpdateSeriesName={setSeriesName}
           onUpdateMoldingName={setMoldingName}
           onAddSeries={addCustomSeries}

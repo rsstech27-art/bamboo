@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { managerFetch } from '../lib/managerApi.ts';
-import { resolveMoldingPrice } from '../lib/profileCatalog.ts';
+import { resolveMoldingPrice, mergeMoldingPriceEdits } from '../lib/profileCatalog.ts';
 
 // ── Default prices (mirrors module-level constants in App.tsx) ───────────────
 export const DEFAULT_SERIES_PRICES: Array<{ id: string; name: string; defaultPrice: number }> = [
@@ -200,6 +200,7 @@ export function useManagerPrices() {
     markSaving();
     const ok = await putSetting(key, value);
     markDone(ok);
+    return ok;
   }, [markSaving, markDone]);
 
   // ── Refs: always-current copies of state for use in callbacks ───────────────
@@ -294,6 +295,18 @@ export function useManagerPrices() {
     saveLS(LS_MOLDING_KEY, next as Record<string, unknown>);
     setMoldingOverrides(next);
     void persist('molding_prices', next);
+  }, [persist]);
+
+  const setMoldingPrices = useCallback(async (edits: PriceMap): Promise<void> => {
+    if (!Object.keys(edits).length) return;
+    const next = mergeMoldingPriceEdits(moldingOverridesRef.current, edits, DEFAULT_MOLDING_PRICES);
+    // Commit the color group once, rather than racing full-map writes for each color.
+    if (!await persist('molding_prices', next)) {
+      throw new Error('Цены не сохранены на сервере. Изменения остались в форме — повторите сохранение.');
+    }
+    moldingOverridesRef.current = next;
+    saveLS(LS_MOLDING_KEY, next as Record<string, unknown>);
+    setMoldingOverrides(next);
   }, [persist]);
 
   const setSeriesName = useCallback((seriesId: string, name: string) => {
@@ -592,6 +605,7 @@ export function useManagerPrices() {
     dbSaveStatus,
     setPanelPrice,
     setMoldingPrice,
+    setMoldingPrices,
     setSeriesName,
     setMoldingName,
     addCustomSeries,
