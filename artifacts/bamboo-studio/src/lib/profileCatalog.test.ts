@@ -131,8 +131,12 @@ check('an individual unsupported gold_light divider run fails quote resolution',
   );
 });
 
-check('edge profiles are left to their legacy quote path', () => {
-  assert.equal(resolveOfficialProfile('edge_gold', catalog), null);
+check('end profiles remain separate from connectors even without their catalog', () => {
+  for (const records of [catalog, [], null, undefined]) {
+    for (const style of ['edge', 'edge_black', 'edge_gold', 'edge_bronze', 'edge_metallic']) {
+      assert.equal(resolveOfficialProfile(style, records), null, `${style} must not require a connector article`);
+    }
+  }
 });
 
 check('saved price identifiers and established default numbers are unchanged', () => {
