@@ -9,6 +9,7 @@ import {
   resolveOfficialProfile,
   type ProfileCatalogRecord,
 } from './profileCatalog.ts';
+import { getManagerProfileGroup, getManagerProfileName, getManagerProfileNameOverride } from './managerProfileLabels.ts';
 import {
   collectNicheVerticalProfileRuns,
   distributeProfileStyleRuns,
@@ -137,6 +138,29 @@ check('end profiles remain separate from connectors even without their catalog',
       assert.equal(resolveOfficialProfile(style, records), null, `${style} must not require a connector article`);
     }
   }
+});
+
+check('manager names distinguish end profiles and preserve custom names and pricing definitions', () => {
+  for (const style of ['edge', 'edge_black', 'edge_gold', 'edge_bronze', 'edge_metallic']) {
+    assert.equal(getManagerProfileGroup(style), 'edge');
+    assert.match(getManagerProfileName(style, 'old name'), /^Торцевой профиль/);
+    assert.doesNotMatch(getManagerProfileName(style, 'old name'), /соединительный/i);
+  }
+  assert.equal(getManagerProfileName('black', 'Профиль чёрный'), 'Соединительный профиль чёрный');
+  assert.equal(getManagerProfileName('gold_gap', 'old name'), 'Соединительный профиль с разрывом золотой');
+  assert.equal(getManagerProfileName('light', 'old name'), 'Соединительный профиль с подсветкой чёрный');
+  assert.equal(getManagerProfileName('edge_black', 'old name', 'Моё название торца'), 'Моё название торца');
+  assert.equal(getManagerProfileName('black', 'Профиль чёрный', 'Профиль торцевой'), 'Соединительный профиль чёрный');
+  assert.equal(getManagerProfileName('metallic', 'Профиль металлик', 'Профиль торцевой'), 'Соединительный профиль металлик');
+  assert.equal(getManagerProfileName('edge_black', 'Профиль торцевой чёрный', 'Соединительный профиль'), 'Торцевой профиль чёрный');
+  assert.equal(getManagerProfileName('black', 'Профиль чёрный', 'Профиль чёрный'), 'Соединительный профиль чёрный');
+  assert.equal(getManagerProfileNameOverride('black', 'Профиль чёрный', 'Профиль торцевой'), undefined);
+  assert.equal(getManagerProfileName('black', 'Профиль чёрный', 'Профиль соединительный'), 'Соединительный профиль чёрный');
+  assert.equal(getManagerProfileNameOverride('black', 'Профиль чёрный', 'Профиль соединительный'), 'Профиль соединительный');
+  assert.equal(getManagerProfileName('gap', 'Профиль с разрывом', 'Профиль с подсветкой'), 'Соединительный профиль с разрывом чёрный');
+  assert.equal(getManagerProfileGroup('custom-123'), 'other');
+  assert.equal(getManagerProfileName('custom-123', 'Пользовательский профиль'), 'Пользовательский профиль');
+  assert.equal(DEFAULT_MOLDING_PRICES.find(item => item.id === 'black')?.name, 'Профиль чёрный');
 });
 
 check('saved price identifiers and established default numbers are unchanged', () => {

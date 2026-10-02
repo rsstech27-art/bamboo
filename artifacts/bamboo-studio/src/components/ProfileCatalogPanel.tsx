@@ -108,9 +108,10 @@ export function ProfileCatalogPanel({ canEdit }: { canEdit: boolean }) {
     <section className="mb-6 rounded-2xl border border-violet-200 bg-violet-50/50 p-4 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-black text-gray-900">Официальный каталог профилей КП</h3>
+          <h3 className="text-sm font-black text-gray-900">Официальные соединительные профили</h3>
           <p className="mt-1 max-w-2xl text-xs leading-relaxed text-gray-500">
-            Метаданные официальных артикулов хранятся отдельно от старых товаров-профилей и настроек цен.
+            MC-06 — соединительный, MC-07 — соединительный с разрывом, DL-01 — соединительный с подсветкой.
+            Торцевые профили — отдельный тип и в этот справочник не входят.
             Длина — 3 м; толщина панелей — 5 и 8 мм. Изменения каталога не меняют цены и названия в редакторе цен.
           </p>
         </div>

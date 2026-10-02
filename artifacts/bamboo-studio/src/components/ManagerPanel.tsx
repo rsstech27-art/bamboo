@@ -20,6 +20,7 @@ import { managerLogin, managerLogout, checkManagerSession, managerFetch, type Ma
 import { useProfileCatalog } from '../hooks/useProfileCatalog';
 import { PROFILE_KIND_DETAILS, type ProfileCatalogRecord, type ProfileKind } from '../lib/profileCatalog';
 import { ProfileCatalogPanel } from './ProfileCatalogPanel';
+import { MANAGER_PROFILE_GROUPS, getManagerProfileGroup, getManagerProfileName, getManagerProfileNameOverride } from '../lib/managerProfileLabels';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -782,19 +783,29 @@ function TabPrices({
         {moldingsOpen && (
           <>
             <div className="bg-white border border-gray-100 rounded-xl px-4 shadow-sm">
-              {visibleMoldings.map(m => (
+              {MANAGER_PROFILE_GROUPS.map(group => {
+                const groupProfiles = visibleMoldings.filter(m => getManagerProfileGroup(m.id) === group.id);
+                if (groupProfiles.length === 0) return null;
+                return (
+                <div key={group.id} data-testid={`manager-profile-group-${group.id}`}>
+                  <h4 className="pt-4 pb-1 text-xs font-bold text-gray-700">{group.label}</h4>
+                  {groupProfiles.map(m => (
                 <EditableRow
                   key={m.id}
-                  defaultName={m.name}
+                  defaultName={getManagerProfileName(m.id, m.name)}
                   defaultPrice={m.defaultPrice}
-                  nameOverride={moldingNameOverrides[m.id]}
+                  nameOverride={getManagerProfileNameOverride(m.id, m.name, moldingNameOverrides[m.id])}
                   priceOverride={moldingOverrides[m.id]}
                   onNameChange={name => onUpdateMoldingName(m.id, name)}
                   onPriceChange={price => onUpdateMolding(m.id, price)}
                   onDelete={() => onHideMolding(m.id)}
-                  metaLabel={officialMetaFor(m.id)}
+                  metaLabel={group.id === 'edge' ? 'Торцевой профиль · отдельный тип' : officialMetaFor(m.id)}
                 />
-              ))}
+                  ))}
+                </div>
+                );
+              })}
+              {customMoldings.length > 0 && <h4 className="pt-4 pb-1 text-xs font-bold text-gray-700">Другие профили</h4>}
               {customMoldings.map(m => (
                 <CustomItemRow
                   key={m.id}
@@ -1285,7 +1296,7 @@ const EMPTY_MOLDING = {
 function MoldingFormFields({ form, setForm, seriesOptions }: {
   form: typeof EMPTY_MOLDING;
   setForm: React.Dispatch<React.SetStateAction<typeof EMPTY_MOLDING>>;
-  seriesOptions: Array<{ name: string }>;
+  seriesOptions: Array<{ name: string; label?: string }>;
 }) {
   return (
     <div className="space-y-4">
@@ -1310,7 +1321,7 @@ function MoldingFormFields({ form, setForm, seriesOptions }: {
             <select value={form.series} onChange={e => setForm(f => ({ ...f, series: e.target.value }))}
               className={`w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-black transition-colors bg-white ${form.series ? 'text-gray-900' : 'text-gray-400'}`}>
               <option value="">— не выбрана —</option>
-              {seriesOptions.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+              {seriesOptions.map(s => <option key={s.name} value={s.name}>{s.label ?? s.name}</option>)}
             </select>
           </div>
           <div>
@@ -1340,7 +1351,7 @@ function MoldingFormFields({ form, setForm, seriesOptions }: {
 }
 
 function MoldingCreateForm({ seriesOptions, onSave, onCancel }: {
-  seriesOptions: Array<{ name: string }>;
+  seriesOptions: Array<{ name: string; label?: string }>;
   onSave: (data: typeof EMPTY_MOLDING) => Promise<void>;
   onCancel: () => void;
 }) {
@@ -1379,7 +1390,7 @@ function MoldingCreateForm({ seriesOptions, onSave, onCancel }: {
 
 function EditMoldingModal({ product, seriesOptions, onSave, onClose }: {
   product: Product;
-  seriesOptions: Array<{ name: string }>;
+  seriesOptions: Array<{ name: string; label?: string }>;
   onSave: (data: typeof EMPTY_MOLDING) => Promise<void>;
   onClose: () => void;
 }) {
@@ -1775,12 +1786,15 @@ function TabProducts({
     : panelProducts;
 
   // Серии профилей (для выпадающего списка в форме)
-  const moldingSeriesOptions: Array<{ name: string }> = [
+  const moldingSeriesOptions: Array<{ name: string; label?: string }> = [
     ...DEFAULT_MOLDING_PRICES
       .filter(m => !(hiddenMoldingIds ?? []).includes(m.id))
-      .map(m => ({ name: (moldingNameOverrides ?? {})[m.id] || m.name })),
+      .map(m => ({
+        name: getManagerProfileNameOverride(m.id, m.name, (moldingNameOverrides ?? {})[m.id]) ?? m.name,
+        label: getManagerProfileName(m.id, m.name, (moldingNameOverrides ?? {})[m.id]),
+      })),
     ...(customMoldings ?? []).map(m => ({ name: m.name })),
-  ];
+  ].filter((option, index, options) => options.findIndex(other => other.name === option.name) === index);
 
   return (
     <div className="py-6 px-4">
