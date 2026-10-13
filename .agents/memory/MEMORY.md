@@ -11,3 +11,4 @@
 - [Manager overlay layout](manager-overlay-layout.md) — portal nested editors, use one scroll-lock owner, and check mobile card bounds rather than masking oversized grids.
 - [Post-merge schema ownership](post-merge-schema-ownership.md) — table filters do not protect auxiliary sequences; Drizzle SQL errors can exit zero.
 - [Release visibility](release-visibility.md) — в релизе скрывать разделы, которые ещё находятся в разработке.
+- [Размещение базы](server-database-placement.md) — требования к серверу считать с учётом переноса PostgreSQL на тот же сервер.
