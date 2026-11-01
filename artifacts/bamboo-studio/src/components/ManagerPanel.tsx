@@ -903,6 +903,35 @@ const EMPTY_PRODUCT = { name: '', article: '', collection: '', series: '', cost:
 // ── Shared product form fields (used inside modal and inline create) ──────────
 const COLLECTION_OPTIONS = ['All Wall', 'Legend'] as const;
 
+const TEXTURE_MAX_SIDE = 1600;
+
+/** Downscale a photo to at most maxSide px (longest side) and encode as JPEG. */
+async function compressTexturePhoto(file: File, maxSide = TEXTURE_MAX_SIDE): Promise<string> {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('Image could not be read'));
+      el.src = url;
+    });
+    const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+    const w = Math.max(1, Math.round(img.naturalWidth * scale));
+    const h = Math.max(1, Math.round(img.naturalHeight * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas is unavailable');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+    return canvas.toDataURL('image/jpeg', 0.85);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 function ProductFormFields({ form, setForm, seriesOptions, fileRef }: {
   form: typeof EMPTY_PRODUCT;
   setForm: React.Dispatch<React.SetStateAction<typeof EMPTY_PRODUCT>>;
@@ -913,9 +942,15 @@ function ProductFormFields({ form, setForm, seriesOptions, fileRef }: {
   const handlePhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setForm(f => ({ ...f, photoUrl: reader.result as string }));
-    reader.readAsDataURL(file);
+    // Texture photos are stored inline and sent to every visitor, so shrink
+    // them before saving (also keeps the request under the server size limit).
+    void compressTexturePhoto(file)
+      .then(dataUrl => setForm(f => ({ ...f, photoUrl: dataUrl })))
+      .catch(() => {
+        const reader = new FileReader();
+        reader.onload = () => setForm(f => ({ ...f, photoUrl: reader.result as string }));
+        reader.readAsDataURL(file);
+      });
   };
 
   const handleSeriesChange = (name: string) => {
@@ -2084,12 +2119,13 @@ function OrderCard({ order, expanded, onToggle, canEditPdf }: {
     if (!file) return;
     setAfterUploading(true);
     try {
-      const dataUrl = await new Promise<string>((resolve, reject) => {
+      // Phone photos often exceed the server's ~3.7 MB limit; shrink first.
+      const dataUrl = await compressTexturePhoto(file, 2000).catch(() => new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result as string);
         reader.onerror = reject;
         reader.readAsDataURL(file);
-      });
+      }));
       const r = await managerFetch(`/api/orders/${order.id}/after-photo`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
