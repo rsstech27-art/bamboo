@@ -1982,7 +1982,7 @@ function TabProducts({
                     ) : (
                       <button onClick={() => { setCreatingMolding(true); setCreating(false); }}
                         className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 hover:border-black text-gray-500 hover:text-black text-sm font-bold py-3 rounded-2xl transition-colors">
-                        <Plus size={14} /> Добавить источник цены
+                        <Plus size={14} /> Добавить профиль
                       </button>
                     )}
                   </div>
