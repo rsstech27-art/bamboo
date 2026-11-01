@@ -1,3 +1,4 @@
+import type { File } from '@google-cloud/storage';
 import { randomUUID } from "node:crypto";
 import express, { type Request } from "express";
 import request from "supertest";
@@ -300,7 +301,7 @@ describe("order PDF lifecycle across PostgreSQL connections and App Storage", ()
           get(target, property) {
             if (property === "getMetadata") {
               return async () => {
-                const metadata = await target.getMetadata();
+                const metadata = await (target as File).getMetadata();
                 await pauseDelete.wait();
                 return metadata;
               };
@@ -327,17 +328,17 @@ describe("order PDF lifecycle across PostgreSQL connections and App Storage", ()
       await within(pauseDelete.reached, "cleanup metadata read");
       const cleanupLease = isolation.leases[leaseOffset];
       expect(cleanupLease.schemas).toEqual([isolation.schema]);
-      const before = (await candidate.getMetadata())[0];
+      const before = (await (candidate as File).getMetadata())[0];
       await putSignedPdf(upload.uploadURL, Buffer.from("%PDF-1.7\noverwritten generation bytes\n%%EOF\n"));
       await expectStoredBytes(upload.objectPath, Buffer.from("%PDF-1.7\noverwritten generation bytes\n%%EOF\n"));
-      const after = (await candidate.getMetadata())[0];
+      const after = (await (candidate as File).getMetadata())[0];
       expect(String(after.generation)).not.toBe(String(before.generation));
-      const [overwritten] = await candidate.download();
+      const [overwritten] = await (candidate as File).download();
       expect(overwritten.toString()).toContain("overwritten generation bytes");
       pauseDelete.release();
       expect(await within(cleanupPending, "conditional cleanup result")).toBe(0);
       expect((observedDeleteError as { code?: number } | undefined)?.code).toBe(412);
-      const [remaining] = await candidate.download();
+      const [remaining] = await (candidate as File).download();
       expect(remaining.toString()).toContain("overwritten generation bytes");
     } finally {
       pauseDelete.release();

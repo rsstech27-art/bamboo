@@ -1,3 +1,4 @@
+import type { File } from '@google-cloud/storage';
 import {
   ObjectNotFoundError,
   ObjectStorageService,
@@ -40,7 +41,7 @@ export async function putSignedPdf(url: string, bytes: Buffer): Promise<void> {
 export async function readObjectBytes(storage: ObjectStorageService, objectPath: string): Promise<Buffer> {
   try {
     const file = await storage.getObjectEntityFile(objectPath);
-    const [bytes] = await file.download();
+    const [bytes] = await (file as File).download();
     return bytes;
   } catch {
     throw new Error("Real App Storage byte verification failed");
@@ -170,7 +171,7 @@ export class TestObjectManifest {
           || !file.name.startsWith(`${directory.replace(/\/$/, "")}/`)) {
           throw new Error("Resolved object is outside this test's storage namespace");
         }
-        const [metadata] = await file.getMetadata();
+        const [metadata] = await (file as File).getMetadata();
         if (!metadata.generation) throw new Error("Created test object has no generation");
         await file.delete({ ifGenerationMatch: metadata.generation });
       } catch (error) {
