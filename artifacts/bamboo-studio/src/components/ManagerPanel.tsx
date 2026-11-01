@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { uploadOrderPdf } from '../lib/orderPdf';
 import { recoverOrderPdf } from '../lib/recoverOrderPdf';
+import { activeProductSeries } from '../lib/productSeries';
 import {
   X, LogOut, Lock, ChevronRight, Package, ShoppingBag, Tag,
   Plus, Pencil, Trash2, RotateCcw, Image, Check, Loader2,
@@ -1020,8 +1021,16 @@ function ProductFormFields({ form, setForm, seriesOptions, fileRef }: {
               className={`w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-black transition-colors bg-white
                 ${form.series ? 'text-gray-900' : 'text-gray-400'}`}>
               <option value="">— не выбрана —</option>
+              {form.series && !seriesOptions.some(s => s.name === form.series) && (
+                <option value={form.series} disabled>Серия недоступна — выберите актуальную</option>
+              )}
               {seriesOptions.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
             </select>
+            {form.series && !seriesOptions.some(s => s.name === form.series) && (
+              <p className="mt-1 text-xs text-amber-700">
+                Серия товара удалена или недоступна. Для переноса выберите актуальную серию.
+              </p>
+            )}
           </div>
           <div>
             <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Коллекция</label>
@@ -2692,10 +2701,7 @@ export function ManagerPanel({
   }, []);
 
   // Computed list of effective series names + prices for dropdown
-  const seriesOptions: Array<{ name: string; price: number }> = seriesDefinitions.map(s => ({
-    name: s.name,
-    price: s.price,
-  }));
+  const seriesOptions = activeProductSeries(seriesDefinitions, hiddenSeriesIds);
   const canEditOfficialCatalog = isAdmin || (permissions?.products?.canEdit ?? false);
 
   const logout = async () => {
