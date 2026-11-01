@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Auto-deploy for BambooStudio on the VPS.
+# On-demand update for BambooStudio on the VPS.
 #
 # Installed as /usr/local/bin/bamboo-deploy by install-autodeploy.sh and run
-# every minute by a systemd timer. When the tracked branch on GitHub has a new
-# commit it: installs locked dependencies, typechecks, builds the site into a
+# only when the owner asks for an update. When the tracked branch on GitHub
+# has a new commit it: installs locked dependencies, typechecks, builds the site into a
 # staging folder, applies DB schema changes, rebuilds the API, restarts it and
 # swaps the site in. If anything fails, the previous commit is rebuilt and
 # restored, so a broken push never leaves the live site down.
@@ -25,21 +25,30 @@ STAGE_DIR="$APP_DIR/.deploy-stage"
 export CI=true PORT=8080 BASE_PATH=/ NODE_ENV=production
 
 # One deploy at a time; a run that finds the lock held just exits.
+# Plain runs also print progress to the terminal (see the tee below).
 exec 9>/run/bamboo-deploy.lock
-flock -n 9 || exit 0
+flock -n 9 || { echo "Обновление уже идёт, дождитесь его окончания."; exit 0; }
 
 cd "$APP_DIR"
 git fetch -q origin "$BRANCH"
 current=$(git rev-parse HEAD)
 target=$(git rev-parse "origin/$BRANCH")
 if [ "${1:-}" != "--force" ]; then
-  [ "$current" = "$target" ] && exit 0
-  # A commit that already failed is not retried every minute; push a fix
+  if [ "$current" = "$target" ]; then
+    echo "Новых изменений на GitHub нет. На сайте: $(git log -1 --format='%h %s')"
+    exit 0
+  fi
+  # A commit that already failed is not rebuilt again; push a fix
   # (new commit) or run with --force.
-  [ "$(git rev-parse -q --verify refs/deploy/failed || true)" = "$target" ] && exit 0
+  if [ "$(git rev-parse -q --verify refs/deploy/failed || true)" = "$target" ]; then
+    echo "Эта версия уже не прошла проверку: $(git log -1 --format='%h %s' "$target")"
+    echo "Исправьте и отправьте новую версию, подробности: tail -n 40 $LOG"
+    exit 1
+  fi
 fi
 
-exec >>"$LOG" 2>&1
+# Show progress in the terminal and keep a copy in the log.
+exec > >(tee -a "$LOG") 2>&1
 log() { echo "[$(date '+%F %T')] $*"; }
 
 # deploy_commit <sha> <checks: 1|0>
@@ -107,6 +116,7 @@ set -e
 if [ "$rc" = 0 ]; then
   git update-ref -d refs/deploy/failed 2>/dev/null || true
   log "Deploy OK: $(git log -1 --format='%h %s' "$target")"
+  echo "ГОТОВО: сайт обновлён до версии $(git log -1 --format='%h %s' "$target")"
   exit 0
 fi
 
@@ -117,9 +127,12 @@ rc=$?
 set -e
 if [ "$rc" = 0 ]; then
   log "Rollback OK: live site is back on $(git log -1 --format='%h %s' "$current")"
+  echo "ОШИБКА: новая версия не прошла проверку, сайт оставлен на прежней версии."
+  echo "Причина выше в выводе или в журнале: tail -n 40 $LOG"
 else
   log "ROLLBACK FAILED: manual attention needed (pm2 logs $PM2_NAME)"
+  echo "ОШИБКА: не удалось ни обновить, ни вернуть прежнюю версию. Нужна ручная проверка: pm2 logs $PM2_NAME"
 fi
-# Remember the failed commit so the timer does not retry it every minute.
+# Remember the failed commit so a repeated run does not rebuild it again.
 git update-ref "refs/deploy/failed" "$target"
 exit 1

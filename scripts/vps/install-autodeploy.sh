@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# One-time setup of BambooStudio auto-deploy on the VPS (run as root):
+# One-time setup of the BambooStudio update command on the VPS (run as root):
 #   bash /var/www/bamboo/scripts/vps/install-autodeploy.sh
-# Installs /usr/local/bin/bamboo-deploy and a systemd timer that runs it every
-# minute. Re-run after changing deploy.sh to install the new version.
+# Installs /usr/local/bin/bamboo-deploy and a systemd service for it. Updates
+# run only on demand (no timer). Re-run after changing deploy.sh.
 set -euo pipefail
 APP_DIR=/var/www/bamboo
 BRANCH=${DEPLOY_BRANCH:-ver4.0}
@@ -13,7 +13,7 @@ grep -qx '.deploy-stage' "$APP_DIR/.git/info/exclude" 2>/dev/null \
 
 cat > /etc/systemd/system/bamboo-deploy.service <<UNIT
 [Unit]
-Description=BambooStudio auto-deploy from GitHub ($BRANCH)
+Description=BambooStudio update from GitHub ($BRANCH)
 After=network-online.target
 Wants=network-online.target
 
@@ -26,19 +26,6 @@ ExecStart=/usr/local/bin/bamboo-deploy
 TimeoutStartSec=30min
 UNIT
 
-cat > /etc/systemd/system/bamboo-deploy.timer <<UNIT
-[Unit]
-Description=Check GitHub for BambooStudio updates every minute
-
-[Timer]
-OnBootSec=2min
-OnUnitInactiveSec=1min
-Unit=bamboo-deploy.service
-
-[Install]
-WantedBy=timers.target
-UNIT
-
 cat > /etc/logrotate.d/bamboo-deploy <<'ROT'
 /var/log/bamboo-deploy.log {
     weekly
@@ -49,7 +36,9 @@ cat > /etc/logrotate.d/bamboo-deploy <<'ROT'
 }
 ROT
 
+# Remove the every-minute timer from earlier setups, if present.
+systemctl disable --now bamboo-deploy.timer 2>/dev/null || true
+rm -f /etc/systemd/system/bamboo-deploy.timer
 systemctl daemon-reload
-systemctl enable --now bamboo-deploy.timer
-echo "Auto-deploy installed: branch $BRANCH, checked every minute."
-echo "Log: tail -f /var/log/bamboo-deploy.log"
+echo "Update command installed (branch $BRANCH). Run: bamboo-deploy"
+echo "Log: tail -n 30 /var/log/bamboo-deploy.log"
