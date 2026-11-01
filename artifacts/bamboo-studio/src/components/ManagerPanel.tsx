@@ -1,4 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
+import { EdgeProfileCard } from './EdgeProfileCard';
+import { isEdgeProfileProduct } from '../lib/edgeProfileProducts';
 import { uploadOrderPdf } from '../lib/orderPdf';
 import { recoverOrderPdf } from '../lib/recoverOrderPdf';
 import { activeProductSeries } from '../lib/productSeries';
@@ -1424,11 +1427,14 @@ function MoldingCreateForm({ seriesOptions, onSave, onCancel }: {
   );
 }
 
-function EditMoldingModal({ product, seriesOptions, onSave, onClose }: {
+function EditMoldingModal({ product, seriesOptions, onSave, onClose, variants, onSelectVariant, onDelete }: {
   product: Product;
   seriesOptions: Array<{ name: string }>;
   onSave: (data: typeof EMPTY_MOLDING) => Promise<void>;
   onClose: () => void;
+  variants?: Product[];
+  onSelectVariant?: (product: Product) => void;
+  onDelete?: () => Promise<boolean>;
 }) {
   const [form, setForm] = useState<typeof EMPTY_MOLDING>({
     category: 'molding',
@@ -1441,52 +1447,104 @@ function EditMoldingModal({ product, seriesOptions, onSave, onClose }: {
   });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const savingRef = useRef(false);
+  const initialForm = useRef(form);
+  const modalFormRef = useRef<HTMLFormElement>(null);
+  const allowDismiss = useCallback(() => !savingRef.current && (
+    JSON.stringify(initialForm.current) === JSON.stringify(form) ||
+    window.confirm('Закрыть без сохранения изменений?')
+  ), [form]);
+  const close = useCallback(() => { if (allowDismiss()) onClose(); }, [allowDismiss, onClose]);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    modalFormRef.current?.querySelector<HTMLElement>('select, input')?.focus();
+    return () => { if (previouslyFocused?.isConnected) previouslyFocused.focus(); };
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.preventDefault(); close(); }
+      if (e.key === 'Tab') {
+        const fields = modalFormRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled)');
+        if (!fields?.length) return;
+        const first = fields[0], last = fields[fields.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [close]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (savingRef.current) return;
     if (!form.name.trim() || !form.article.trim()) return;
+    savingRef.current = true;
     setSaving(true); setSaveError(null);
     try { await onSave(form); onClose(); }
     catch (err) { setSaveError(err instanceof Error ? err.message : 'Ошибка сохранения'); }
-    finally { setSaving(false); }
+    finally { savingRef.current = false; setSaving(false); }
   };
 
-  return (
+  return createPortal(
     <>
-      <div className="fixed inset-0 z-[1100] bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-0 z-[1100] bg-black/40 backdrop-blur-sm" onClick={close} />
       <div className="fixed inset-0 z-[1101] flex items-center justify-center p-4 pointer-events-none">
-        <form onSubmit={submit}
-          className="pointer-events-auto w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 space-y-5 animate-[slideInUp_0.2s_ease]"
+        <form ref={modalFormRef} onSubmit={submit} role="dialog" aria-modal="true" aria-label="Редактирование профиля"
+          className="pointer-events-auto w-full max-w-md max-h-[90dvh] overflow-y-auto overscroll-contain bg-white rounded-2xl shadow-2xl p-6 space-y-5 animate-[slideInUp_0.2s_ease] [&_input]:text-base [&_select]:text-base sm:[&_input]:text-sm sm:[&_select]:text-sm"
           onClick={e => e.stopPropagation()}>
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className="text-base font-black text-gray-900">Редактирование профиля</div>
               <div className="text-xs text-gray-400 mt-0.5 font-mono">{product.article}</div>
             </div>
-            <button type="button" onClick={onClose}
+            <button type="button" onClick={close} disabled={saving} aria-label="Закрыть"
               className="shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 transition-colors">
               <X size={15} />
             </button>
           </div>
-          <MoldingFormFields form={form} setForm={setForm} seriesOptions={seriesOptions} />
+          <fieldset disabled={saving} className="space-y-4">
+            {variants && onSelectVariant && (
+              <label className="block text-[11px] font-semibold text-gray-500">
+                Вариант торцевого профиля
+                <select value={product.id} data-testid="select-edge-profile-variant"
+                  onChange={e => {
+                    const next = variants.find(p => p.id === Number(e.target.value));
+                    if (next && next.id !== product.id && allowDismiss()) onSelectVariant(next);
+                  }}
+                  className="mt-1 w-full border border-gray-200 rounded-xl px-3 py-2 text-base outline-none focus:border-black bg-white">
+                  {variants.map(p => <option key={p.id} value={p.id}>{p.color || p.name} · {p.article}</option>)}
+                </select>
+              </label>
+            )}
+            <MoldingFormFields form={form} setForm={setForm} seriesOptions={seriesOptions} />
+          </fieldset>
           {saveError && <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{saveError}</div>}
           <div className="flex gap-2 pt-1">
             <button type="submit" disabled={saving}
               className="flex-1 flex items-center justify-center gap-2 bg-black text-white text-sm font-bold py-2.5 rounded-xl hover:bg-gray-800 active:scale-95 transition-all disabled:opacity-50">
               {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Сохранить изменения
             </button>
-            <button type="button" onClick={onClose}
+            <button type="button" onClick={close} disabled={saving}
               className="px-4 py-2.5 border border-gray-200 text-sm text-gray-600 rounded-xl hover:bg-gray-50 transition-colors">Отмена</button>
           </div>
+          {onDelete && (
+            <button type="button" disabled={saving} className="text-xs font-semibold text-red-600 disabled:opacity-50"
+              onClick={async () => {
+                if (savingRef.current) return;
+                savingRef.current = true;
+                setSaving(true);
+                setSaveError(null);
+                try { if (await onDelete()) onClose(); }
+                catch (cause) { setSaveError(cause instanceof Error ? cause.message : 'Не удалось удалить профиль.'); }
+                finally { savingRef.current = false; setSaving(false); }
+              }}>Удалить этот вариант профиля</button>
+          )}
         </form>
       </div>
-    </>
+    </>, document.body
   );
 }
 
@@ -1787,11 +1845,12 @@ function TabProducts({
   };
 
   const delMolding = async (id: number) => {
-    if (!confirm('Удалить товар?')) return;
+    if (!confirm('Удалить товар?')) return false;
     const r = await managerFetch(`/api/products/${id}`, { method: 'DELETE' });
-    if (!r.ok) { alert(`Ошибка удаления: ${await apiErrorText(r)}`); return; }
+    if (!r.ok) { alert(`Ошибка удаления: ${await apiErrorText(r)}`); return false; }
     await reload();
     onPhotoChange?.();
+    return true;
   };
 
   // ── Seed ────────────────────────────────────────────────────────────────────
@@ -1816,6 +1875,8 @@ function TabProducts({
   const panelProducts   = data?.filter(p => (p.category ?? 'panel') !== 'molding') ?? [];
   // Hide unrelated historical records, without removing them from DB or backups.
   const moldingProducts = data?.filter(p => isLegacyMoldingPriceSource(p, DEFAULT_MOLDING_PRICES)) ?? [];
+  const edgeProducts = moldingProducts.filter(p => isEdgeProfileProduct(p, DEFAULT_MOLDING_PRICES));
+  const otherMoldingProducts = moldingProducts.filter(p => !isEdgeProfileProduct(p, DEFAULT_MOLDING_PRICES));
   const legacyPrices = buildLegacyMoldingPriceMap(data ?? [], DEFAULT_MOLDING_PRICES);
   const idsByKind: Record<ProfileKind, string[]> = {
     connector: ['black','metallic','bronze','gold'],
@@ -1861,8 +1922,13 @@ function TabProducts({
       )}
       {editingMolding && (
         <EditMoldingModal
+          key={editingMolding.id}
           product={editingMolding}
           seriesOptions={moldingSeriesOptions}
+          variants={isEdgeProfileProduct(editingMolding, DEFAULT_MOLDING_PRICES) ? edgeProducts : undefined}
+          onSelectVariant={setEditingMolding}
+          onDelete={isEdgeProfileProduct(editingMolding, DEFAULT_MOLDING_PRICES)
+            ? () => delMolding(editingMolding.id) : undefined}
           onSave={(f) => updateMolding(editingMolding.id, f)}
           onClose={() => setEditingMolding(null)}
         />
@@ -1974,6 +2040,8 @@ function TabProducts({
                   onSavePrices={onSaveMoldingPrices
                     ? edits => onSaveMoldingPrices(Object.fromEntries(edits.map(({id,price}) => [id,price])))
                     : undefined} />
+                <EdgeProfileCard products={edgeProducts} canEdit={canEditOfficialCatalog}
+                  onEdit={() => { setEditingMolding(edgeProducts[0]); setCreatingMolding(false); }} />
                 {moldingProducts.length > 0 && (
                   <div className="space-y-2 pt-3">
                     <p className="text-xs font-semibold text-gray-500">Дополнительные источники цен, используемые в расчёте</p>
@@ -1987,7 +2055,7 @@ function TabProducts({
                     )}
                   </div>
                 )}
-                {moldingProducts.map(p => (
+                {otherMoldingProducts.map(p => (
                   <MoldingCard key={p.id} product={p}
                     onEdit={() => { setEditingMolding(p); setCreatingMolding(false); }}
                     onDelete={() => delMolding(p.id)} />
