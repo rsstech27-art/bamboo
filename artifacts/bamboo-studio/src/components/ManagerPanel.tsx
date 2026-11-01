@@ -910,7 +910,7 @@ async function compressTexturePhoto(file: File, maxSide = TEXTURE_MAX_SIDE): Pro
   const url = URL.createObjectURL(file);
   try {
     const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const el = new Image();
+      const el = document.createElement('img');
       el.onload = () => resolve(el);
       el.onerror = () => reject(new Error('Image could not be read'));
       el.src = url;
