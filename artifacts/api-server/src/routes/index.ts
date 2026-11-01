@@ -8,10 +8,12 @@ import backupRouter from "./backup";
 import externalRouter from "./external";
 import adminRouter from "./admin";
 import profileCatalogRouter from "./profileCatalog";
+import localStorageRouter from "./localStorage";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
+router.use(localStorageRouter);
 router.use(managerSessionRouter);
 router.use(adminRouter);
 router.use(productsRouter);

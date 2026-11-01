@@ -11,6 +11,19 @@ import {
   ObjectPermission,
   setObjectAclPolicy,
 } from './objectAcl';
+import {
+  LocalStoredFile,
+  createLocalUploadUrl,
+  isLocalStorageEnabled,
+  listLocalObjects,
+} from './localObjectStorage';
+
+/** A Replit App Storage object, or a file on local disk (STORAGE_DRIVER=local). */
+export type StoredFile = File | LocalStoredFile;
+
+function isLocalFile(file: StoredFile): file is LocalStoredFile {
+  return file instanceof LocalStoredFile;
+}
 
 const REPLIT_SIDECAR_ENDPOINT = 'http://127.0.0.1:1106';
 
@@ -91,9 +104,18 @@ export class ObjectStorageService {
   }
 
   async downloadObject(
-    file: File,
+    file: StoredFile,
     cacheTtlSec: number = 3600,
   ): Promise<Response> {
+    if (isLocalFile(file)) {
+      const meta = await file.getMeta();
+      const headers: Record<string, string> = {
+        'Content-Type': meta.contentType || 'application/octet-stream',
+        'Cache-Control': `private, max-age=${cacheTtlSec}`,
+        'Content-Length': String(meta.size),
+      };
+      return new Response(Readable.toWeb(file.createReadStream()) as ReadableStream, { headers });
+    }
     const [metadata] = await file.getMetadata();
     const aclPolicy = await getObjectAclPolicy(file);
     const isPublic = aclPolicy?.visibility === 'public';
@@ -111,6 +133,26 @@ export class ObjectStorageService {
     }
 
     return new Response(webStream, { headers });
+  }
+
+  /** Signed upload URL plus the logical object path it will create. */
+  async createOrderPdfUpload(): Promise<{ uploadURL: string; objectPath: string }> {
+    if (isLocalStorageEnabled()) {
+      const objectName = `uploads/order-pdfs/${randomUUID()}`;
+      return {
+        uploadURL: createLocalUploadUrl(objectName, ORDER_PDF_UPLOAD_TTL_SEC),
+        objectPath: `/objects/${objectName}`,
+      };
+    }
+    const uploadURL = await this.getObjectEntityUploadURL(true);
+    // Signed URL has form: https://storage.googleapis.com/<bucket>/<object>?...
+    const url = new URL(uploadURL);
+    const pathParts = url.pathname.split('/');
+    const objectName = pathParts.slice(2).join('/');
+    const objectPath = this.normalizeObjectEntityPath(
+      `https://storage.googleapis.com/${pathParts[1]}/${objectName}`,
+    );
+    return { uploadURL, objectPath };
   }
 
   async getObjectEntityUploadURL(orderPdf = false): Promise<string> {
@@ -135,9 +177,19 @@ export class ObjectStorageService {
     });
   }
 
-  async getObjectEntityFile(objectPath: string): Promise<File> {
+  async getObjectEntityFile(objectPath: string): Promise<StoredFile> {
     if (!objectPath.startsWith('/objects/')) {
       throw new ObjectNotFoundError();
+    }
+    if (isLocalStorageEnabled()) {
+      let local: LocalStoredFile;
+      try {
+        local = new LocalStoredFile(objectPath.slice('/objects/'.length));
+      } catch {
+        throw new ObjectNotFoundError();
+      }
+      if (!(await local.exists())) throw new ObjectNotFoundError();
+      return local;
     }
 
     const parts = objectPath.slice(1).split('/');
@@ -165,6 +217,18 @@ export class ObjectStorageService {
   // Otherwise a client could overwrite an already attached PDF until that URL expires.
   async finalizeOrderPdf(objectPath: string): Promise<string> {
     const file = await this.getObjectEntityFile(objectPath);
+    if (isLocalFile(file)) {
+      // Local uploads are write-once, so the validated bytes cannot change;
+      // the copy still moves the PDF outside the upload namespace.
+      const meta = await file.getMeta();
+      if (meta.contentType !== 'application/pdf' || !Number.isFinite(meta.size)
+        || meta.size < 5 || meta.size > 15 * 1024 * 1024) {
+        throw new InvalidOrderPdfError();
+      }
+      if ((await file.readPrefix(5)).toString('ascii') !== '%PDF-') throw new InvalidOrderPdfError();
+      const saved = await file.copyTo(`order-pdfs/${randomUUID()}`);
+      return `/objects/${saved.name}`;
+    }
     const [metadata] = await file.getMetadata();
     const size = Number(metadata.size);
     if (metadata.contentType !== 'application/pdf' || !Number.isFinite(size)
@@ -188,6 +252,10 @@ export class ObjectStorageService {
   // Read-only inventory, intentionally separate from deletion candidates.
   // Shared legacy UUID uploads have no reliable feature ownership marker.
   async *listLegacyUploadInventory(): AsyncGenerator<LegacyUploadInventory> {
+    if (isLocalStorageEnabled()) {
+      // Fresh server: legacy shared uploads exist only in Replit storage.
+      return;
+    }
     const { bucketName, objectName } = parseObjectPath(
       `${this.getPrivateObjectDir().replace(/\/$/, '')}/`,
     );
@@ -221,7 +289,13 @@ export class ObjectStorageService {
 
   // Only namespaces owned exclusively by the order-PDF flow. Never sweep the
   // shared uploads directory, even when a file there has application/pdf MIME.
-  async *listOrderPdfCandidates(): AsyncGenerator<File> {
+  async *listOrderPdfCandidates(): AsyncGenerator<StoredFile> {
+    if (isLocalStorageEnabled()) {
+      for (const namespace of ['uploads/order-pdfs', 'order-pdfs']) {
+        yield* listLocalObjects(namespace);
+      }
+      return;
+    }
     const { bucketName, objectName } = parseObjectPath(
       `${this.getPrivateObjectDir().replace(/\/$/, '')}/`,
     );
@@ -241,7 +315,14 @@ export class ObjectStorageService {
     }
   }
 
-  orderPdfObjectPath(file: File): string {
+  orderPdfObjectPath(file: StoredFile): string {
+    if (isLocalFile(file)) {
+      const localPath = `/objects/${file.name}`;
+      if (!/^\/objects\/(?:uploads\/order-pdfs|order-pdfs)\/[a-f0-9-]{36}$/.test(localPath)) {
+        throw new Error('PDF cleanup candidate outside order namespaces');
+      }
+      return localPath;
+    }
     const { bucketName, objectName } = parseObjectPath(
       `${this.getPrivateObjectDir().replace(/\/$/, '')}/`,
     );
@@ -255,7 +336,14 @@ export class ObjectStorageService {
     return path;
   }
 
-  async deleteExpiredOrderPdf(file: File, now: number): Promise<boolean> {
+  async deleteExpiredOrderPdf(file: StoredFile, now: number): Promise<boolean> {
+    if (isLocalFile(file)) {
+      if (!(await file.exists())) return false;
+      const meta = await file.getMeta();
+      if (!isExpiredOrderPdf({ ...meta, generation: '1' }, now)) return false;
+      await file.delete();
+      return true;
+    }
     // Re-read after acquiring the DB lock. Conditional deletion protects against
     // a PUT completing between metadata inspection and deletion.
     const [metadata] = await file.getMetadata();
@@ -295,6 +383,10 @@ export class ObjectStorageService {
     }
 
     const objectFile = await this.getObjectEntityFile(normalizedPath);
+    if (isLocalFile(objectFile)) {
+      await objectFile.setCustomMetadata({ 'custom:aclPolicy': JSON.stringify(aclPolicy) });
+      return normalizedPath;
+    }
     await setObjectAclPolicy(objectFile, aclPolicy);
     return normalizedPath;
   }
@@ -305,9 +397,14 @@ export class ObjectStorageService {
     requestedPermission,
   }: {
     userId?: string;
-    objectFile: File;
+    objectFile: StoredFile;
     requestedPermission?: ObjectPermission;
   }): Promise<boolean> {
+    if (isLocalFile(objectFile)) {
+      const raw = (await objectFile.getMeta()).metadata?.['custom:aclPolicy'];
+      const policy = raw ? (JSON.parse(raw) as ObjectAclPolicy) : null;
+      return Boolean(policy && userId && policy.owner === userId);
+    }
     return canAccessObject({
       userId,
       objectFile,

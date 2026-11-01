@@ -147,16 +147,7 @@ router.post("/orders/:id/pdf-recovery-url", requireAdminOrPerm(["orders", "canEd
 });
 
 async function makePdfUploadGrant(id: number) {
-    const uploadURL = await storage.getObjectEntityUploadURL(true);
-    // Derive the object path from the presigned URL
-    const url = new URL(uploadURL);
-    // Signed URL has form: https://storage.googleapis.com/<bucket>/<object>?...
-    const pathParts = url.pathname.split("/"); // ['', bucketName, ...objectParts]
-    const objectName = pathParts.slice(2).join("/");
-    const objectPath = storage.normalizeObjectEntityPath(
-      `https://storage.googleapis.com/${pathParts[1]}/${objectName}`,
-    );
-
+    const { uploadURL, objectPath } = await storage.createOrderPdfUpload();
     return RequestOrderPdfUploadResponse.parse({
       uploadURL, objectPath, uploadToken: issueOrderPdfGrant(id, objectPath),
     });
