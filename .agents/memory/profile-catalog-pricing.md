@@ -9,7 +9,7 @@ In «Цены → Профили», edge profiles are «Торцевой» with 
 
 **Why:** The user explicitly identified MC-04 as the edge-profile article and corrected the classification.
 
-**How to apply:** Use MC-04 and «Торцевой» for edge-profile price labels; do not apply connector metadata or change prices as part of this label correction.
+**How to apply:** Use MC-04 and «Торцевой» for edge-profile price labels; do not apply connector metadata or change prices as part of this label correction. User-renamed price rows can retain historical connector IDs: check their current displayed names before assigning a connector badge. Correcting a badge must not silently remap calculation IDs.
 
 The manager chooses available illuminated-profile colors from all four supported colors; black is not a permanent product restriction. Newly enabled colors need their own approved prices.
 

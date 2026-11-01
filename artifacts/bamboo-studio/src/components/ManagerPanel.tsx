@@ -718,7 +718,12 @@ function TabPrices({
   const visibleMoldings = DEFAULT_MOLDING_PRICES.filter(m => !hiddenMoldingIds.includes(m.id));
   const visibleExtras   = DEFAULT_EXTRAS.filter(e => !hiddenExtrasIds.includes(e.id));
   const officialMetaFor = (id: string) => {
-    if (id === 'edge' || id.startsWith('edge_')) return 'MC-04 · Торцевой';
+    const displayName = moldingNameOverrides[id]
+      ?? DEFAULT_MOLDING_PRICES.find(profile => profile.id === id)?.name
+      ?? '';
+    if (id === 'edge' || id.startsWith('edge_') || /торцев/iu.test(displayName)) {
+      return 'MC-04 · Торцевой';
+    }
     const kind: ProfileKind | null = id === 'gap' || id.endsWith('_gap')
       ? 'gap'
       : id === 'light' || id.endsWith('_light')
