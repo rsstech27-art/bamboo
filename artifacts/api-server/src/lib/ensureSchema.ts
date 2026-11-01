@@ -71,9 +71,13 @@ export async function ensureSchema(): Promise<void> {
   await db.execute(sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS size TEXT`);
 
   // 8. manager_users — sub-accounts for the manager cabinet
+  // The id sequences are declared in Drizzle (auxiliarySequences.ts), so a
+  // schema push may create them first. Reuse them explicitly: SERIAL would
+  // otherwise add a second "<name>1" sequence that the next push tries to drop.
+  await db.execute(sql`CREATE SEQUENCE IF NOT EXISTS manager_users_id_seq AS integer`);
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS manager_users (
-      id            SERIAL       PRIMARY KEY,
+      id            INTEGER      PRIMARY KEY DEFAULT nextval('manager_users_id_seq'),
       login         TEXT         UNIQUE NOT NULL,
       password_hash TEXT         NOT NULL,
       created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
@@ -81,9 +85,10 @@ export async function ensureSchema(): Promise<void> {
   `);
 
   // 9. manager_permissions — per-section access for each manager user
+  await db.execute(sql`CREATE SEQUENCE IF NOT EXISTS manager_permissions_id_seq AS integer`);
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS manager_permissions (
-      id         SERIAL   PRIMARY KEY,
+      id         INTEGER  PRIMARY KEY DEFAULT nextval('manager_permissions_id_seq'),
       user_id    INTEGER  NOT NULL REFERENCES manager_users(id) ON DELETE CASCADE,
       section    TEXT     NOT NULL,
       can_read   BOOLEAN  NOT NULL DEFAULT TRUE,
@@ -92,6 +97,10 @@ export async function ensureSchema(): Promise<void> {
       UNIQUE(user_id, section)
     )
   `);
+
+  // Same ownership as SERIAL would give (idempotent on existing databases).
+  await db.execute(sql`ALTER SEQUENCE manager_users_id_seq OWNED BY manager_users.id`);
+  await db.execute(sql`ALTER SEQUENCE manager_permissions_id_seq OWNED BY manager_permissions.id`);
 
   logger.info("Schema check complete.");
 }
