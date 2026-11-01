@@ -9,6 +9,8 @@ import {
   resolveMoldingPriceAlias,
   resolveMoldingProductPriceAlias,
   resolveOfficialProfile,
+  isProfileCatalogRecord,
+  PROFILE_KIND_DETAILS,
   type ProfileCatalogRecord,
 } from './profileCatalog.ts';
 import {
@@ -116,9 +118,17 @@ check('missing catalog, missing kind and unavailable colors fail explicitly', ()
   assert.throws(() => resolveOfficialProfile('gold', noGold), /не поддерживает цвет/i);
 });
 
-check('legacy gold light is rejected instead of being recolored to black', () => {
-  assert.throws(() => resolveOfficialProfile('gold_light', catalog), /доступен только чёрный цвет/i);
-  assert.throws(() => resolveOfficialProfile('metallic_light', catalog), /доступен только чёрный цвет/i);
+check('light colors follow manager availability instead of being recolored to black', () => {
+  assert.throws(() => resolveOfficialProfile('gold_light', catalog), /не поддерживает цвет/i);
+  assert.throws(() => resolveOfficialProfile('metallic_light', catalog), /не поддерживает цвет/i);
+  const allColors = catalog.map(record => record.kind === 'light'
+    ? { ...record, colors: ['black', 'gold', 'bronze', 'metallic'] as ProfileCatalogRecord['colors'] }
+    : record);
+  for (const color of ['black', 'gold', 'bronze', 'metallic']) {
+    assert.equal(resolveOfficialProfile(`${color}_light`, allColors)?.color, color);
+  }
+  assert.equal(isProfileCatalogRecord(allColors.find(record => record.kind === 'light')), true);
+  assert.deepEqual([...PROFILE_KIND_DETAILS.light.colors].sort(), ['black', 'bronze', 'gold', 'metallic']);
 });
 
 check('per-divider and horizontal style overrides replace their base runs', () => {
@@ -160,7 +170,7 @@ check('an individual unsupported gold_light divider run fails quote resolution',
   assert.deepEqual(perRunStyles, { gold_light: 1 });
   assert.throws(
     () => Object.keys(perRunStyles).forEach(style => resolveOfficialProfile(style, catalog)),
-    /доступен только чёрный цвет/i,
+    /не поддерживает цвет/i,
   );
 });
 
@@ -187,6 +197,14 @@ check('saved price identifiers and established default numbers are unchanged', (
   assert.equal(resolveMoldingPriceAlias('black_light'), 'light');
   assert.equal(resolveMoldingProductPriceAlias('gold_gap'), 'gold_gap');
   assert.equal(resolveMoldingProductPriceAlias('metallic_gap'), 'metallic_gap');
+});
+
+check('new light colors need their own prices and never inherit the black tariff', () => {
+  for (const id of ['gold_light', 'bronze_light', 'metallic_light']) {
+    assert.equal(resolveMoldingPrice(id, { light: 1490 }, {}, DEFAULT_MOLDING_PRICES), 0);
+    assert.equal(resolveMoldingPrice(id, { light: 1490, [id]: 1700 }, {}, DEFAULT_MOLDING_PRICES), 1700);
+    assert.equal(mergeMoldingPriceEdits({}, { [id]: 1700 }, DEFAULT_MOLDING_PRICES)[id], 1700);
+  }
 });
 
 check('manager and DB fallback price precedence is unchanged and metadata is irrelevant', () => {

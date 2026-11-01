@@ -12,6 +12,8 @@ import {
 } from './hooks/useManagerPrices';
 import { useProfileCatalog } from './hooks/useProfileCatalog';
 import {
+  PROFILE_COLOR_LABELS,
+  type ProfileColor,
   buildLegacyMoldingPriceMap,
   makeOfficialProfileLabel,
   resolveMoldingPrice,
@@ -3320,6 +3322,10 @@ const BambooStudio = () => {
         if (pieces > 0) {
           const official = resolveOfficialProfile(style, profileCatalogForQuote);
           if (official) {
+            const price = getEffectiveMoldingPrice(style);
+            if (!Number.isFinite(price) || price <= 0) {
+              throw new Error(`Для профиля ${official.record.article}, цвет «${PROFILE_COLOR_LABELS[official.color]}», не задана цена. Укажите её в разделе «Цены → Профили» перед формированием КП.`);
+            }
             const genericNameId = style.endsWith('_gap') ? 'gap' : style.endsWith('_light') ? 'light' : style;
             const nameOverride = moldingNameOverrides[style] ?? moldingNameOverrides[genericNameId];
             const direction = `${suffix.trim()}, раскрой оптимизирован`;
@@ -3327,7 +3333,7 @@ const BambooStudio = () => {
               official.record.article,
               makeOfficialProfileLabel(official, direction, nameOverride),
               pieces,
-              getEffectiveMoldingPrice(style),
+              price,
             );
           } else {
             const info = MOLDING_INFO[style];
@@ -4350,7 +4356,8 @@ const BambooStudio = () => {
     const modOpts: Array<{ id: 'normal' | 'gap' | 'light'; label: string }> = [
       { id: 'normal', label: 'Обычный' },
       { id: 'gap',    label: 'С разрывом' },
-      ...(curColor === 'black' ? [{ id: 'light' as const, label: 'С подсветкой' }] : []),
+      ...(profileCatalogRecords?.find(record => record.kind === 'light')?.colors.includes(curColor as ProfileColor)
+        ? [{ id: 'light' as const, label: 'С подсветкой' }] : []),
     ];
 
     return (
@@ -4362,8 +4369,8 @@ const BambooStudio = () => {
             return (
               <button key={o.id}
                 onClick={() => onChange(encodeMoldStyle(o.id, o.id === 'none' ? 'normal' : curMod))}
-                disabled={curMod === 'light' && o.id !== 'black' && o.id !== 'none'}
-                title={curMod === 'light' && o.id !== 'black' ? 'Профиль с подсветкой доступен только в чёрном цвете' : undefined}
+                disabled={curMod === 'light' && o.id !== 'none' && !profileCatalogRecords?.find(record => record.kind === 'light')?.colors.includes(o.id as ProfileColor)}
+                title={curMod === 'light' && o.id !== 'none' && !profileCatalogRecords?.find(record => record.kind === 'light')?.colors.includes(o.id as ProfileColor) ? 'Этот цвет профиля с подсветкой не отмечен как доступный в каталоге' : undefined}
                 className="flex flex-col items-center gap-1 transition-all disabled:cursor-not-allowed disabled:opacity-30">
                 {/* profile bar icon */}
                 <div className={`w-full h-5 rounded-sm border-2 flex items-center justify-center transition-all
@@ -4395,9 +4402,9 @@ const BambooStudio = () => {
             ))}
           </div>
         )}
-        {curMod === 'light' && curColor !== 'black' && (
+        {curMod === 'light' && !profileCatalogRecords?.find(record => record.kind === 'light')?.colors.includes(curColor as ProfileColor) && (
           <p className="text-[8px] font-bold leading-relaxed text-red-600">
-            Подсветка доступна только для чёрного цвета. Этот сохранённый вариант не имеет официального артикула и будет остановлен при формировании КП.
+            Этот цвет профиля с подсветкой не отмечен как доступный в каталоге. Выберите доступный цвет или попросите менеджера проверить настройки перед формированием КП.
           </p>
         )}
       </div>

@@ -54,9 +54,6 @@ export const profileCatalogMetadataSchema = z.object({
   if (new Set(profile.colors).size !== profile.colors.length) {
     ctx.addIssue({ code: "custom", path: ["colors"], message: "Duplicate colors" });
   }
-  if (profile.kind === "light" && profile.colors.some((color) => color !== "black")) {
-    ctx.addIssue({ code: "custom", path: ["colors"], message: "Light profiles only support black" });
-  }
 });
 
 export type InsertProfileCatalog = z.infer<typeof insertProfileCatalogSchema>;

@@ -7,7 +7,7 @@ export type ProfileKind = 'connector' | 'gap' | 'light';
 export const PROFILE_KIND_DETAILS: Record<ProfileKind, { label: string; typeLabel: string; colors: readonly ProfileColor[] }> = {
   connector: { label: 'Соединительный профиль', typeLabel: 'Соединительный', colors: PROFILE_COLORS },
   gap: { label: 'Соединительный профиль с разрывом', typeLabel: 'С разрывом', colors: PROFILE_COLORS },
-  light: { label: 'Соединительный профиль с подсветкой', typeLabel: 'С подсветкой', colors: ['black'] },
+  light: { label: 'Соединительный профиль с подсветкой', typeLabel: 'С подсветкой', colors: PROFILE_COLORS },
 };
 
 export const PROFILE_KIND_ORDER: ProfileKind[] = ['connector', 'gap', 'light'];
@@ -51,7 +51,6 @@ export function isProfileCatalogRecord(value: unknown): value is ProfileCatalogR
     typeof record.name === 'string' && record.name.trim().length > 0 &&
     Array.isArray(record.colors) && record.colors.length > 0 &&
     record.colors.every(color => typeof color === 'string' && COLOR_SET.has(color)) &&
-    (record.kind !== 'light' || record.colors.every(color => color === 'black')) &&
     record.lengthMm === 3000 &&
     Array.isArray(record.panelThicknessesMm) && record.panelThicknessesMm.length === 2 &&
     record.panelThicknessesMm[0] === 5 && record.panelThicknessesMm[1] === 8 &&
@@ -95,9 +94,6 @@ export function resolveOfficialProfile(
   }
   const profileColor = color as ProfileColor;
 
-  if (kind === 'light' && profileColor !== 'black') {
-    throw new Error(`Для профиля с подсветкой доступен только чёрный цвет (DL-01). Выбран вариант «${PROFILE_COLOR_LABELS[profileColor]} с подсветкой». Измените цвет профиля перед формированием КП.`);
-  }
   if (!catalog) {
     throw new Error('Официальный каталог профилей недоступен или ещё загружается. Обновите каталог и повторите формирование КП.');
   }

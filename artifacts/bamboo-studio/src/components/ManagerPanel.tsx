@@ -1881,7 +1881,7 @@ function TabProducts({
   const idsByKind: Record<ProfileKind, string[]> = {
     connector: ['black','metallic','bronze','gold'],
     gap: ['gap','metallic_gap','bronze_gap','gold_gap'],
-    light: ['light'],
+    light: ['light','metallic_light','bronze_light','gold_light'],
   };
   const profilePricing = Object.fromEntries(Object.entries(idsByKind).map(([kind, ids]) => [
     kind, ids.map(id => ({
@@ -2044,7 +2044,6 @@ function TabProducts({
                   onEdit={() => { setEditingMolding(edgeProducts[0]); setCreatingMolding(false); }} />
                 {moldingProducts.length > 0 && (
                   <div className="space-y-2 pt-3">
-                    <p className="text-xs font-semibold text-gray-500">Дополнительные источники цен, используемые в расчёте</p>
                     {creatingMolding ? (
                       <MoldingCreateForm seriesOptions={moldingSeriesOptions} onSave={createMolding} onCancel={() => setCreatingMolding(false)} />
                     ) : (

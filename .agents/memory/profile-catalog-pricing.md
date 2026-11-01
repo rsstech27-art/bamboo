@@ -5,6 +5,12 @@ description: Why importing official profile articles must not replace configurab
 
 Importing official profile metadata is not authorization to replace existing profile prices or infer a price from an unrelated legacy product.
 
+The manager chooses available illuminated-profile colors from all four supported colors; black is not a permanent product restriction. Newly enabled colors need their own approved prices.
+
+**Why:** The user explicitly requested manager-controlled color availability, rather than a hardcoded black-only option. Availability is not authorization to copy the black price into another color.
+
+**How to apply:** Keep editing, server validation, visual selectors and quote validation consistent with the saved available colors. Keep existing selections and prices unchanged until the manager saves changes, and reject quotes with missing new-color prices.
+
 Unifying the appearance of edge and connector cards is not authorization to merge their stored records or rewrite color variants.
 
 **Why:** Edge variants already have separately managed articles, names and prices. The user's request was to make the cards look alike, not to replace the underlying catalog.

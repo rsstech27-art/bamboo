@@ -232,6 +232,19 @@ describe("profile catalog API", () => {
     });
   });
 
+  it("persists manager-selected light colors and returns them on reload", async () => {
+    mocks.seed(row("light", "DL-01"));
+    const colors = ["black", "gold", "bronze", "metallic"];
+    const response = await request(app)
+      .put("/api/profile-catalog/light")
+      .set("x-manager", "yes")
+      .send({ article: "DL-01", name: "Профиль с подсветкой", colors });
+    expect(response.status).toBe(200);
+    expect(response.body.colors).toEqual(colors);
+    const reloaded = await request(app).get("/api/profile-catalog");
+    expect(reloaded.body.find((profile: { kind: string }) => profile.kind === "light").colors).toEqual(colors);
+  });
+
   it.each([
     ["blank article", { ...validUpdate, article: "   " }],
     ["overlong article", { ...validUpdate, article: "a".repeat(101) }],
@@ -240,7 +253,7 @@ describe("profile catalog API", () => {
     ["empty colors", { ...validUpdate, colors: [] }],
     ["duplicate colors", { ...validUpdate, colors: ["black", "black"] }],
     ["unknown color", { ...validUpdate, colors: ["white"] }],
-    ["unsupported light color", { ...validUpdate, colors: ["black", "gold"] }, "light"],
+    ["unsupported light color", { ...validUpdate, colors: ["black", "white"] }, "light"],
     ["changed length", { ...validUpdate, lengthMm: 2500 }],
     ["changed thicknesses", { ...validUpdate, panelThicknessesMm: [8] }],
     ["attempted price metadata", { ...validUpdate, price: 123 }],

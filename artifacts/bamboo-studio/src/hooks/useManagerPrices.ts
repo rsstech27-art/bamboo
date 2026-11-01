@@ -28,6 +28,10 @@ export const DEFAULT_MOLDING_PRICES: Array<{ id: string; name: string; defaultPr
   // Соединительные: с разрывом и с подсветкой
   { id: 'gap',      name: 'Профиль с разрывом',     defaultPrice: 1090 },
   { id: 'light',    name: 'Профиль с подсветкой',   defaultPrice: 1490 },
+  // New colors have no approved tariff yet. Managers must set their price before quoting.
+  { id: 'metallic_light', name: 'Профиль металлик с подсветкой', defaultPrice: 0 },
+  { id: 'bronze_light', name: 'Профиль бронза с подсветкой', defaultPrice: 0 },
+  { id: 'gold_light', name: 'Профиль золото с подсветкой', defaultPrice: 0 },
   { id: 'metallic_gap', name: 'Профиль металлик с разрывом', defaultPrice: 1090 },
   { id: 'bronze_gap',   name: 'Профиль бронза с разрывом',   defaultPrice: 1090 },
   { id: 'gold_gap',     name: 'Профиль золото с разрывом',   defaultPrice: 1090 },

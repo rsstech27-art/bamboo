@@ -50,9 +50,6 @@ function validateEditableMetadata(
   ) {
     return { ok: false, error: "Colors must be a non-empty list of unique supported colors." };
   }
-  if (kind === "light" && value.colors.some((color) => color !== "black")) {
-    return { ok: false, error: "Light profiles only support the black color." };
-  }
 
   const parsed = UpdateProfileCatalogBody.safeParse({
     article: value.article.trim(),

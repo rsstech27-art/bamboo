@@ -196,6 +196,9 @@ function EditProfileModal({ kind, record, items, canEditMeta, canEditPrices, onS
                   );
                 })}
               </div>
+              {kind === 'light' && (
+                <p className="mt-2 text-xs text-gray-500">Для новых цветов задайте цены отдельно перед формированием КП.</p>
+              )}
             </fieldset>
             <div className="rounded-xl bg-gray-50 px-3 py-2 text-xs text-gray-500">
               Длина: 3 м · Толщина панелей: 5 / 8 мм (не редактируется)
@@ -313,13 +316,6 @@ export function ProfileCatalogPanel({ canEdit, pricing, onSavePrices, canEditPri
   return (
     <section className="mb-6 w-full min-w-0 max-w-full rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-black text-gray-900">Артикулы соединительных профилей для КП</h3>
-          <p className="mt-1 max-w-2xl text-xs leading-relaxed text-gray-500">
-            Артикулы и названия, которые попадают в коммерческое предложение. Длина — 3 м; толщина панелей — 5 и 8 мм.
-            Изменение артикулов не меняет цены.
-          </p>
-        </div>
         {canEdit && (
           <button
             type="button"
